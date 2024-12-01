@@ -1,9 +1,7 @@
 package com.chunkytofustudios.native_geofence
 
-import NativeGeofenceApi
 import android.content.Context
 import android.util.Log
-import com.chunkytofustudios.native_geofence.api.NativeGeofenceApiImpl
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 
 class NativeGeofencePlugin : FlutterPlugin {
@@ -15,14 +13,8 @@ class NativeGeofencePlugin : FlutterPlugin {
     }
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        NativeGeofenceApi.setUp(
-            binding.binaryMessenger,
-            NativeGeofenceApiImpl(binding.applicationContext)
-        )
-        Log.d(TAG, "NativeGeofenceApi setup complete.")
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        context = null
     }
 }
