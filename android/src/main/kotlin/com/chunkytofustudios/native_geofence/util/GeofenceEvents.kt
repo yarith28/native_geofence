@@ -20,7 +20,7 @@ class GeofenceEvents {
         }
 
         fun fromMask(mask: Int): List<GeofenceEvent> {
-            return GeofenceEvent.entries.filter { (mask and toFlag(it)) != 0 }
+            return GeofenceEvent.values().filter { (mask and toFlag(it)) != 0 }
         }
 
         fun fromInt(id: Int): GeofenceEvent? {
