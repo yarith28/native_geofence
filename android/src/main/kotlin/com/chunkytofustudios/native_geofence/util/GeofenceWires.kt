@@ -15,9 +15,9 @@ class GeofenceWires {
                 )
                 .setTransitionTypes(GeofenceEvents.createMask(e.triggers))
                 .setLoiteringDelay(e.androidSettings.loiteringDelayMillis.toInt())
-            if (e.androidSettings.expirationDurationMillis != null) {
-                geofenceBuilder.setExpirationDuration(e.androidSettings.expirationDurationMillis)
-            }
+            geofenceBuilder.setExpirationDuration(
+                e.androidSettings.expirationDurationMillis ?: Geofence.NEVER_EXPIRE
+            )
             if (e.androidSettings.notificationResponsivenessMillis != null) {
                 geofenceBuilder.setNotificationResponsiveness(e.androidSettings.notificationResponsivenessMillis.toInt())
             }

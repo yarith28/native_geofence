@@ -60,7 +60,7 @@ Battery efficient Flutter geofencing plugin that uses native iOS and Android API
 
 *Explanation: The coarse and fine locations are required to create a geofence. The background location permission is [also required](https://developer.android.com/develop/sensors-and-location/location/geofencing#RequestGeofences) for geofence creation on Android API level 29+. The boot completed permission is required to re-register geofences after reboot. The wake lock permission is only required if you need to run foreground services to respond to geofence events.*
 
-3. Set your `minSdkVersion` to `26` or above.
+3. Set your `minSdkVersion` to `24` or above.
 
 *Explanation: If you need to support prior Android builds it might be possible to accommodate this. Please send a PR or file a bug.*
 
