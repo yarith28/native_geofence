@@ -98,9 +98,21 @@ class NativeGeofenceManager {
 
   /// Re-register geofences after reboot.
   ///
-  /// Optiona: This function can be called when the autostart feature is not
+  /// Optional: This function can be called when the autostart feature is not
   /// working as it should (e.g. for some Android OEMs). This way you can ensure
   /// all Geofences are re-created at app launch.
+  ///
+  /// WARNING: This re-registers geofences using the raw callback handles that
+  /// were stored when each geofence was first created. Those handles are tied to
+  /// the compiled app binary and can become stale after an app update, an
+  /// obfuscated (`--obfuscate`) rebuild, or after the callback function is moved
+  /// or renamed. When a handle is stale the geofence still fires, but its
+  /// callback can no longer be found ([NativeGeofenceErrorCode.callbackNotFound])
+  /// and the event is dropped.
+  ///
+  /// For a reliable refresh that always uses a valid handle, call [createGeofence]
+  /// again for each region from your app on launch, instead of or in addition to
+  /// this method.
   ///
   /// Throws [NativeGeofenceException].
   Future<void> reCreateAfterReboot() async => _api

@@ -20,6 +20,8 @@ import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceBroadcastRe
 import com.chunkytofustudios.native_geofence.util.ActiveGeofenceWires
 import com.chunkytofustudios.native_geofence.util.GeofenceWires
 import com.chunkytofustudios.native_geofence.util.NativeGeofencePersistence
+import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.location.GeofenceStatusCodes
 import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.LocationServices
 
@@ -47,9 +49,29 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
     }
 
     override fun reCreateAfterReboot() {
+        reCreateAfterReboot(null)
+    }
+
+    fun reCreateAfterReboot(onComplete: (() -> Unit)?) {
         val geofences = NativeGeofencePersistence.getAllGeofences(context)
+        if (geofences.isEmpty()) {
+            Log.d(TAG, "No geofences to re-create.")
+            onComplete?.invoke()
+            return
+        }
+        val lock = Object()
+        var remaining = geofences.size
         for (geofence in geofences) {
-            createGeofenceHelper(geofence, false, null)
+            // Broadcast receivers use goAsync(); invoke the completion only after
+            // every async addGeofences call has finished.
+            createGeofenceHelper(geofence, false) {
+                synchronized(lock) {
+                    remaining -= 1
+                    if (remaining == 0) {
+                        onComplete?.invoke()
+                    }
+                }
+            }
         }
         Log.d(TAG, "${geofences.size} geofences re-created.")
     }
@@ -88,7 +110,16 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
     }
 
     override fun removeAllGeofences(callback: (Result<Unit>) -> Unit) {
-        geofencingClient.removeGeofences(getGeofencePendingIndent(context, null)).run {
+        // Remove by request IDs so this works regardless of PendingIntent identity.
+        val ids = NativeGeofencePersistence.getAllGeofenceIds(context)
+        if (ids.isEmpty()) {
+            NativeGeofencePersistence.removeAllGeofences(context)
+            Log.d(TAG, "Removed all geofences (if any).")
+            callback.invoke(Result.success(Unit))
+            return
+        }
+
+        geofencingClient.removeGeofences(ids).run {
             addOnSuccessListener {
                 NativeGeofencePersistence.removeAllGeofences(context)
                 Log.d(TAG, "Removed all geofences (if any).")
@@ -108,14 +139,12 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         }
     }
 
-    private fun getGeofencePendingIndent(
-        context: Context,
-        callbackHandle: Long?
-    ): PendingIntent {
+    private fun getGeofencePendingIntent(context: Context): PendingIntent {
         val intent = Intent(context, NativeGeofenceBroadcastReceiver::class.java)
-        if (callbackHandle != null) {
-            intent.putExtra(Constants.CALLBACK_HANDLE_KEY, callbackHandle)
-        }
+        // Keep one shared PendingIntent for all geofences. Android caps an app at
+        // five geofence PendingIntents, and the receiver resolves per-geofence
+        // callback handles from persisted triggered IDs.
+        intent.action = "${context.packageName}.native_geofence.GEOFENCE_EVENT"
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             PendingIntent.getBroadcast(
                 context,
@@ -139,23 +168,67 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         cache: Boolean,
         callback: ((Result<Unit>) -> Unit)?
     ) {
+        // Build errors are argument errors, not permission failures from Play services.
+        val geofencingRequest = try {
+            GeofencingRequest.Builder().apply {
+                // Only fresh registrations should replay initial triggers. Reboot
+                // and recovery paths would otherwise duplicate enter/exit events.
+                setInitialTrigger(
+                    if (cache)
+                        GeofenceEvents.createMask(geofence.androidSettings.initialTriggers)
+                    else
+                        0
+                )
+                addGeofence(GeofenceWires.toGeofence(geofence))
+            }.build()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to build Geofence ID=${geofence.id}: $e")
+            callback?.invoke(
+                Result.failure(
+                    FlutterError(
+                        NativeGeofenceErrorCode.INVALID_ARGUMENTS.raw.toString(),
+                        e.toString()
+                    )
+                )
+            )
+            return
+        }
+
+        val previousGeofence =
+            if (
+                cache &&
+                NativeGeofencePersistence.getAllGeofenceIds(context).contains(geofence.id)
+            )
+                NativeGeofencePersistence.getGeofence(context, geofence.id)
+            else
+                null
+        if (cache) {
+            NativeGeofencePersistence.saveGeofence(context, geofence)
+        }
+
+        fun restoreCachedGeofence() {
+            if (!cache) {
+                return
+            }
+            if (previousGeofence == null) {
+                NativeGeofencePersistence.removeGeofence(context, geofence.id)
+            } else {
+                NativeGeofencePersistence.saveGeofence(context, previousGeofence)
+            }
+        }
+
         // We try to create the Geofence without checking for permissions.
         // Only if creation fails we will alert the Flutter plugin of the permission issue.
         geofencingClient.addGeofences(
-            GeofencingRequest.Builder().apply {
-                setInitialTrigger(GeofenceEvents.createMask(geofence.androidSettings.initialTriggers))
-                addGeofence(GeofenceWires.toGeofence(geofence))
-            }.build(),
-            getGeofencePendingIndent(context, geofence.callbackHandle)
+            geofencingRequest,
+            getGeofencePendingIntent(context)
         ).run {
             addOnSuccessListener {
-                if (cache) {
-                    NativeGeofencePersistence.saveGeofence(context, geofence)
-                }
                 Log.d(TAG, "Successfully added Geofence ID=${geofence.id}.")
                 callback?.invoke(Result.success(Unit))
             }
             addOnFailureListener {
+                restoreCachedGeofence()
                 Log.e(TAG, "Failed to add Geofence ID=${geofence.id}: $it")
 
                 if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
@@ -193,11 +266,28 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                     }
                 }
 
+                // Surface Play services geofence limit/availability errors with an
+                // actionable message instead of an opaque internal error. There is
+                // no dedicated NativeGeofenceErrorCode for these yet, so the numeric
+                // GeofenceStatusCodes value is included in details for diagnosis.
+                val statusCode = (it as? ApiException)?.statusCode
+                val message = when (statusCode) {
+                    GeofenceStatusCodes.GEOFENCE_NOT_AVAILABLE ->
+                        "Geofence service is not available. Location may be turned off, " +
+                            "or the device may be in battery-saver/airplane mode."
+                    GeofenceStatusCodes.GEOFENCE_TOO_MANY_GEOFENCES ->
+                        "Too many geofences: an app may register at most 100 geofences."
+                    GeofenceStatusCodes.GEOFENCE_TOO_MANY_PENDING_INTENTS ->
+                        "Too many geofence PendingIntents: an app may register geofences " +
+                            "with at most 5 distinct PendingIntents."
+                    else -> it.toString()
+                }
                 callback?.invoke(
                     Result.failure(
                         FlutterError(
                             NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
-                            it.toString()
+                            message,
+                            statusCode?.let { code -> "GeofenceStatusCodes=$code" }
                         )
                     )
                 )

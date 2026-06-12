@@ -2,6 +2,7 @@ package com.chunkytofustudios.native_geofence.api
 
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.util.Log
 import com.chunkytofustudios.native_geofence.Constants
 import com.chunkytofustudios.native_geofence.NativeGeofenceForegroundService
@@ -22,14 +23,28 @@ class NativeGeofenceBackgroundApiImpl(
     }
 
     override fun promoteToForeground() {
-        context.startForegroundService(Intent(context, NativeGeofenceForegroundService::class.java))
+        startForegroundServiceCompat(Intent(context, NativeGeofenceForegroundService::class.java))
         Log.d(TAG, "Promoted background service to foreground service.")
     }
 
     override fun demoteToBackground() {
         val intent = Intent(context, NativeGeofenceForegroundService::class.java)
         intent.setAction(Constants.ACTION_SHUTDOWN)
-        context.startForegroundService(intent)
+        startForegroundServiceCompat(intent)
         Log.d(TAG, "Demoted foreground service back to background service.")
+    }
+
+    private fun startForegroundServiceCompat(intent: Intent) {
+        // startForegroundService exists only on API 26+, while this plugin supports API 23.
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start NativeGeofenceForegroundService.", e)
+            throw e
+        }
     }
 }

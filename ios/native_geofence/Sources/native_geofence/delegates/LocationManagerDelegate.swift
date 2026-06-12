@@ -37,6 +37,23 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
             log.error("Unknown CLRegionState: \(String(describing: state))")
             return
         }
+
+        handleRegionEvent(event: event, region: region)
+    }
+
+    func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
+        log.debug("didEnterRegion for geofence ID: \(region.identifier)")
+        handleRegionEvent(event: .enter, region: region)
+    }
+
+    func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
+        log.debug("didExitRegion for geofence ID: \(region.identifier)")
+        handleRegionEvent(event: .exit, region: region)
+    }
+
+    // Shared by initial state checks and normal boundary crossings.
+    private func handleRegionEvent(event: GeofenceEvent, region: CLRegion) {
+        log.debug("Handling geofence event \(String(describing: event)) for geofence ID: \(region.identifier)")
         
         guard let activeGeofence = ActiveGeofenceWires.fromRegion(region) else {
             log.error("Unknown CLRegion type: \(String(describing: type(of: region)))")

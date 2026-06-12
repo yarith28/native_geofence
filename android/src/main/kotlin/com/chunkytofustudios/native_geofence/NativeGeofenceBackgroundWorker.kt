@@ -21,6 +21,7 @@ import io.flutter.FlutterInjector
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.dart.DartExecutor.DartCallback
 import io.flutter.view.FlutterCallbackInformation
+import kotlin.time.Duration.Companion.minutes
 import kotlinx.serialization.json.Json
 
 class NativeGeofenceBackgroundWorker(
@@ -32,7 +33,12 @@ class NativeGeofenceBackgroundWorker(
         const val TAG = "NativeGeofenceBackgroundWorker"
         // TODO: Consider using random ID.
         private const val NOTIFICATION_ID = 493620
+        private const val MAX_CALLBACK_RUN_ATTEMPTS = 3
         private val flutterLoader = FlutterInjector.instance().flutterLoader()
+
+        // Keep a stuck callback from blocking the unique WorkManager chain for
+        // WorkManager's full timeout window.
+        private val WATCHDOG_TIMEOUT = 5.minutes
     }
 
     private var flutterEngine: FlutterEngine? = null
@@ -49,6 +55,16 @@ class NativeGeofenceBackgroundWorker(
 
     private var backgroundApiImpl: NativeGeofenceBackgroundApiImpl? = null
 
+    private val watchdogHandler = Handler(Looper.getMainLooper())
+
+    private val watchdogRunnable = Runnable {
+        Log.e(
+            TAG,
+            "Geofence callback exceeded ${WATCHDOG_TIMEOUT.inWholeMilliseconds}ms; aborting."
+        )
+        stopEngine(Result.failure())
+    }
+
     override fun getForegroundInfoAsync(): ListenableFuture<ForegroundInfo> {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             // This method does not need to be implemented for Android 31 (S) and above.
@@ -60,6 +76,7 @@ class NativeGeofenceBackgroundWorker(
 
     override fun startWork(): ListenableFuture<Result> {
         startTime = System.currentTimeMillis()
+        watchdogHandler.postDelayed(watchdogRunnable, WATCHDOG_TIMEOUT.inWholeMilliseconds)
 
         flutterEngine = FlutterEngine(applicationContext)
 
@@ -95,7 +112,8 @@ class NativeGeofenceBackgroundWorker(
                 backgroundApiImpl = NativeGeofenceBackgroundApiImpl(context, this)
                 NativeGeofenceBackgroundApi.setUp(
                     engine.dartExecutor.binaryMessenger,
-                    NativeGeofenceBackgroundApiImpl(context, this)
+                    // Keep the same API instance so Dart's ready signal reaches this worker.
+                    backgroundApiImpl
                 )
 
                 engine.dartExecutor.executeDartCallback(
@@ -133,12 +151,32 @@ class NativeGeofenceBackgroundWorker(
             return
         }
 
-        nativeGeofenceTriggerApi.geofenceTriggered(params) {
-            stopEngine(Result.success())
+        nativeGeofenceTriggerApi.geofenceTriggered(params) { result ->
+            if (result.isSuccess) {
+                stopEngine(Result.success())
+            } else {
+                Log.e(TAG, "Geofence callback failed: ${result.exceptionOrNull()}")
+                stopEngine(callbackFailureResult())
+            }
         }
     }
 
+    private fun callbackFailureResult(): Result {
+        val currentAttempt = workerParams.runAttemptCount + 1
+        if (currentAttempt < MAX_CALLBACK_RUN_ATTEMPTS) {
+            Log.w(
+                TAG,
+                "Retrying geofence callback after failure. " +
+                    "attempt=$currentAttempt/$MAX_CALLBACK_RUN_ATTEMPTS"
+            )
+            return Result.retry()
+        }
+        Log.e(TAG, "Geofence callback failed after $currentAttempt attempts.")
+        return Result.failure()
+    }
+
     private fun stopEngine(result: Result?) {
+        watchdogHandler.removeCallbacks(watchdogRunnable)
         val fetchDuration = System.currentTimeMillis() - startTime
 
         // No result indicates we were signalled to stop by WorkManager. The result is already

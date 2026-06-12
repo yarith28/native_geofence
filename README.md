@@ -51,20 +51,24 @@ See the [example plugin](https://github.com/ChunkyTofuStudios/native_geofence/bl
 ```xml
 <!-- Used by plugin: native_geofence -->
 <receiver android:name="com.chunkytofustudios.native_geofence.receivers.NativeGeofenceBroadcastReceiver"
-          android:exported="true"/>
+          android:exported="false"/>
 <receiver android:name="com.chunkytofustudios.native_geofence.receivers.NativeGeofenceRebootBroadcastReceiver"
           android:exported="true">
     <intent-filter>
-        <action android:name="android.intent.action.BOOT_COMPLETED"></action>
+        <action android:name="android.intent.action.BOOT_COMPLETED"/>
+        <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+        <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+        <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
     </intent-filter>
 </receiver>
 <service android:name="com.chunkytofustudios.native_geofence.NativeGeofenceForegroundService"
-          android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true"/>
+          android:exported="false"
+          android:foregroundServiceType="location"/>
 ```
 
-*Explanation: The `NativeGeofenceBroadcastReceiver` is used to listen for geofence events the Android OS sends. The `NativeGeofenceRebootBroadcastReceiver` runs after device reboot and re-registers geofences (this is required since Android doesn't retain them). Finally, `NativeGeofenceForegroundService` is utilized when you want to run a foreground service when handling a geofence callback.*
+*Explanation: The `NativeGeofenceBroadcastReceiver` is used to listen for geofence events the Android OS sends. It is triggered through an explicit `PendingIntent`, so it is declared `android:exported="false"` to prevent other apps from forging geofence broadcasts. The `NativeGeofenceRebootBroadcastReceiver` runs after device reboot and re-registers geofences (this is required since Android doesn't retain them). Finally, `NativeGeofenceForegroundService` is utilized when you want to run a foreground service when handling a geofence callback; `android:foregroundServiceType="location"` is required on Android 14 (API 34)+ for foreground promotion.*
 
-4. In the same file declare the neccesary permissions before the `<application ...` line:
+4. In the same file declare the necessary permissions before the `<application ...` line:
 
 ```xml
 <!-- Used by plugin: native_geofence -->
@@ -73,15 +77,26 @@ See the [example plugin](https://github.com/ChunkyTofuStudios/native_geofence/bl
 <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 <uses-permission android:name="android.permission.WAKE_LOCK"/>
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
 ```
 
-*Explanation: The coarse and fine locations are required to create a geofence. The background location permission is [also required](https://developer.android.com/develop/sensors-and-location/location/geofencing#RequestGeofences) for geofence creation on Android API level 29+. The boot completed permission is required to re-register geofences after reboot. The wake lock permission is only required if you need to run foreground services to respond to geofence events.*
+*Explanation: The coarse and fine locations are required to create a geofence. The background location permission is [also required](https://developer.android.com/develop/sensors-and-location/location/geofencing#RequestGeofences) for geofence creation on Android API level 29+. The boot completed permission is required to re-register geofences after reboot. The wake lock and foreground service permissions are only required if you need to run foreground services to respond to geofence events.*
 
 5. Optional: Disable battery optimization
 
 If you want to perform any heavy work when a Geofence triggers (within the Geofence callback), such as calling a backend API, you will need to ask the user to disable battery optimization for your app.
 
 You can do so by using the [disable_battery_optimization package](https://pub.dev/packages/disable_battery_optimization). You can find a code sample [here](https://gist.github.com/orkun1675/5803f43f897b22365651bdf9561ca4f4).
+
+6. Improve geofence reliability
+
+Android geofencing is best-effort and varies by device. To maximize reliability:
+
+- Re-register your geofences from your app on launch by calling `createGeofence(...)` again for each region you expect to be active. This is more robust than `reCreateAfterReboot()`, which uses stored callback handles that can become stale after an app update or obfuscated rebuild.
+- Use a radius of at least 150 meters. Smaller radii are missed frequently because background location fixes can be coarse when the device is idle.
+- Consider `notificationResponsiveness: Duration.zero` in `AndroidGeofenceSettings` for faster delivery, at a small battery cost.
+- On aggressive OEMs, guide users to allow background activity / disable deep sleeping for your app in addition to disabling battery optimization.
 
 </details>
 

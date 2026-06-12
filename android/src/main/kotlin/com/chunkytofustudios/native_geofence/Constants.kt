@@ -7,6 +7,8 @@ class Constants {
         const val SHARED_PREFERENCES_KEY = "native_geofence_plugin_cache"
         const val PERSISTENT_GEOFENCES_IDS_KEY = "persistent_geofences_ids"
         const val PERSISTENT_GEOFENCE_KEY_PREFIX = "persistent_geofence/"
+        // Stores the absolute expiry time so reboot recovery does not revive expired geofences.
+        const val PERSISTENT_GEOFENCE_EXPIRATION_KEY_PREFIX = "persistent_geofence_expiration/"
 
         const val CALLBACK_HANDLE_KEY = "$PACKAGE_NAME.callback_handle"
         const val CALLBACK_DISPATCHER_HANDLE_KEY = "callback_dispatch_handler"

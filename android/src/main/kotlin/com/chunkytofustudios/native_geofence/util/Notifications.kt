@@ -5,10 +5,13 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.util.Log
 import androidx.core.app.NotificationCompat
 
 class Notifications {
     companion object {
+        private const val TAG = "Notifications"
+
         fun createBackgroundWorkerNotification(context: Context): Notification {
             // Background Worker notification is only needed for Android 30 and below (30% of users
             // as of Jan 2025), so we are re-using the Foreground Service notification.
@@ -27,7 +30,14 @@ class Notifications {
             )
 
             @SuppressLint("DiscouragedApi") // Can't use R syntax in Flutter plugin.
-            val imageId = context.resources.getIdentifier("ic_launcher", "mipmap", context.packageName)
+            val launcherIconId =
+                context.resources.getIdentifier("ic_launcher", "mipmap", context.packageName)
+            val smallIconId = if (launcherIconId != 0) {
+                launcherIconId
+            } else {
+                Log.w(TAG, "mipmap/ic_launcher not found; using a fallback notification icon.")
+                android.R.drawable.ic_dialog_info
+            }
 
             (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(
                 channel
@@ -35,7 +45,7 @@ class Notifications {
             return NotificationCompat.Builder(context, channelId)
                 .setContentTitle("Processing geofence event.")
                 .setContentText("We noticed you are near a key location and are checking if we can help.")
-                .setSmallIcon(imageId)
+                .setSmallIcon(smallIconId)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .build()
         }
