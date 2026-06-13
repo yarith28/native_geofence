@@ -139,6 +139,18 @@ class NativeGeofenceManager {
       .catchError(
           NativeGeofenceExceptionMapper.catchError<List<ActiveGeofence>>);
 
+  /// Get a best-effort diagnostic snapshot for geofence lifecycle debugging.
+  ///
+  /// On Android, this reports plugin-persisted state and the last native
+  /// registration/removal/broadcast/callback-enqueue facts. It cannot prove
+  /// that Google Play services currently has a geofence armed because Android
+  /// exposes no live geofence listing API.
+  ///
+  /// Throws [NativeGeofenceException].
+  Future<NativeGeofenceStatus> getDiagnosticStatus() async =>
+      _api.getDiagnosticStatus().then((value) => value.fromWire()).catchError(
+          NativeGeofenceExceptionMapper.catchError<NativeGeofenceStatus>);
+
   /// Stop receiving geofence events for a given [Geofence].
   ///
   /// If the [Geofence] is not registered, this method does nothing.

@@ -6,7 +6,8 @@ import 'package:pigeon/pigeon.dart';
 @ConfigurePigeon(PigeonOptions(
   dartOut: 'lib/src/generated/platform_bindings.g.dart',
   dartPackageName: 'native_geofence',
-  swiftOut: 'ios/Classes/Generated/FlutterBindings.g.swift',
+  swiftOut:
+      'ios/native_geofence/Sources/native_geofence/Generated/FlutterBindings.g.swift',
   kotlinOut:
       'android/src/main/kotlin/com/chunkytofustudios/native_geofence/generated/FlutterBindings.g.kt',
   kotlinOptions:
@@ -105,6 +106,84 @@ class GeofenceCallbackParamsWire {
   });
 }
 
+/// Best-effort diagnostic snapshot for investigating geofence lifecycle issues.
+///
+/// Android does not provide an API to list the geofences currently armed inside
+/// Google Play services. These fields are therefore a snapshot of what the
+/// plugin persisted, the most recent native registration/removal/broadcast
+/// events, and platform prerequisites that affect delivery.
+class NativeGeofenceStatusWire {
+  final String platform;
+  final int? androidSdkInt;
+  final String? deviceManufacturer;
+  final String? deviceModel;
+  final List<String> persistedGeofenceIds;
+  final bool locationPermissionGranted;
+  final bool? backgroundLocationPermissionGranted;
+  final bool? notificationPermissionGranted;
+  final String? locationAuthorizationStatus;
+  final bool? locationServicesEnabled;
+  final bool? batteryOptimizationsIgnored;
+  final bool? googlePlayServicesAvailable;
+  final int? googlePlayServicesAvailabilityCode;
+  final bool? geofencePendingIntentExists;
+  final int? lastRegisterAttemptAtMillis;
+  final int? lastRegisterSuccessAtMillis;
+  final int? lastRegisterFailureAtMillis;
+  final String? lastRegisterGeofenceId;
+  final String? lastRegisterFailureCode;
+  final String? lastRegisterFailureMessage;
+  final int? lastRemoveAttemptAtMillis;
+  final int? lastRemoveSuccessAtMillis;
+  final int? lastRemoveFailureAtMillis;
+  final List<String> lastRemoveGeofenceIds;
+  final String? lastRemoveFailureMessage;
+  final int? lastBroadcastReceivedAtMillis;
+  final String? lastBroadcastEvent;
+  final List<String> lastBroadcastGeofenceIds;
+  final String? lastBroadcastErrorCode;
+  final String? lastBroadcastErrorMessage;
+  final int? lastCallbackEnqueueAtMillis;
+  final int? lastCallbackEnqueueFailureAtMillis;
+  final String? lastCallbackEnqueueFailureMessage;
+
+  const NativeGeofenceStatusWire({
+    required this.platform,
+    this.androidSdkInt,
+    this.deviceManufacturer,
+    this.deviceModel,
+    required this.persistedGeofenceIds,
+    required this.locationPermissionGranted,
+    this.backgroundLocationPermissionGranted,
+    this.notificationPermissionGranted,
+    this.locationAuthorizationStatus,
+    this.locationServicesEnabled,
+    this.batteryOptimizationsIgnored,
+    this.googlePlayServicesAvailable,
+    this.googlePlayServicesAvailabilityCode,
+    this.geofencePendingIntentExists,
+    this.lastRegisterAttemptAtMillis,
+    this.lastRegisterSuccessAtMillis,
+    this.lastRegisterFailureAtMillis,
+    this.lastRegisterGeofenceId,
+    this.lastRegisterFailureCode,
+    this.lastRegisterFailureMessage,
+    this.lastRemoveAttemptAtMillis,
+    this.lastRemoveSuccessAtMillis,
+    this.lastRemoveFailureAtMillis,
+    required this.lastRemoveGeofenceIds,
+    this.lastRemoveFailureMessage,
+    this.lastBroadcastReceivedAtMillis,
+    this.lastBroadcastEvent,
+    required this.lastBroadcastGeofenceIds,
+    this.lastBroadcastErrorCode,
+    this.lastBroadcastErrorMessage,
+    this.lastCallbackEnqueueAtMillis,
+    this.lastCallbackEnqueueFailureAtMillis,
+    this.lastCallbackEnqueueFailureMessage,
+  });
+}
+
 /// Errors that can occur when interacting with the native geofence API.
 enum NativeGeofenceErrorCode {
   unknown,
@@ -163,6 +242,8 @@ abstract class NativeGeofenceApi {
   List<String> getGeofenceIds();
 
   List<ActiveGeofenceWire> getGeofences();
+
+  NativeGeofenceStatusWire getDiagnosticStatus();
 
   @async
   void removeGeofenceById({required String id});

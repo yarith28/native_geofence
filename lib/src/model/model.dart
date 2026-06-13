@@ -213,3 +213,119 @@ class GeofenceCallbackParams {
         'location: $location)';
   }
 }
+
+/// Best-effort diagnostic snapshot for investigating geofence lifecycle issues.
+///
+/// This is not a proof that the Android OS currently has a geofence armed:
+/// Android/Google Play services do not expose a live geofence listing API. It
+/// is the plugin's persisted view plus native lifecycle facts collected around
+/// registration, removal, broadcast delivery, and callback enqueueing.
+class NativeGeofenceStatus {
+  final String platform;
+  final int? androidSdkInt;
+  final String? deviceManufacturer;
+  final String? deviceModel;
+  final List<String> persistedGeofenceIds;
+  final bool locationPermissionGranted;
+  final bool? backgroundLocationPermissionGranted;
+  final bool? notificationPermissionGranted;
+  final String? locationAuthorizationStatus;
+  final bool? locationServicesEnabled;
+  final bool? batteryOptimizationsIgnored;
+  final bool? googlePlayServicesAvailable;
+  final int? googlePlayServicesAvailabilityCode;
+  final bool? geofencePendingIntentExists;
+  final int? lastRegisterAttemptAtMillis;
+  final int? lastRegisterSuccessAtMillis;
+  final int? lastRegisterFailureAtMillis;
+  final String? lastRegisterGeofenceId;
+  final String? lastRegisterFailureCode;
+  final String? lastRegisterFailureMessage;
+  final int? lastRemoveAttemptAtMillis;
+  final int? lastRemoveSuccessAtMillis;
+  final int? lastRemoveFailureAtMillis;
+  final List<String> lastRemoveGeofenceIds;
+  final String? lastRemoveFailureMessage;
+  final int? lastBroadcastReceivedAtMillis;
+  final String? lastBroadcastEvent;
+  final List<String> lastBroadcastGeofenceIds;
+  final String? lastBroadcastErrorCode;
+  final String? lastBroadcastErrorMessage;
+  final int? lastCallbackEnqueueAtMillis;
+  final int? lastCallbackEnqueueFailureAtMillis;
+  final String? lastCallbackEnqueueFailureMessage;
+
+  const NativeGeofenceStatus({
+    required this.platform,
+    required this.androidSdkInt,
+    required this.deviceManufacturer,
+    required this.deviceModel,
+    required this.persistedGeofenceIds,
+    required this.locationPermissionGranted,
+    required this.backgroundLocationPermissionGranted,
+    required this.notificationPermissionGranted,
+    required this.locationAuthorizationStatus,
+    required this.locationServicesEnabled,
+    required this.batteryOptimizationsIgnored,
+    required this.googlePlayServicesAvailable,
+    required this.googlePlayServicesAvailabilityCode,
+    required this.geofencePendingIntentExists,
+    required this.lastRegisterAttemptAtMillis,
+    required this.lastRegisterSuccessAtMillis,
+    required this.lastRegisterFailureAtMillis,
+    required this.lastRegisterGeofenceId,
+    required this.lastRegisterFailureCode,
+    required this.lastRegisterFailureMessage,
+    required this.lastRemoveAttemptAtMillis,
+    required this.lastRemoveSuccessAtMillis,
+    required this.lastRemoveFailureAtMillis,
+    required this.lastRemoveGeofenceIds,
+    required this.lastRemoveFailureMessage,
+    required this.lastBroadcastReceivedAtMillis,
+    required this.lastBroadcastEvent,
+    required this.lastBroadcastGeofenceIds,
+    required this.lastBroadcastErrorCode,
+    required this.lastBroadcastErrorMessage,
+    required this.lastCallbackEnqueueAtMillis,
+    required this.lastCallbackEnqueueFailureAtMillis,
+    required this.lastCallbackEnqueueFailureMessage,
+  });
+
+  @override
+  String toString() {
+    return 'NativeGeofenceStatus('
+        'platform: $platform, '
+        'androidSdkInt: $androidSdkInt, '
+        'device: ${deviceManufacturer ?? 'unknown'} ${deviceModel ?? ''}, '
+        'persistedGeofenceIds: [${persistedGeofenceIds.join(',')}], '
+        'locationPermissionGranted: $locationPermissionGranted, '
+        'backgroundLocationPermissionGranted: $backgroundLocationPermissionGranted, '
+        'notificationPermissionGranted: $notificationPermissionGranted, '
+        'locationAuthorizationStatus: $locationAuthorizationStatus, '
+        'locationServicesEnabled: $locationServicesEnabled, '
+        'batteryOptimizationsIgnored: $batteryOptimizationsIgnored, '
+        'googlePlayServicesAvailable: $googlePlayServicesAvailable, '
+        'googlePlayServicesAvailabilityCode: $googlePlayServicesAvailabilityCode, '
+        'geofencePendingIntentExists: $geofencePendingIntentExists, '
+        'lastRegisterAttemptAtMillis: $lastRegisterAttemptAtMillis, '
+        'lastRegisterSuccessAtMillis: $lastRegisterSuccessAtMillis, '
+        'lastRegisterFailureAtMillis: $lastRegisterFailureAtMillis, '
+        'lastRegisterGeofenceId: $lastRegisterGeofenceId, '
+        'lastRegisterFailureCode: $lastRegisterFailureCode, '
+        'lastRegisterFailureMessage: $lastRegisterFailureMessage, '
+        'lastRemoveAttemptAtMillis: $lastRemoveAttemptAtMillis, '
+        'lastRemoveSuccessAtMillis: $lastRemoveSuccessAtMillis, '
+        'lastRemoveFailureAtMillis: $lastRemoveFailureAtMillis, '
+        'lastRemoveGeofenceIds: [${lastRemoveGeofenceIds.join(',')}], '
+        'lastRemoveFailureMessage: $lastRemoveFailureMessage, '
+        'lastBroadcastReceivedAtMillis: $lastBroadcastReceivedAtMillis, '
+        'lastBroadcastEvent: $lastBroadcastEvent, '
+        'lastBroadcastGeofenceIds: [${lastBroadcastGeofenceIds.join(',')}], '
+        'lastBroadcastErrorCode: $lastBroadcastErrorCode, '
+        'lastBroadcastErrorMessage: $lastBroadcastErrorMessage, '
+        'lastCallbackEnqueueAtMillis: $lastCallbackEnqueueAtMillis, '
+        'lastCallbackEnqueueFailureAtMillis: $lastCallbackEnqueueFailureAtMillis, '
+        'lastCallbackEnqueueFailureMessage: $lastCallbackEnqueueFailureMessage'
+        ')';
+  }
+}

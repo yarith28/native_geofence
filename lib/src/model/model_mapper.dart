@@ -116,6 +116,46 @@ extension GeofenceCallbackParamsWireMapper on GeofenceCallbackParamsWire {
   }
 }
 
+extension NativeGeofenceStatusWireMapper on NativeGeofenceStatusWire {
+  NativeGeofenceStatus fromWire() {
+    return NativeGeofenceStatus(
+      platform: platform,
+      androidSdkInt: androidSdkInt,
+      deviceManufacturer: deviceManufacturer,
+      deviceModel: deviceModel,
+      persistedGeofenceIds: persistedGeofenceIds,
+      locationPermissionGranted: locationPermissionGranted,
+      backgroundLocationPermissionGranted: backgroundLocationPermissionGranted,
+      notificationPermissionGranted: notificationPermissionGranted,
+      locationAuthorizationStatus: locationAuthorizationStatus,
+      locationServicesEnabled: locationServicesEnabled,
+      batteryOptimizationsIgnored: batteryOptimizationsIgnored,
+      googlePlayServicesAvailable: googlePlayServicesAvailable,
+      googlePlayServicesAvailabilityCode: googlePlayServicesAvailabilityCode,
+      geofencePendingIntentExists: geofencePendingIntentExists,
+      lastRegisterAttemptAtMillis: lastRegisterAttemptAtMillis,
+      lastRegisterSuccessAtMillis: lastRegisterSuccessAtMillis,
+      lastRegisterFailureAtMillis: lastRegisterFailureAtMillis,
+      lastRegisterGeofenceId: lastRegisterGeofenceId,
+      lastRegisterFailureCode: lastRegisterFailureCode,
+      lastRegisterFailureMessage: lastRegisterFailureMessage,
+      lastRemoveAttemptAtMillis: lastRemoveAttemptAtMillis,
+      lastRemoveSuccessAtMillis: lastRemoveSuccessAtMillis,
+      lastRemoveFailureAtMillis: lastRemoveFailureAtMillis,
+      lastRemoveGeofenceIds: lastRemoveGeofenceIds,
+      lastRemoveFailureMessage: lastRemoveFailureMessage,
+      lastBroadcastReceivedAtMillis: lastBroadcastReceivedAtMillis,
+      lastBroadcastEvent: lastBroadcastEvent,
+      lastBroadcastGeofenceIds: lastBroadcastGeofenceIds,
+      lastBroadcastErrorCode: lastBroadcastErrorCode,
+      lastBroadcastErrorMessage: lastBroadcastErrorMessage,
+      lastCallbackEnqueueAtMillis: lastCallbackEnqueueAtMillis,
+      lastCallbackEnqueueFailureAtMillis: lastCallbackEnqueueFailureAtMillis,
+      lastCallbackEnqueueFailureMessage: lastCallbackEnqueueFailureMessage,
+    );
+  }
+}
+
 extension NativeGeofenceExceptionMapper on NativeGeofenceException {
   static NativeGeofenceException fromPlatformException(PlatformException ex) {
     return NativeGeofenceException(

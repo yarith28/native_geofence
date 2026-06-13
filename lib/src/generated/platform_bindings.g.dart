@@ -516,6 +516,266 @@ class GeofenceCallbackParamsWire {
   int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
 }
 
+/// Best-effort diagnostic snapshot for investigating geofence lifecycle issues.
+///
+/// Android does not provide an API to list the geofences currently armed inside
+/// Google Play services. These fields are therefore a snapshot of what the
+/// plugin persisted, the most recent native registration/removal/broadcast
+/// events, and platform prerequisites that affect delivery.
+class NativeGeofenceStatusWire {
+  NativeGeofenceStatusWire({
+    required this.platform,
+    this.androidSdkInt,
+    this.deviceManufacturer,
+    this.deviceModel,
+    required this.persistedGeofenceIds,
+    required this.locationPermissionGranted,
+    this.backgroundLocationPermissionGranted,
+    this.notificationPermissionGranted,
+    this.locationAuthorizationStatus,
+    this.locationServicesEnabled,
+    this.batteryOptimizationsIgnored,
+    this.googlePlayServicesAvailable,
+    this.googlePlayServicesAvailabilityCode,
+    this.geofencePendingIntentExists,
+    this.lastRegisterAttemptAtMillis,
+    this.lastRegisterSuccessAtMillis,
+    this.lastRegisterFailureAtMillis,
+    this.lastRegisterGeofenceId,
+    this.lastRegisterFailureCode,
+    this.lastRegisterFailureMessage,
+    this.lastRemoveAttemptAtMillis,
+    this.lastRemoveSuccessAtMillis,
+    this.lastRemoveFailureAtMillis,
+    required this.lastRemoveGeofenceIds,
+    this.lastRemoveFailureMessage,
+    this.lastBroadcastReceivedAtMillis,
+    this.lastBroadcastEvent,
+    required this.lastBroadcastGeofenceIds,
+    this.lastBroadcastErrorCode,
+    this.lastBroadcastErrorMessage,
+    this.lastCallbackEnqueueAtMillis,
+    this.lastCallbackEnqueueFailureAtMillis,
+    this.lastCallbackEnqueueFailureMessage,
+  });
+
+  String platform;
+
+  int? androidSdkInt;
+
+  String? deviceManufacturer;
+
+  String? deviceModel;
+
+  List<String> persistedGeofenceIds;
+
+  bool locationPermissionGranted;
+
+  bool? backgroundLocationPermissionGranted;
+
+  bool? notificationPermissionGranted;
+
+  String? locationAuthorizationStatus;
+
+  bool? locationServicesEnabled;
+
+  bool? batteryOptimizationsIgnored;
+
+  bool? googlePlayServicesAvailable;
+
+  int? googlePlayServicesAvailabilityCode;
+
+  bool? geofencePendingIntentExists;
+
+  int? lastRegisterAttemptAtMillis;
+
+  int? lastRegisterSuccessAtMillis;
+
+  int? lastRegisterFailureAtMillis;
+
+  String? lastRegisterGeofenceId;
+
+  String? lastRegisterFailureCode;
+
+  String? lastRegisterFailureMessage;
+
+  int? lastRemoveAttemptAtMillis;
+
+  int? lastRemoveSuccessAtMillis;
+
+  int? lastRemoveFailureAtMillis;
+
+  List<String> lastRemoveGeofenceIds;
+
+  String? lastRemoveFailureMessage;
+
+  int? lastBroadcastReceivedAtMillis;
+
+  String? lastBroadcastEvent;
+
+  List<String> lastBroadcastGeofenceIds;
+
+  String? lastBroadcastErrorCode;
+
+  String? lastBroadcastErrorMessage;
+
+  int? lastCallbackEnqueueAtMillis;
+
+  int? lastCallbackEnqueueFailureAtMillis;
+
+  String? lastCallbackEnqueueFailureMessage;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      platform,
+      androidSdkInt,
+      deviceManufacturer,
+      deviceModel,
+      persistedGeofenceIds,
+      locationPermissionGranted,
+      backgroundLocationPermissionGranted,
+      notificationPermissionGranted,
+      locationAuthorizationStatus,
+      locationServicesEnabled,
+      batteryOptimizationsIgnored,
+      googlePlayServicesAvailable,
+      googlePlayServicesAvailabilityCode,
+      geofencePendingIntentExists,
+      lastRegisterAttemptAtMillis,
+      lastRegisterSuccessAtMillis,
+      lastRegisterFailureAtMillis,
+      lastRegisterGeofenceId,
+      lastRegisterFailureCode,
+      lastRegisterFailureMessage,
+      lastRemoveAttemptAtMillis,
+      lastRemoveSuccessAtMillis,
+      lastRemoveFailureAtMillis,
+      lastRemoveGeofenceIds,
+      lastRemoveFailureMessage,
+      lastBroadcastReceivedAtMillis,
+      lastBroadcastEvent,
+      lastBroadcastGeofenceIds,
+      lastBroadcastErrorCode,
+      lastBroadcastErrorMessage,
+      lastCallbackEnqueueAtMillis,
+      lastCallbackEnqueueFailureAtMillis,
+      lastCallbackEnqueueFailureMessage,
+    ];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static NativeGeofenceStatusWire decode(Object result) {
+    result as List<Object?>;
+    return NativeGeofenceStatusWire(
+      platform: result[0]! as String,
+      androidSdkInt: result[1] as int?,
+      deviceManufacturer: result[2] as String?,
+      deviceModel: result[3] as String?,
+      persistedGeofenceIds: (result[4]! as List<Object?>).cast<String>(),
+      locationPermissionGranted: result[5]! as bool,
+      backgroundLocationPermissionGranted: result[6] as bool?,
+      notificationPermissionGranted: result[7] as bool?,
+      locationAuthorizationStatus: result[8] as String?,
+      locationServicesEnabled: result[9] as bool?,
+      batteryOptimizationsIgnored: result[10] as bool?,
+      googlePlayServicesAvailable: result[11] as bool?,
+      googlePlayServicesAvailabilityCode: result[12] as int?,
+      geofencePendingIntentExists: result[13] as bool?,
+      lastRegisterAttemptAtMillis: result[14] as int?,
+      lastRegisterSuccessAtMillis: result[15] as int?,
+      lastRegisterFailureAtMillis: result[16] as int?,
+      lastRegisterGeofenceId: result[17] as String?,
+      lastRegisterFailureCode: result[18] as String?,
+      lastRegisterFailureMessage: result[19] as String?,
+      lastRemoveAttemptAtMillis: result[20] as int?,
+      lastRemoveSuccessAtMillis: result[21] as int?,
+      lastRemoveFailureAtMillis: result[22] as int?,
+      lastRemoveGeofenceIds: (result[23]! as List<Object?>).cast<String>(),
+      lastRemoveFailureMessage: result[24] as String?,
+      lastBroadcastReceivedAtMillis: result[25] as int?,
+      lastBroadcastEvent: result[26] as String?,
+      lastBroadcastGeofenceIds: (result[27]! as List<Object?>).cast<String>(),
+      lastBroadcastErrorCode: result[28] as String?,
+      lastBroadcastErrorMessage: result[29] as String?,
+      lastCallbackEnqueueAtMillis: result[30] as int?,
+      lastCallbackEnqueueFailureAtMillis: result[31] as int?,
+      lastCallbackEnqueueFailureMessage: result[32] as String?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! NativeGeofenceStatusWire ||
+        other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(platform, other.platform) &&
+        _deepEquals(androidSdkInt, other.androidSdkInt) &&
+        _deepEquals(deviceManufacturer, other.deviceManufacturer) &&
+        _deepEquals(deviceModel, other.deviceModel) &&
+        _deepEquals(persistedGeofenceIds, other.persistedGeofenceIds) &&
+        _deepEquals(
+            locationPermissionGranted, other.locationPermissionGranted) &&
+        _deepEquals(backgroundLocationPermissionGranted,
+            other.backgroundLocationPermissionGranted) &&
+        _deepEquals(notificationPermissionGranted,
+            other.notificationPermissionGranted) &&
+        _deepEquals(
+            locationAuthorizationStatus, other.locationAuthorizationStatus) &&
+        _deepEquals(locationServicesEnabled, other.locationServicesEnabled) &&
+        _deepEquals(
+            batteryOptimizationsIgnored, other.batteryOptimizationsIgnored) &&
+        _deepEquals(
+            googlePlayServicesAvailable, other.googlePlayServicesAvailable) &&
+        _deepEquals(googlePlayServicesAvailabilityCode,
+            other.googlePlayServicesAvailabilityCode) &&
+        _deepEquals(
+            geofencePendingIntentExists, other.geofencePendingIntentExists) &&
+        _deepEquals(
+            lastRegisterAttemptAtMillis, other.lastRegisterAttemptAtMillis) &&
+        _deepEquals(
+            lastRegisterSuccessAtMillis, other.lastRegisterSuccessAtMillis) &&
+        _deepEquals(
+            lastRegisterFailureAtMillis, other.lastRegisterFailureAtMillis) &&
+        _deepEquals(lastRegisterGeofenceId, other.lastRegisterGeofenceId) &&
+        _deepEquals(lastRegisterFailureCode, other.lastRegisterFailureCode) &&
+        _deepEquals(
+            lastRegisterFailureMessage, other.lastRegisterFailureMessage) &&
+        _deepEquals(
+            lastRemoveAttemptAtMillis, other.lastRemoveAttemptAtMillis) &&
+        _deepEquals(
+            lastRemoveSuccessAtMillis, other.lastRemoveSuccessAtMillis) &&
+        _deepEquals(
+            lastRemoveFailureAtMillis, other.lastRemoveFailureAtMillis) &&
+        _deepEquals(lastRemoveGeofenceIds, other.lastRemoveGeofenceIds) &&
+        _deepEquals(lastRemoveFailureMessage, other.lastRemoveFailureMessage) &&
+        _deepEquals(lastBroadcastReceivedAtMillis,
+            other.lastBroadcastReceivedAtMillis) &&
+        _deepEquals(lastBroadcastEvent, other.lastBroadcastEvent) &&
+        _deepEquals(lastBroadcastGeofenceIds, other.lastBroadcastGeofenceIds) &&
+        _deepEquals(lastBroadcastErrorCode, other.lastBroadcastErrorCode) &&
+        _deepEquals(
+            lastBroadcastErrorMessage, other.lastBroadcastErrorMessage) &&
+        _deepEquals(
+            lastCallbackEnqueueAtMillis, other.lastCallbackEnqueueAtMillis) &&
+        _deepEquals(lastCallbackEnqueueFailureAtMillis,
+            other.lastCallbackEnqueueFailureAtMillis) &&
+        _deepEquals(lastCallbackEnqueueFailureMessage,
+            other.lastCallbackEnqueueFailureMessage);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
   @override
@@ -547,6 +807,9 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is GeofenceCallbackParamsWire) {
       buffer.putUint8(136);
       writeValue(buffer, value.encode());
+    } else if (value is NativeGeofenceStatusWire) {
+      buffer.putUint8(137);
+      writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
     }
@@ -573,6 +836,8 @@ class _PigeonCodec extends StandardMessageCodec {
         return ActiveGeofenceWire.decode(readValue(buffer)!);
       case 136:
         return GeofenceCallbackParamsWire.decode(readValue(buffer)!);
+      case 137:
+        return NativeGeofenceStatusWire.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -686,6 +951,25 @@ class NativeGeofenceApi {
       isNullValid: false,
     );
     return (pigeonVar_replyValue! as List<Object?>).cast<ActiveGeofenceWire>();
+  }
+
+  Future<NativeGeofenceStatusWire> getDiagnosticStatus() async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.native_geofence.NativeGeofenceApi.getDiagnosticStatus$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as NativeGeofenceStatusWire;
   }
 
   Future<void> removeGeofenceById({required String id}) async {

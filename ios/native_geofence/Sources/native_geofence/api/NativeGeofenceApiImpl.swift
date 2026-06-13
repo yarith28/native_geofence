@@ -62,6 +62,27 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
         log.debug("getGeofences() found \(geofences.count) geofence(s).")
         return geofences
     }
+
+    func getDiagnosticStatus() throws -> NativeGeofenceStatusWire {
+        let authorizationStatus = locationManagerDelegate.locationManager.authorizationStatus
+        let geofenceIds = locationManagerDelegate.locationManager.monitoredRegions
+            .map(\.identifier)
+            .sorted()
+        let status = NativeGeofenceStatusWire(
+            platform: "ios",
+            deviceManufacturer: "Apple",
+            deviceModel: UIDevice.current.model,
+            persistedGeofenceIds: geofenceIds,
+            locationPermissionGranted: authorizationStatus == .authorizedAlways || authorizationStatus == .authorizedWhenInUse,
+            backgroundLocationPermissionGranted: authorizationStatus == .authorizedAlways,
+            locationAuthorizationStatus: authorizationStatusName(authorizationStatus),
+            locationServicesEnabled: CLLocationManager.locationServicesEnabled(),
+            lastRemoveGeofenceIds: [],
+            lastBroadcastGeofenceIds: []
+        )
+        log.info("NativeGeofence diagnostic status: \(String(describing: status))")
+        return status
+    }
     
     func removeGeofenceById(id: String, completion: @escaping (Result<Void, any Error>) -> Void) {
         var removedCount = 0
@@ -85,5 +106,22 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
         }
         log.debug("Removed \(removedCount) geofence(s).")
         completion(.success(()))
+    }
+
+    private func authorizationStatusName(_ status: CLAuthorizationStatus) -> String {
+        switch status {
+        case .notDetermined:
+            return "notDetermined"
+        case .restricted:
+            return "restricted"
+        case .denied:
+            return "denied"
+        case .authorizedAlways:
+            return "authorizedAlways"
+        case .authorizedWhenInUse:
+            return "authorizedWhenInUse"
+        @unknown default:
+            return "unknown"
+        }
     }
 }

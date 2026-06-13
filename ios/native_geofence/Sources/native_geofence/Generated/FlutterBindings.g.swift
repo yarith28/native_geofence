@@ -498,6 +498,204 @@ struct GeofenceCallbackParamsWire: Hashable {
   }
 }
 
+/// Best-effort diagnostic snapshot for investigating geofence lifecycle issues.
+///
+/// Android does not provide an API to list the geofences currently armed inside
+/// Google Play services. These fields are therefore a snapshot of what the
+/// plugin persisted, the most recent native registration/removal/broadcast
+/// events, and platform prerequisites that affect delivery.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct NativeGeofenceStatusWire: Hashable {
+  var platform: String
+  var androidSdkInt: Int64? = nil
+  var deviceManufacturer: String? = nil
+  var deviceModel: String? = nil
+  var persistedGeofenceIds: [String]
+  var locationPermissionGranted: Bool
+  var backgroundLocationPermissionGranted: Bool? = nil
+  var notificationPermissionGranted: Bool? = nil
+  var locationAuthorizationStatus: String? = nil
+  var locationServicesEnabled: Bool? = nil
+  var batteryOptimizationsIgnored: Bool? = nil
+  var googlePlayServicesAvailable: Bool? = nil
+  var googlePlayServicesAvailabilityCode: Int64? = nil
+  var geofencePendingIntentExists: Bool? = nil
+  var lastRegisterAttemptAtMillis: Int64? = nil
+  var lastRegisterSuccessAtMillis: Int64? = nil
+  var lastRegisterFailureAtMillis: Int64? = nil
+  var lastRegisterGeofenceId: String? = nil
+  var lastRegisterFailureCode: String? = nil
+  var lastRegisterFailureMessage: String? = nil
+  var lastRemoveAttemptAtMillis: Int64? = nil
+  var lastRemoveSuccessAtMillis: Int64? = nil
+  var lastRemoveFailureAtMillis: Int64? = nil
+  var lastRemoveGeofenceIds: [String]
+  var lastRemoveFailureMessage: String? = nil
+  var lastBroadcastReceivedAtMillis: Int64? = nil
+  var lastBroadcastEvent: String? = nil
+  var lastBroadcastGeofenceIds: [String]
+  var lastBroadcastErrorCode: String? = nil
+  var lastBroadcastErrorMessage: String? = nil
+  var lastCallbackEnqueueAtMillis: Int64? = nil
+  var lastCallbackEnqueueFailureAtMillis: Int64? = nil
+  var lastCallbackEnqueueFailureMessage: String? = nil
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> NativeGeofenceStatusWire? {
+    let platform = pigeonVar_list[0] as! String
+    let androidSdkInt: Int64? = nilOrValue(pigeonVar_list[1])
+    let deviceManufacturer: String? = nilOrValue(pigeonVar_list[2])
+    let deviceModel: String? = nilOrValue(pigeonVar_list[3])
+    let persistedGeofenceIds = pigeonVar_list[4] as! [String]
+    let locationPermissionGranted = pigeonVar_list[5] as! Bool
+    let backgroundLocationPermissionGranted: Bool? = nilOrValue(pigeonVar_list[6])
+    let notificationPermissionGranted: Bool? = nilOrValue(pigeonVar_list[7])
+    let locationAuthorizationStatus: String? = nilOrValue(pigeonVar_list[8])
+    let locationServicesEnabled: Bool? = nilOrValue(pigeonVar_list[9])
+    let batteryOptimizationsIgnored: Bool? = nilOrValue(pigeonVar_list[10])
+    let googlePlayServicesAvailable: Bool? = nilOrValue(pigeonVar_list[11])
+    let googlePlayServicesAvailabilityCode: Int64? = nilOrValue(pigeonVar_list[12])
+    let geofencePendingIntentExists: Bool? = nilOrValue(pigeonVar_list[13])
+    let lastRegisterAttemptAtMillis: Int64? = nilOrValue(pigeonVar_list[14])
+    let lastRegisterSuccessAtMillis: Int64? = nilOrValue(pigeonVar_list[15])
+    let lastRegisterFailureAtMillis: Int64? = nilOrValue(pigeonVar_list[16])
+    let lastRegisterGeofenceId: String? = nilOrValue(pigeonVar_list[17])
+    let lastRegisterFailureCode: String? = nilOrValue(pigeonVar_list[18])
+    let lastRegisterFailureMessage: String? = nilOrValue(pigeonVar_list[19])
+    let lastRemoveAttemptAtMillis: Int64? = nilOrValue(pigeonVar_list[20])
+    let lastRemoveSuccessAtMillis: Int64? = nilOrValue(pigeonVar_list[21])
+    let lastRemoveFailureAtMillis: Int64? = nilOrValue(pigeonVar_list[22])
+    let lastRemoveGeofenceIds = pigeonVar_list[23] as! [String]
+    let lastRemoveFailureMessage: String? = nilOrValue(pigeonVar_list[24])
+    let lastBroadcastReceivedAtMillis: Int64? = nilOrValue(pigeonVar_list[25])
+    let lastBroadcastEvent: String? = nilOrValue(pigeonVar_list[26])
+    let lastBroadcastGeofenceIds = pigeonVar_list[27] as! [String]
+    let lastBroadcastErrorCode: String? = nilOrValue(pigeonVar_list[28])
+    let lastBroadcastErrorMessage: String? = nilOrValue(pigeonVar_list[29])
+    let lastCallbackEnqueueAtMillis: Int64? = nilOrValue(pigeonVar_list[30])
+    let lastCallbackEnqueueFailureAtMillis: Int64? = nilOrValue(pigeonVar_list[31])
+    let lastCallbackEnqueueFailureMessage: String? = nilOrValue(pigeonVar_list[32])
+
+    return NativeGeofenceStatusWire(
+      platform: platform,
+      androidSdkInt: androidSdkInt,
+      deviceManufacturer: deviceManufacturer,
+      deviceModel: deviceModel,
+      persistedGeofenceIds: persistedGeofenceIds,
+      locationPermissionGranted: locationPermissionGranted,
+      backgroundLocationPermissionGranted: backgroundLocationPermissionGranted,
+      notificationPermissionGranted: notificationPermissionGranted,
+      locationAuthorizationStatus: locationAuthorizationStatus,
+      locationServicesEnabled: locationServicesEnabled,
+      batteryOptimizationsIgnored: batteryOptimizationsIgnored,
+      googlePlayServicesAvailable: googlePlayServicesAvailable,
+      googlePlayServicesAvailabilityCode: googlePlayServicesAvailabilityCode,
+      geofencePendingIntentExists: geofencePendingIntentExists,
+      lastRegisterAttemptAtMillis: lastRegisterAttemptAtMillis,
+      lastRegisterSuccessAtMillis: lastRegisterSuccessAtMillis,
+      lastRegisterFailureAtMillis: lastRegisterFailureAtMillis,
+      lastRegisterGeofenceId: lastRegisterGeofenceId,
+      lastRegisterFailureCode: lastRegisterFailureCode,
+      lastRegisterFailureMessage: lastRegisterFailureMessage,
+      lastRemoveAttemptAtMillis: lastRemoveAttemptAtMillis,
+      lastRemoveSuccessAtMillis: lastRemoveSuccessAtMillis,
+      lastRemoveFailureAtMillis: lastRemoveFailureAtMillis,
+      lastRemoveGeofenceIds: lastRemoveGeofenceIds,
+      lastRemoveFailureMessage: lastRemoveFailureMessage,
+      lastBroadcastReceivedAtMillis: lastBroadcastReceivedAtMillis,
+      lastBroadcastEvent: lastBroadcastEvent,
+      lastBroadcastGeofenceIds: lastBroadcastGeofenceIds,
+      lastBroadcastErrorCode: lastBroadcastErrorCode,
+      lastBroadcastErrorMessage: lastBroadcastErrorMessage,
+      lastCallbackEnqueueAtMillis: lastCallbackEnqueueAtMillis,
+      lastCallbackEnqueueFailureAtMillis: lastCallbackEnqueueFailureAtMillis,
+      lastCallbackEnqueueFailureMessage: lastCallbackEnqueueFailureMessage
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      platform,
+      androidSdkInt,
+      deviceManufacturer,
+      deviceModel,
+      persistedGeofenceIds,
+      locationPermissionGranted,
+      backgroundLocationPermissionGranted,
+      notificationPermissionGranted,
+      locationAuthorizationStatus,
+      locationServicesEnabled,
+      batteryOptimizationsIgnored,
+      googlePlayServicesAvailable,
+      googlePlayServicesAvailabilityCode,
+      geofencePendingIntentExists,
+      lastRegisterAttemptAtMillis,
+      lastRegisterSuccessAtMillis,
+      lastRegisterFailureAtMillis,
+      lastRegisterGeofenceId,
+      lastRegisterFailureCode,
+      lastRegisterFailureMessage,
+      lastRemoveAttemptAtMillis,
+      lastRemoveSuccessAtMillis,
+      lastRemoveFailureAtMillis,
+      lastRemoveGeofenceIds,
+      lastRemoveFailureMessage,
+      lastBroadcastReceivedAtMillis,
+      lastBroadcastEvent,
+      lastBroadcastGeofenceIds,
+      lastBroadcastErrorCode,
+      lastBroadcastErrorMessage,
+      lastCallbackEnqueueAtMillis,
+      lastCallbackEnqueueFailureAtMillis,
+      lastCallbackEnqueueFailureMessage,
+    ]
+  }
+  static func == (lhs: NativeGeofenceStatusWire, rhs: NativeGeofenceStatusWire) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsFlutterBindings(lhs.platform, rhs.platform) && deepEqualsFlutterBindings(lhs.androidSdkInt, rhs.androidSdkInt) && deepEqualsFlutterBindings(lhs.deviceManufacturer, rhs.deviceManufacturer) && deepEqualsFlutterBindings(lhs.deviceModel, rhs.deviceModel) && deepEqualsFlutterBindings(lhs.persistedGeofenceIds, rhs.persistedGeofenceIds) && deepEqualsFlutterBindings(lhs.locationPermissionGranted, rhs.locationPermissionGranted) && deepEqualsFlutterBindings(lhs.backgroundLocationPermissionGranted, rhs.backgroundLocationPermissionGranted) && deepEqualsFlutterBindings(lhs.notificationPermissionGranted, rhs.notificationPermissionGranted) && deepEqualsFlutterBindings(lhs.locationAuthorizationStatus, rhs.locationAuthorizationStatus) && deepEqualsFlutterBindings(lhs.locationServicesEnabled, rhs.locationServicesEnabled) && deepEqualsFlutterBindings(lhs.batteryOptimizationsIgnored, rhs.batteryOptimizationsIgnored) && deepEqualsFlutterBindings(lhs.googlePlayServicesAvailable, rhs.googlePlayServicesAvailable) && deepEqualsFlutterBindings(lhs.googlePlayServicesAvailabilityCode, rhs.googlePlayServicesAvailabilityCode) && deepEqualsFlutterBindings(lhs.geofencePendingIntentExists, rhs.geofencePendingIntentExists) && deepEqualsFlutterBindings(lhs.lastRegisterAttemptAtMillis, rhs.lastRegisterAttemptAtMillis) && deepEqualsFlutterBindings(lhs.lastRegisterSuccessAtMillis, rhs.lastRegisterSuccessAtMillis) && deepEqualsFlutterBindings(lhs.lastRegisterFailureAtMillis, rhs.lastRegisterFailureAtMillis) && deepEqualsFlutterBindings(lhs.lastRegisterGeofenceId, rhs.lastRegisterGeofenceId) && deepEqualsFlutterBindings(lhs.lastRegisterFailureCode, rhs.lastRegisterFailureCode) && deepEqualsFlutterBindings(lhs.lastRegisterFailureMessage, rhs.lastRegisterFailureMessage) && deepEqualsFlutterBindings(lhs.lastRemoveAttemptAtMillis, rhs.lastRemoveAttemptAtMillis) && deepEqualsFlutterBindings(lhs.lastRemoveSuccessAtMillis, rhs.lastRemoveSuccessAtMillis) && deepEqualsFlutterBindings(lhs.lastRemoveFailureAtMillis, rhs.lastRemoveFailureAtMillis) && deepEqualsFlutterBindings(lhs.lastRemoveGeofenceIds, rhs.lastRemoveGeofenceIds) && deepEqualsFlutterBindings(lhs.lastRemoveFailureMessage, rhs.lastRemoveFailureMessage) && deepEqualsFlutterBindings(lhs.lastBroadcastReceivedAtMillis, rhs.lastBroadcastReceivedAtMillis) && deepEqualsFlutterBindings(lhs.lastBroadcastEvent, rhs.lastBroadcastEvent) && deepEqualsFlutterBindings(lhs.lastBroadcastGeofenceIds, rhs.lastBroadcastGeofenceIds) && deepEqualsFlutterBindings(lhs.lastBroadcastErrorCode, rhs.lastBroadcastErrorCode) && deepEqualsFlutterBindings(lhs.lastBroadcastErrorMessage, rhs.lastBroadcastErrorMessage) && deepEqualsFlutterBindings(lhs.lastCallbackEnqueueAtMillis, rhs.lastCallbackEnqueueAtMillis) && deepEqualsFlutterBindings(lhs.lastCallbackEnqueueFailureAtMillis, rhs.lastCallbackEnqueueFailureAtMillis) && deepEqualsFlutterBindings(lhs.lastCallbackEnqueueFailureMessage, rhs.lastCallbackEnqueueFailureMessage)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("NativeGeofenceStatusWire")
+    deepHashFlutterBindings(value: platform, hasher: &hasher)
+    deepHashFlutterBindings(value: androidSdkInt, hasher: &hasher)
+    deepHashFlutterBindings(value: deviceManufacturer, hasher: &hasher)
+    deepHashFlutterBindings(value: deviceModel, hasher: &hasher)
+    deepHashFlutterBindings(value: persistedGeofenceIds, hasher: &hasher)
+    deepHashFlutterBindings(value: locationPermissionGranted, hasher: &hasher)
+    deepHashFlutterBindings(value: backgroundLocationPermissionGranted, hasher: &hasher)
+    deepHashFlutterBindings(value: notificationPermissionGranted, hasher: &hasher)
+    deepHashFlutterBindings(value: locationAuthorizationStatus, hasher: &hasher)
+    deepHashFlutterBindings(value: locationServicesEnabled, hasher: &hasher)
+    deepHashFlutterBindings(value: batteryOptimizationsIgnored, hasher: &hasher)
+    deepHashFlutterBindings(value: googlePlayServicesAvailable, hasher: &hasher)
+    deepHashFlutterBindings(value: googlePlayServicesAvailabilityCode, hasher: &hasher)
+    deepHashFlutterBindings(value: geofencePendingIntentExists, hasher: &hasher)
+    deepHashFlutterBindings(value: lastRegisterAttemptAtMillis, hasher: &hasher)
+    deepHashFlutterBindings(value: lastRegisterSuccessAtMillis, hasher: &hasher)
+    deepHashFlutterBindings(value: lastRegisterFailureAtMillis, hasher: &hasher)
+    deepHashFlutterBindings(value: lastRegisterGeofenceId, hasher: &hasher)
+    deepHashFlutterBindings(value: lastRegisterFailureCode, hasher: &hasher)
+    deepHashFlutterBindings(value: lastRegisterFailureMessage, hasher: &hasher)
+    deepHashFlutterBindings(value: lastRemoveAttemptAtMillis, hasher: &hasher)
+    deepHashFlutterBindings(value: lastRemoveSuccessAtMillis, hasher: &hasher)
+    deepHashFlutterBindings(value: lastRemoveFailureAtMillis, hasher: &hasher)
+    deepHashFlutterBindings(value: lastRemoveGeofenceIds, hasher: &hasher)
+    deepHashFlutterBindings(value: lastRemoveFailureMessage, hasher: &hasher)
+    deepHashFlutterBindings(value: lastBroadcastReceivedAtMillis, hasher: &hasher)
+    deepHashFlutterBindings(value: lastBroadcastEvent, hasher: &hasher)
+    deepHashFlutterBindings(value: lastBroadcastGeofenceIds, hasher: &hasher)
+    deepHashFlutterBindings(value: lastBroadcastErrorCode, hasher: &hasher)
+    deepHashFlutterBindings(value: lastBroadcastErrorMessage, hasher: &hasher)
+    deepHashFlutterBindings(value: lastCallbackEnqueueAtMillis, hasher: &hasher)
+    deepHashFlutterBindings(value: lastCallbackEnqueueFailureAtMillis, hasher: &hasher)
+    deepHashFlutterBindings(value: lastCallbackEnqueueFailureMessage, hasher: &hasher)
+  }
+}
+
 private class FlutterBindingsPigeonCodecReader: FlutterStandardReader {
   override func readValue(ofType type: UInt8) -> Any? {
     switch type {
@@ -525,6 +723,8 @@ private class FlutterBindingsPigeonCodecReader: FlutterStandardReader {
       return ActiveGeofenceWire.fromList(self.readValue() as! [Any?])
     case 136:
       return GeofenceCallbackParamsWire.fromList(self.readValue() as! [Any?])
+    case 137:
+      return NativeGeofenceStatusWire.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
     }
@@ -557,6 +757,9 @@ private class FlutterBindingsPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? GeofenceCallbackParamsWire {
       super.writeByte(136)
       super.writeValue(value.toList())
+    } else if let value = value as? NativeGeofenceStatusWire {
+      super.writeByte(137)
+      super.writeValue(value.toList())
     } else {
       super.writeValue(value)
     }
@@ -585,6 +788,7 @@ protocol NativeGeofenceApi {
   func reCreateAfterReboot() throws
   func getGeofenceIds() throws -> [String]
   func getGeofences() throws -> [ActiveGeofenceWire]
+  func getDiagnosticStatus() throws -> NativeGeofenceStatusWire
   func removeGeofenceById(id: String, completion: @escaping (Result<Void, Error>) -> Void)
   func removeAllGeofences(completion: @escaping (Result<Void, Error>) -> Void)
 }
@@ -665,6 +869,19 @@ class NativeGeofenceApiSetup {
       }
     } else {
       getGeofencesChannel.setMessageHandler(nil)
+    }
+    let getDiagnosticStatusChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.native_geofence.NativeGeofenceApi.getDiagnosticStatus\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      getDiagnosticStatusChannel.setMessageHandler { _, reply in
+        do {
+          let result = try api.getDiagnosticStatus()
+          reply(wrapResult(result))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      getDiagnosticStatusChannel.setMessageHandler(nil)
     }
     let removeGeofenceByIdChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.native_geofence.NativeGeofenceApi.removeGeofenceById\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
