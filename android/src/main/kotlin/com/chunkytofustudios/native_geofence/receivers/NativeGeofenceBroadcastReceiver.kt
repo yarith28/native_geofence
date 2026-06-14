@@ -4,21 +4,14 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import androidx.work.Data
-import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.OutOfQuotaPolicy
-import androidx.work.WorkManager
 import com.chunkytofustudios.native_geofence.Constants
-import com.chunkytofustudios.native_geofence.NativeGeofenceBackgroundWorker
 import com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWire
-import com.chunkytofustudios.native_geofence.model.GeofenceCallbackParamsStorage
 import com.chunkytofustudios.native_geofence.util.ActiveGeofenceWires
+import com.chunkytofustudios.native_geofence.util.GeofenceCallbackWork
 import com.chunkytofustudios.native_geofence.util.GeofenceEvents
 import com.chunkytofustudios.native_geofence.util.LocationWires
+import com.chunkytofustudios.native_geofence.util.NativeGeofencePersistence
 import com.google.android.gms.location.GeofencingEvent
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 
 class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
     companion object {
@@ -30,21 +23,53 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
 
         val geofenceCallbackParams = getGeofenceCallbackParams(intent) ?: return
 
-        val jsonData =
-            Json.encodeToString(GeofenceCallbackParamsStorage.fromWire(geofenceCallbackParams))
-        val workRequest = OneTimeWorkRequestBuilder<NativeGeofenceBackgroundWorker>()
-            .setInputData(Data.Builder().putString(Constants.WORKER_PAYLOAD_KEY, jsonData).build())
-            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-            .build()
+        val dedupedParams = removeAlreadyDeliveredGeofenceStates(
+            context,
+            geofenceCallbackParams
+        ) ?: return
+        GeofenceCallbackWork.enqueue(context, dedupedParams)
+    }
 
-        val workManager = WorkManager.getInstance(context)
-        val work = workManager.beginUniqueWork(
-            Constants.GEOFENCE_CALLBACK_WORK_GROUP,
-            // Process geofence callbacks sequentially.
-            ExistingWorkPolicy.APPEND,
-            workRequest
+    private fun removeAlreadyDeliveredGeofenceStates(
+        context: Context,
+        params: GeofenceCallbackParamsWire
+    ): GeofenceCallbackParamsWire? {
+        val now = System.currentTimeMillis()
+        val geofencesToDeliver = params.geofences.filter { geofence ->
+            val sameStateDelivered =
+                NativeGeofencePersistence.wasSameGeofenceTransitionStateDelivered(
+                    context,
+                    geofence.id,
+                    params.event
+                )
+            if (sameStateDelivered) {
+                Log.d(
+                    TAG,
+                    "Skipping already-delivered geofence state ID=${geofence.id}, event=${params.event}."
+                )
+            }
+            !sameStateDelivered
+        }
+
+        if (geofencesToDeliver.isEmpty()) {
+            Log.d(TAG, "No new geofence events to enqueue after state de-dupe.")
+            return null
+        }
+
+        for (geofence in geofencesToDeliver) {
+            NativeGeofencePersistence.recordDeliveredGeofenceEvent(
+                context,
+                geofence.id,
+                params.event,
+                now
+            )
+        }
+        return GeofenceCallbackParamsWire(
+            geofencesToDeliver,
+            params.event,
+            params.location,
+            params.callbackHandle
         )
-        work.enqueue()
     }
 
     private fun getGeofenceCallbackParams(intent: Intent): GeofenceCallbackParamsWire? {

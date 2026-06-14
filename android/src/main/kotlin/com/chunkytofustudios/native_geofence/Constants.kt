@@ -8,10 +8,27 @@ class Constants {
         const val PERSISTENT_GEOFENCES_IDS_KEY = "persistent_geofences_ids"
         const val PERSISTENT_GEOFENCE_KEY_PREFIX = "persistent_geofence/"
 
+        // De-dupe state shared by OS geofence events and injected events, so the
+        // same transition is never delivered twice.
+        const val LAST_DELIVERED_GEOFENCE_EVENT_KEY_PREFIX = "last_delivered_geofence_event/"
+        const val LAST_DELIVERED_GEOFENCE_EVENT_TIME_KEY_PREFIX = "last_delivered_geofence_event_time/"
+
         const val CALLBACK_HANDLE_KEY = "$PACKAGE_NAME.callback_handle"
         const val CALLBACK_DISPATCHER_HANDLE_KEY = "callback_dispatch_handler"
 
         const val ACTION_SHUTDOWN = "SHUTDOWN"
+
+        // External event injection: lets a higher layer feed a confirmed
+        // transition through the normal de-dupe + dispatch path, so injected
+        // events and OS geofence events never double-fire.
+        const val ACTION_INJECT_GEOFENCE_EVENT = "$PACKAGE_NAME.INJECT_GEOFENCE_EVENT"
+        const val INJECT_EXTRA_GEOFENCE_ID = "$PACKAGE_NAME.inject.geofence_id"
+        const val INJECT_EXTRA_EVENT = "$PACKAGE_NAME.inject.event"
+        const val INJECT_EXTRA_LAT = "$PACKAGE_NAME.inject.lat"
+        const val INJECT_EXTRA_LNG = "$PACKAGE_NAME.inject.lng"
+        const val INJECT_EXTRA_ACCURACY = "$PACKAGE_NAME.inject.accuracy"
+        const val INJECT_EXTRA_TIME = "$PACKAGE_NAME.inject.time"
+        const val INJECT_EXTRA_MOCK = "$PACKAGE_NAME.inject.mock"
 
         const val WORKER_PAYLOAD_KEY = "$PACKAGE_NAME.worker_payload"
         const val GEOFENCE_CALLBACK_WORK_GROUP = "geofence_callback_work_group"

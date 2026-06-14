@@ -3,6 +3,7 @@ package com.chunkytofustudios.native_geofence.util
 import android.content.Context
 import android.util.Log
 import com.chunkytofustudios.native_geofence.Constants
+import com.chunkytofustudios.native_geofence.generated.GeofenceEvent
 import com.chunkytofustudios.native_geofence.generated.GeofenceWire
 import com.chunkytofustudios.native_geofence.model.GeofenceStorage
 import kotlinx.serialization.json.Json
@@ -19,6 +20,16 @@ class NativeGeofencePersistence {
         @JvmStatic
         private fun getGeofenceKey(id: String): String {
             return Constants.PERSISTENT_GEOFENCE_KEY_PREFIX + id
+        }
+
+        @JvmStatic
+        private fun getLastDeliveredGeofenceEventKey(id: String): String {
+            return Constants.LAST_DELIVERED_GEOFENCE_EVENT_KEY_PREFIX + id
+        }
+
+        @JvmStatic
+        private fun getLastDeliveredGeofenceEventTimeKey(id: String): String {
+            return Constants.LAST_DELIVERED_GEOFENCE_EVENT_TIME_KEY_PREFIX + id
         }
 
         @JvmStatic
@@ -41,6 +52,8 @@ class NativeGeofencePersistence {
                     .edit()
                     .putStringSet(Constants.PERSISTENT_GEOFENCES_IDS_KEY, persistentGeofences)
                     .putString(getGeofenceKey(geofence.id), jsonData)
+                    .remove(getLastDeliveredGeofenceEventKey(geofence.id))
+                    .remove(getLastDeliveredGeofenceEventTimeKey(geofence.id))
                     .apply()
                 Log.d(TAG, "Saved Geofence ID=${geofence.id} to storage.")
             }
@@ -113,6 +126,8 @@ class NativeGeofencePersistence {
                     .edit()
                     .putStringSet(Constants.PERSISTENT_GEOFENCES_IDS_KEY, persistentGeofences)
                     .remove(getGeofenceKey(geofenceId))
+                    .remove(getLastDeliveredGeofenceEventKey(geofenceId))
+                    .remove(getLastDeliveredGeofenceEventTimeKey(geofenceId))
                     .apply()
                 Log.d(TAG, "Removed Geofence ID=${geofenceId} from storage.")
             }
@@ -140,9 +155,65 @@ class NativeGeofencePersistence {
                     .remove(Constants.PERSISTENT_GEOFENCES_IDS_KEY)
                 for (id in persistentGeofences) {
                     editor.remove(getGeofenceKey(id))
+                    editor.remove(getLastDeliveredGeofenceEventKey(id))
+                    editor.remove(getLastDeliveredGeofenceEventTimeKey(id))
                 }
                 editor.apply()
                 Log.d(TAG, "Removed ${persistentGeofences.size} Geofences from storage.")
+            }
+        }
+
+        @JvmStatic
+        fun recordDeliveredGeofenceEvent(
+            context: Context,
+            geofenceId: String,
+            event: GeofenceEvent,
+            timestampMillis: Long = System.currentTimeMillis()
+        ) {
+            synchronized(sharedPreferencesLock) {
+                context.getSharedPreferences(
+                    Constants.SHARED_PREFERENCES_KEY,
+                    Context.MODE_PRIVATE
+                )
+                    .edit()
+                    .putString(getLastDeliveredGeofenceEventKey(geofenceId), event.name)
+                    .putLong(getLastDeliveredGeofenceEventTimeKey(geofenceId), timestampMillis)
+                    .apply()
+            }
+        }
+
+        @JvmStatic
+        fun wasSameGeofenceTransitionStateDelivered(
+            context: Context,
+            geofenceId: String,
+            event: GeofenceEvent
+        ): Boolean {
+            if (event == GeofenceEvent.DWELL) {
+                return false
+            }
+            synchronized(sharedPreferencesLock) {
+                val p = context.getSharedPreferences(
+                    Constants.SHARED_PREFERENCES_KEY,
+                    Context.MODE_PRIVATE
+                )
+                val lastEventName = p.getString(getLastDeliveredGeofenceEventKey(geofenceId), null)
+                    ?: return false
+                val lastEvent = try {
+                    GeofenceEvent.valueOf(lastEventName)
+                } catch (e: IllegalArgumentException) {
+                    return false
+                }
+                val lastInside = when (lastEvent) {
+                    GeofenceEvent.ENTER -> true
+                    GeofenceEvent.DWELL -> true
+                    GeofenceEvent.EXIT -> false
+                }
+                val currentInside = when (event) {
+                    GeofenceEvent.ENTER -> true
+                    GeofenceEvent.DWELL -> true
+                    GeofenceEvent.EXIT -> false
+                }
+                return lastInside == currentInside
             }
         }
     }

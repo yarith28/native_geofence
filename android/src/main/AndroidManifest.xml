@@ -1,3 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
   package="com.chunkytofustudios.native_geofence">
+  <application>
+    <!-- Accepts externally-confirmed transitions (same-app only) and feeds them
+         through the normal de-duped dispatch path. -->
+    <receiver
+      android:name=".receivers.GeofenceInjectionReceiver"
+      android:enabled="true"
+      android:exported="false">
+      <intent-filter>
+        <action android:name="com.chunkytofustudios.native_geofence.INJECT_GEOFENCE_EVENT" />
+      </intent-filter>
+    </receiver>
+  </application>
 </manifest>
