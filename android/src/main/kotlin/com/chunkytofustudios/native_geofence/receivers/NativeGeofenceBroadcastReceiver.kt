@@ -3,6 +3,7 @@ package com.chunkytofustudios.native_geofence.receivers
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.location.Location
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.work.BackoffPolicy
@@ -218,6 +219,8 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
         val location = geofencingEvent.triggeringLocation
         if (location == null) {
             Log.w(TAG, "No triggering location found.")
+        } else {
+            recordTriggerLocation(context, location, triggeringGeofences)
         }
 
         val fallbackCallbackHandle = intent.getLongExtra(Constants.CALLBACK_HANDLE_KEY, 0)
@@ -255,11 +258,51 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
         }
     }
 
+    private fun recordTriggerLocation(
+        context: Context,
+        location: Location,
+        triggeringGeofences: List<ActiveGeofenceWire>
+    ) {
+        val nearest = triggeringGeofences.map { geofence ->
+            val distance = FloatArray(1)
+            Location.distanceBetween(
+                location.latitude,
+                location.longitude,
+                geofence.location.latitude,
+                geofence.location.longitude,
+                distance
+            )
+            TriggerDistance(
+                geofence.id,
+                distance[0].toDouble(),
+                geofence.radiusMeters
+            )
+        }.minByOrNull { it.distanceMeters }
+
+        NativeGeofenceDiagnostics.recordBroadcastLocation(
+            context,
+            location.latitude,
+            location.longitude,
+            nearest?.geofenceId,
+            nearest?.distanceMeters,
+            nearest?.radiusMeters
+        )
+        Log.i(
+            TAG,
+            "Triggering location: latitude=${location.latitude}, longitude=${location.longitude}, " +
+                "nearestGeofenceId=${nearest?.geofenceId}, " +
+                "distanceFromNearestMeters=${nearest?.distanceMeters}, " +
+                "nearestRadiusMeters=${nearest?.radiusMeters}."
+        )
+    }
+
     private fun reCreatePersistedGeofences(context: Context) {
         // GEOFENCE_NOT_AVAILABLE can leave registrations unreliable; rebuild best-effort.
         val pendingResult = goAsync()
         try {
-            NativeGeofenceApiImpl(context.applicationContext).reCreateAfterReboot {
+            NativeGeofenceApiImpl(context.applicationContext).reCreateAfterReboot(
+                reason = "geofence_not_available"
+            ) {
                 pendingResult.finish()
             }
         } catch (e: Exception) {
@@ -267,4 +310,10 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
             pendingResult.finish()
         }
     }
+
+    private data class TriggerDistance(
+        val geofenceId: String,
+        val distanceMeters: Double,
+        val radiusMeters: Double
+    )
 }

@@ -124,6 +124,9 @@ class NativeGeofenceStatusWire {
   final String? locationAuthorizationStatus;
   final bool? locationServicesEnabled;
   final bool? batteryOptimizationsIgnored;
+  final bool? powerSaveMode;
+  final bool? backgroundRestricted;
+  final String? appStandbyBucket;
   final bool? googlePlayServicesAvailable;
   final int? googlePlayServicesAvailabilityCode;
   final bool? geofencePendingIntentExists;
@@ -141,11 +144,32 @@ class NativeGeofenceStatusWire {
   final int? lastBroadcastReceivedAtMillis;
   final String? lastBroadcastEvent;
   final List<String> lastBroadcastGeofenceIds;
+  final double? lastBroadcastLocationLatitude;
+  final double? lastBroadcastLocationLongitude;
+  final String? lastBroadcastNearestGeofenceId;
+  final double? lastBroadcastDistanceFromNearestGeofenceMeters;
+  final double? lastBroadcastNearestGeofenceRadiusMeters;
   final String? lastBroadcastErrorCode;
   final String? lastBroadcastErrorMessage;
   final int? lastCallbackEnqueueAtMillis;
   final int? lastCallbackEnqueueFailureAtMillis;
   final String? lastCallbackEnqueueFailureMessage;
+  final int? lastCallbackWorkerStartAtMillis;
+  final int? lastCallbackWorkerApiReadyAtMillis;
+  final int? lastCallbackWorkerFinishAtMillis;
+  final int? lastCallbackWorkerFailureAtMillis;
+  final String? lastCallbackWorkerResult;
+  final String? lastCallbackWorkerFailureCode;
+  final String? lastCallbackWorkerFailureMessage;
+  final int? lastCallbackWorkerRunAttempt;
+  final String? lastCallbackWorkerEvent;
+  final List<String> lastCallbackWorkerGeofenceIds;
+  final int? lastRecreateAttemptAtMillis;
+  final int? lastRecreateSuccessAtMillis;
+  final int? lastRecreateFailureAtMillis;
+  final int? lastRecreateGeofenceCount;
+  final String? lastRecreateReason;
+  final String? lastRecreateFailureMessage;
 
   const NativeGeofenceStatusWire({
     required this.platform,
@@ -159,6 +183,9 @@ class NativeGeofenceStatusWire {
     this.locationAuthorizationStatus,
     this.locationServicesEnabled,
     this.batteryOptimizationsIgnored,
+    this.powerSaveMode,
+    this.backgroundRestricted,
+    this.appStandbyBucket,
     this.googlePlayServicesAvailable,
     this.googlePlayServicesAvailabilityCode,
     this.geofencePendingIntentExists,
@@ -176,11 +203,32 @@ class NativeGeofenceStatusWire {
     this.lastBroadcastReceivedAtMillis,
     this.lastBroadcastEvent,
     required this.lastBroadcastGeofenceIds,
+    this.lastBroadcastLocationLatitude,
+    this.lastBroadcastLocationLongitude,
+    this.lastBroadcastNearestGeofenceId,
+    this.lastBroadcastDistanceFromNearestGeofenceMeters,
+    this.lastBroadcastNearestGeofenceRadiusMeters,
     this.lastBroadcastErrorCode,
     this.lastBroadcastErrorMessage,
     this.lastCallbackEnqueueAtMillis,
     this.lastCallbackEnqueueFailureAtMillis,
     this.lastCallbackEnqueueFailureMessage,
+    this.lastCallbackWorkerStartAtMillis,
+    this.lastCallbackWorkerApiReadyAtMillis,
+    this.lastCallbackWorkerFinishAtMillis,
+    this.lastCallbackWorkerFailureAtMillis,
+    this.lastCallbackWorkerResult,
+    this.lastCallbackWorkerFailureCode,
+    this.lastCallbackWorkerFailureMessage,
+    this.lastCallbackWorkerRunAttempt,
+    this.lastCallbackWorkerEvent,
+    required this.lastCallbackWorkerGeofenceIds,
+    this.lastRecreateAttemptAtMillis,
+    this.lastRecreateSuccessAtMillis,
+    this.lastRecreateFailureAtMillis,
+    this.lastRecreateGeofenceCount,
+    this.lastRecreateReason,
+    this.lastRecreateFailureMessage,
   });
 }
 

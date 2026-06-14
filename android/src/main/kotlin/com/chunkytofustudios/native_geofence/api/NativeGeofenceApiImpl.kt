@@ -51,31 +51,65 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
     }
 
     override fun reCreateAfterReboot() {
-        reCreateAfterReboot(null)
+        reCreateAfterReboot(reason = "api_recreate_after_reboot", onComplete = null)
     }
 
     fun reCreateAfterReboot(onComplete: (() -> Unit)?) {
+        reCreateAfterReboot(reason = null, onComplete = onComplete)
+    }
+
+    fun reCreateAfterReboot(reason: String?, onComplete: (() -> Unit)?) {
         val geofences = NativeGeofencePersistence.getAllGeofences(context)
+        NativeGeofenceDiagnostics.recordRecreateAttempt(context, geofences.size, reason)
         if (geofences.isEmpty()) {
+            NativeGeofenceDiagnostics.recordRecreateSuccess(context, 0, reason)
             Log.d(TAG, "No geofences to re-create.")
             onComplete?.invoke()
             return
         }
         val lock = Object()
         var remaining = geofences.size
-        for (geofence in geofences) {
-            // Broadcast receivers use goAsync(); invoke the completion only after
-            // every async addGeofences call has finished.
-            createGeofenceHelper(geofence, false) {
-                synchronized(lock) {
-                    remaining -= 1
-                    if (remaining == 0) {
-                        onComplete?.invoke()
+        val failures = mutableListOf<String>()
+
+        fun finishOne(geofenceId: String, result: Result<Unit>) {
+            synchronized(lock) {
+                result.exceptionOrNull()?.let { failures.add("$geofenceId: $it") }
+                remaining -= 1
+                if (remaining == 0) {
+                    if (failures.isEmpty()) {
+                        NativeGeofenceDiagnostics.recordRecreateSuccess(
+                            context,
+                            geofences.size,
+                            reason
+                        )
+                        Log.d(TAG, "${geofences.size} geofences re-created.")
+                    } else {
+                        val failureMessage = failures.joinToString("; ").take(1000)
+                        NativeGeofenceDiagnostics.recordRecreateFailure(
+                            context,
+                            geofences.size,
+                            reason,
+                            failureMessage
+                        )
+                        Log.e(TAG, "Failed to re-create some geofences: $failureMessage")
                     }
+                    onComplete?.invoke()
                 }
             }
         }
-        Log.d(TAG, "${geofences.size} geofences re-created.")
+
+        Log.d(TAG, "Re-creating ${geofences.size} geofences. reason=$reason")
+        for (geofence in geofences) {
+            // Broadcast receivers use goAsync(); invoke the completion only after
+            // every async addGeofences call has finished.
+            try {
+                createGeofenceHelper(geofence, false) { result ->
+                    finishOne(geofence.id, result)
+                }
+            } catch (e: Exception) {
+                finishOne(geofence.id, Result.failure(e))
+            }
+        }
     }
 
     override fun getGeofenceIds(): List<String> {

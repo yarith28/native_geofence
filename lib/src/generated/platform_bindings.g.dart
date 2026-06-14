@@ -535,6 +535,9 @@ class NativeGeofenceStatusWire {
     this.locationAuthorizationStatus,
     this.locationServicesEnabled,
     this.batteryOptimizationsIgnored,
+    this.powerSaveMode,
+    this.backgroundRestricted,
+    this.appStandbyBucket,
     this.googlePlayServicesAvailable,
     this.googlePlayServicesAvailabilityCode,
     this.geofencePendingIntentExists,
@@ -552,11 +555,32 @@ class NativeGeofenceStatusWire {
     this.lastBroadcastReceivedAtMillis,
     this.lastBroadcastEvent,
     required this.lastBroadcastGeofenceIds,
+    this.lastBroadcastLocationLatitude,
+    this.lastBroadcastLocationLongitude,
+    this.lastBroadcastNearestGeofenceId,
+    this.lastBroadcastDistanceFromNearestGeofenceMeters,
+    this.lastBroadcastNearestGeofenceRadiusMeters,
     this.lastBroadcastErrorCode,
     this.lastBroadcastErrorMessage,
     this.lastCallbackEnqueueAtMillis,
     this.lastCallbackEnqueueFailureAtMillis,
     this.lastCallbackEnqueueFailureMessage,
+    this.lastCallbackWorkerStartAtMillis,
+    this.lastCallbackWorkerApiReadyAtMillis,
+    this.lastCallbackWorkerFinishAtMillis,
+    this.lastCallbackWorkerFailureAtMillis,
+    this.lastCallbackWorkerResult,
+    this.lastCallbackWorkerFailureCode,
+    this.lastCallbackWorkerFailureMessage,
+    this.lastCallbackWorkerRunAttempt,
+    this.lastCallbackWorkerEvent,
+    required this.lastCallbackWorkerGeofenceIds,
+    this.lastRecreateAttemptAtMillis,
+    this.lastRecreateSuccessAtMillis,
+    this.lastRecreateFailureAtMillis,
+    this.lastRecreateGeofenceCount,
+    this.lastRecreateReason,
+    this.lastRecreateFailureMessage,
   });
 
   String platform;
@@ -580,6 +604,12 @@ class NativeGeofenceStatusWire {
   bool? locationServicesEnabled;
 
   bool? batteryOptimizationsIgnored;
+
+  bool? powerSaveMode;
+
+  bool? backgroundRestricted;
+
+  String? appStandbyBucket;
 
   bool? googlePlayServicesAvailable;
 
@@ -615,6 +645,16 @@ class NativeGeofenceStatusWire {
 
   List<String> lastBroadcastGeofenceIds;
 
+  double? lastBroadcastLocationLatitude;
+
+  double? lastBroadcastLocationLongitude;
+
+  String? lastBroadcastNearestGeofenceId;
+
+  double? lastBroadcastDistanceFromNearestGeofenceMeters;
+
+  double? lastBroadcastNearestGeofenceRadiusMeters;
+
   String? lastBroadcastErrorCode;
 
   String? lastBroadcastErrorMessage;
@@ -624,6 +664,38 @@ class NativeGeofenceStatusWire {
   int? lastCallbackEnqueueFailureAtMillis;
 
   String? lastCallbackEnqueueFailureMessage;
+
+  int? lastCallbackWorkerStartAtMillis;
+
+  int? lastCallbackWorkerApiReadyAtMillis;
+
+  int? lastCallbackWorkerFinishAtMillis;
+
+  int? lastCallbackWorkerFailureAtMillis;
+
+  String? lastCallbackWorkerResult;
+
+  String? lastCallbackWorkerFailureCode;
+
+  String? lastCallbackWorkerFailureMessage;
+
+  int? lastCallbackWorkerRunAttempt;
+
+  String? lastCallbackWorkerEvent;
+
+  List<String> lastCallbackWorkerGeofenceIds;
+
+  int? lastRecreateAttemptAtMillis;
+
+  int? lastRecreateSuccessAtMillis;
+
+  int? lastRecreateFailureAtMillis;
+
+  int? lastRecreateGeofenceCount;
+
+  String? lastRecreateReason;
+
+  String? lastRecreateFailureMessage;
 
   List<Object?> _toList() {
     return <Object?>[
@@ -638,6 +710,9 @@ class NativeGeofenceStatusWire {
       locationAuthorizationStatus,
       locationServicesEnabled,
       batteryOptimizationsIgnored,
+      powerSaveMode,
+      backgroundRestricted,
+      appStandbyBucket,
       googlePlayServicesAvailable,
       googlePlayServicesAvailabilityCode,
       geofencePendingIntentExists,
@@ -655,11 +730,32 @@ class NativeGeofenceStatusWire {
       lastBroadcastReceivedAtMillis,
       lastBroadcastEvent,
       lastBroadcastGeofenceIds,
+      lastBroadcastLocationLatitude,
+      lastBroadcastLocationLongitude,
+      lastBroadcastNearestGeofenceId,
+      lastBroadcastDistanceFromNearestGeofenceMeters,
+      lastBroadcastNearestGeofenceRadiusMeters,
       lastBroadcastErrorCode,
       lastBroadcastErrorMessage,
       lastCallbackEnqueueAtMillis,
       lastCallbackEnqueueFailureAtMillis,
       lastCallbackEnqueueFailureMessage,
+      lastCallbackWorkerStartAtMillis,
+      lastCallbackWorkerApiReadyAtMillis,
+      lastCallbackWorkerFinishAtMillis,
+      lastCallbackWorkerFailureAtMillis,
+      lastCallbackWorkerResult,
+      lastCallbackWorkerFailureCode,
+      lastCallbackWorkerFailureMessage,
+      lastCallbackWorkerRunAttempt,
+      lastCallbackWorkerEvent,
+      lastCallbackWorkerGeofenceIds,
+      lastRecreateAttemptAtMillis,
+      lastRecreateSuccessAtMillis,
+      lastRecreateFailureAtMillis,
+      lastRecreateGeofenceCount,
+      lastRecreateReason,
+      lastRecreateFailureMessage,
     ];
   }
 
@@ -681,28 +777,53 @@ class NativeGeofenceStatusWire {
       locationAuthorizationStatus: result[8] as String?,
       locationServicesEnabled: result[9] as bool?,
       batteryOptimizationsIgnored: result[10] as bool?,
-      googlePlayServicesAvailable: result[11] as bool?,
-      googlePlayServicesAvailabilityCode: result[12] as int?,
-      geofencePendingIntentExists: result[13] as bool?,
-      lastRegisterAttemptAtMillis: result[14] as int?,
-      lastRegisterSuccessAtMillis: result[15] as int?,
-      lastRegisterFailureAtMillis: result[16] as int?,
-      lastRegisterGeofenceId: result[17] as String?,
-      lastRegisterFailureCode: result[18] as String?,
-      lastRegisterFailureMessage: result[19] as String?,
-      lastRemoveAttemptAtMillis: result[20] as int?,
-      lastRemoveSuccessAtMillis: result[21] as int?,
-      lastRemoveFailureAtMillis: result[22] as int?,
-      lastRemoveGeofenceIds: (result[23]! as List<Object?>).cast<String>(),
-      lastRemoveFailureMessage: result[24] as String?,
-      lastBroadcastReceivedAtMillis: result[25] as int?,
-      lastBroadcastEvent: result[26] as String?,
-      lastBroadcastGeofenceIds: (result[27]! as List<Object?>).cast<String>(),
-      lastBroadcastErrorCode: result[28] as String?,
-      lastBroadcastErrorMessage: result[29] as String?,
-      lastCallbackEnqueueAtMillis: result[30] as int?,
-      lastCallbackEnqueueFailureAtMillis: result[31] as int?,
-      lastCallbackEnqueueFailureMessage: result[32] as String?,
+      powerSaveMode: result[11] as bool?,
+      backgroundRestricted: result[12] as bool?,
+      appStandbyBucket: result[13] as String?,
+      googlePlayServicesAvailable: result[14] as bool?,
+      googlePlayServicesAvailabilityCode: result[15] as int?,
+      geofencePendingIntentExists: result[16] as bool?,
+      lastRegisterAttemptAtMillis: result[17] as int?,
+      lastRegisterSuccessAtMillis: result[18] as int?,
+      lastRegisterFailureAtMillis: result[19] as int?,
+      lastRegisterGeofenceId: result[20] as String?,
+      lastRegisterFailureCode: result[21] as String?,
+      lastRegisterFailureMessage: result[22] as String?,
+      lastRemoveAttemptAtMillis: result[23] as int?,
+      lastRemoveSuccessAtMillis: result[24] as int?,
+      lastRemoveFailureAtMillis: result[25] as int?,
+      lastRemoveGeofenceIds: (result[26]! as List<Object?>).cast<String>(),
+      lastRemoveFailureMessage: result[27] as String?,
+      lastBroadcastReceivedAtMillis: result[28] as int?,
+      lastBroadcastEvent: result[29] as String?,
+      lastBroadcastGeofenceIds: (result[30]! as List<Object?>).cast<String>(),
+      lastBroadcastLocationLatitude: result[31] as double?,
+      lastBroadcastLocationLongitude: result[32] as double?,
+      lastBroadcastNearestGeofenceId: result[33] as String?,
+      lastBroadcastDistanceFromNearestGeofenceMeters: result[34] as double?,
+      lastBroadcastNearestGeofenceRadiusMeters: result[35] as double?,
+      lastBroadcastErrorCode: result[36] as String?,
+      lastBroadcastErrorMessage: result[37] as String?,
+      lastCallbackEnqueueAtMillis: result[38] as int?,
+      lastCallbackEnqueueFailureAtMillis: result[39] as int?,
+      lastCallbackEnqueueFailureMessage: result[40] as String?,
+      lastCallbackWorkerStartAtMillis: result[41] as int?,
+      lastCallbackWorkerApiReadyAtMillis: result[42] as int?,
+      lastCallbackWorkerFinishAtMillis: result[43] as int?,
+      lastCallbackWorkerFailureAtMillis: result[44] as int?,
+      lastCallbackWorkerResult: result[45] as String?,
+      lastCallbackWorkerFailureCode: result[46] as String?,
+      lastCallbackWorkerFailureMessage: result[47] as String?,
+      lastCallbackWorkerRunAttempt: result[48] as int?,
+      lastCallbackWorkerEvent: result[49] as String?,
+      lastCallbackWorkerGeofenceIds:
+          (result[50]! as List<Object?>).cast<String>(),
+      lastRecreateAttemptAtMillis: result[51] as int?,
+      lastRecreateSuccessAtMillis: result[52] as int?,
+      lastRecreateFailureAtMillis: result[53] as int?,
+      lastRecreateGeofenceCount: result[54] as int?,
+      lastRecreateReason: result[55] as String?,
+      lastRecreateFailureMessage: result[56] as String?,
     );
   }
 
@@ -732,6 +853,9 @@ class NativeGeofenceStatusWire {
         _deepEquals(locationServicesEnabled, other.locationServicesEnabled) &&
         _deepEquals(
             batteryOptimizationsIgnored, other.batteryOptimizationsIgnored) &&
+        _deepEquals(powerSaveMode, other.powerSaveMode) &&
+        _deepEquals(backgroundRestricted, other.backgroundRestricted) &&
+        _deepEquals(appStandbyBucket, other.appStandbyBucket) &&
         _deepEquals(
             googlePlayServicesAvailable, other.googlePlayServicesAvailable) &&
         _deepEquals(googlePlayServicesAvailabilityCode,
@@ -760,6 +884,16 @@ class NativeGeofenceStatusWire {
             other.lastBroadcastReceivedAtMillis) &&
         _deepEquals(lastBroadcastEvent, other.lastBroadcastEvent) &&
         _deepEquals(lastBroadcastGeofenceIds, other.lastBroadcastGeofenceIds) &&
+        _deepEquals(lastBroadcastLocationLatitude,
+            other.lastBroadcastLocationLatitude) &&
+        _deepEquals(lastBroadcastLocationLongitude,
+            other.lastBroadcastLocationLongitude) &&
+        _deepEquals(lastBroadcastNearestGeofenceId,
+            other.lastBroadcastNearestGeofenceId) &&
+        _deepEquals(lastBroadcastDistanceFromNearestGeofenceMeters,
+            other.lastBroadcastDistanceFromNearestGeofenceMeters) &&
+        _deepEquals(lastBroadcastNearestGeofenceRadiusMeters,
+            other.lastBroadcastNearestGeofenceRadiusMeters) &&
         _deepEquals(lastBroadcastErrorCode, other.lastBroadcastErrorCode) &&
         _deepEquals(
             lastBroadcastErrorMessage, other.lastBroadcastErrorMessage) &&
@@ -768,7 +902,36 @@ class NativeGeofenceStatusWire {
         _deepEquals(lastCallbackEnqueueFailureAtMillis,
             other.lastCallbackEnqueueFailureAtMillis) &&
         _deepEquals(lastCallbackEnqueueFailureMessage,
-            other.lastCallbackEnqueueFailureMessage);
+            other.lastCallbackEnqueueFailureMessage) &&
+        _deepEquals(lastCallbackWorkerStartAtMillis,
+            other.lastCallbackWorkerStartAtMillis) &&
+        _deepEquals(lastCallbackWorkerApiReadyAtMillis,
+            other.lastCallbackWorkerApiReadyAtMillis) &&
+        _deepEquals(lastCallbackWorkerFinishAtMillis,
+            other.lastCallbackWorkerFinishAtMillis) &&
+        _deepEquals(lastCallbackWorkerFailureAtMillis,
+            other.lastCallbackWorkerFailureAtMillis) &&
+        _deepEquals(lastCallbackWorkerResult, other.lastCallbackWorkerResult) &&
+        _deepEquals(lastCallbackWorkerFailureCode,
+            other.lastCallbackWorkerFailureCode) &&
+        _deepEquals(lastCallbackWorkerFailureMessage,
+            other.lastCallbackWorkerFailureMessage) &&
+        _deepEquals(
+            lastCallbackWorkerRunAttempt, other.lastCallbackWorkerRunAttempt) &&
+        _deepEquals(lastCallbackWorkerEvent, other.lastCallbackWorkerEvent) &&
+        _deepEquals(lastCallbackWorkerGeofenceIds,
+            other.lastCallbackWorkerGeofenceIds) &&
+        _deepEquals(
+            lastRecreateAttemptAtMillis, other.lastRecreateAttemptAtMillis) &&
+        _deepEquals(
+            lastRecreateSuccessAtMillis, other.lastRecreateSuccessAtMillis) &&
+        _deepEquals(
+            lastRecreateFailureAtMillis, other.lastRecreateFailureAtMillis) &&
+        _deepEquals(
+            lastRecreateGeofenceCount, other.lastRecreateGeofenceCount) &&
+        _deepEquals(lastRecreateReason, other.lastRecreateReason) &&
+        _deepEquals(
+            lastRecreateFailureMessage, other.lastRecreateFailureMessage);
   }
 
   @override

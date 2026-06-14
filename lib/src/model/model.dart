@@ -232,6 +232,9 @@ class NativeGeofenceStatus {
   final String? locationAuthorizationStatus;
   final bool? locationServicesEnabled;
   final bool? batteryOptimizationsIgnored;
+  final bool? powerSaveMode;
+  final bool? backgroundRestricted;
+  final String? appStandbyBucket;
   final bool? googlePlayServicesAvailable;
   final int? googlePlayServicesAvailabilityCode;
   final bool? geofencePendingIntentExists;
@@ -249,11 +252,32 @@ class NativeGeofenceStatus {
   final int? lastBroadcastReceivedAtMillis;
   final String? lastBroadcastEvent;
   final List<String> lastBroadcastGeofenceIds;
+  final double? lastBroadcastLocationLatitude;
+  final double? lastBroadcastLocationLongitude;
+  final String? lastBroadcastNearestGeofenceId;
+  final double? lastBroadcastDistanceFromNearestGeofenceMeters;
+  final double? lastBroadcastNearestGeofenceRadiusMeters;
   final String? lastBroadcastErrorCode;
   final String? lastBroadcastErrorMessage;
   final int? lastCallbackEnqueueAtMillis;
   final int? lastCallbackEnqueueFailureAtMillis;
   final String? lastCallbackEnqueueFailureMessage;
+  final int? lastCallbackWorkerStartAtMillis;
+  final int? lastCallbackWorkerApiReadyAtMillis;
+  final int? lastCallbackWorkerFinishAtMillis;
+  final int? lastCallbackWorkerFailureAtMillis;
+  final String? lastCallbackWorkerResult;
+  final String? lastCallbackWorkerFailureCode;
+  final String? lastCallbackWorkerFailureMessage;
+  final int? lastCallbackWorkerRunAttempt;
+  final String? lastCallbackWorkerEvent;
+  final List<String> lastCallbackWorkerGeofenceIds;
+  final int? lastRecreateAttemptAtMillis;
+  final int? lastRecreateSuccessAtMillis;
+  final int? lastRecreateFailureAtMillis;
+  final int? lastRecreateGeofenceCount;
+  final String? lastRecreateReason;
+  final String? lastRecreateFailureMessage;
 
   const NativeGeofenceStatus({
     required this.platform,
@@ -267,6 +291,9 @@ class NativeGeofenceStatus {
     required this.locationAuthorizationStatus,
     required this.locationServicesEnabled,
     required this.batteryOptimizationsIgnored,
+    required this.powerSaveMode,
+    required this.backgroundRestricted,
+    required this.appStandbyBucket,
     required this.googlePlayServicesAvailable,
     required this.googlePlayServicesAvailabilityCode,
     required this.geofencePendingIntentExists,
@@ -284,11 +311,32 @@ class NativeGeofenceStatus {
     required this.lastBroadcastReceivedAtMillis,
     required this.lastBroadcastEvent,
     required this.lastBroadcastGeofenceIds,
+    required this.lastBroadcastLocationLatitude,
+    required this.lastBroadcastLocationLongitude,
+    required this.lastBroadcastNearestGeofenceId,
+    required this.lastBroadcastDistanceFromNearestGeofenceMeters,
+    required this.lastBroadcastNearestGeofenceRadiusMeters,
     required this.lastBroadcastErrorCode,
     required this.lastBroadcastErrorMessage,
     required this.lastCallbackEnqueueAtMillis,
     required this.lastCallbackEnqueueFailureAtMillis,
     required this.lastCallbackEnqueueFailureMessage,
+    required this.lastCallbackWorkerStartAtMillis,
+    required this.lastCallbackWorkerApiReadyAtMillis,
+    required this.lastCallbackWorkerFinishAtMillis,
+    required this.lastCallbackWorkerFailureAtMillis,
+    required this.lastCallbackWorkerResult,
+    required this.lastCallbackWorkerFailureCode,
+    required this.lastCallbackWorkerFailureMessage,
+    required this.lastCallbackWorkerRunAttempt,
+    required this.lastCallbackWorkerEvent,
+    required this.lastCallbackWorkerGeofenceIds,
+    required this.lastRecreateAttemptAtMillis,
+    required this.lastRecreateSuccessAtMillis,
+    required this.lastRecreateFailureAtMillis,
+    required this.lastRecreateGeofenceCount,
+    required this.lastRecreateReason,
+    required this.lastRecreateFailureMessage,
   });
 
   @override
@@ -304,6 +352,9 @@ class NativeGeofenceStatus {
         'locationAuthorizationStatus: $locationAuthorizationStatus, '
         'locationServicesEnabled: $locationServicesEnabled, '
         'batteryOptimizationsIgnored: $batteryOptimizationsIgnored, '
+        'powerSaveMode: $powerSaveMode, '
+        'backgroundRestricted: $backgroundRestricted, '
+        'appStandbyBucket: $appStandbyBucket, '
         'googlePlayServicesAvailable: $googlePlayServicesAvailable, '
         'googlePlayServicesAvailabilityCode: $googlePlayServicesAvailabilityCode, '
         'geofencePendingIntentExists: $geofencePendingIntentExists, '
@@ -321,11 +372,32 @@ class NativeGeofenceStatus {
         'lastBroadcastReceivedAtMillis: $lastBroadcastReceivedAtMillis, '
         'lastBroadcastEvent: $lastBroadcastEvent, '
         'lastBroadcastGeofenceIds: [${lastBroadcastGeofenceIds.join(',')}], '
+        'lastBroadcastLocationLatitude: $lastBroadcastLocationLatitude, '
+        'lastBroadcastLocationLongitude: $lastBroadcastLocationLongitude, '
+        'lastBroadcastNearestGeofenceId: $lastBroadcastNearestGeofenceId, '
+        'lastBroadcastDistanceFromNearestGeofenceMeters: $lastBroadcastDistanceFromNearestGeofenceMeters, '
+        'lastBroadcastNearestGeofenceRadiusMeters: $lastBroadcastNearestGeofenceRadiusMeters, '
         'lastBroadcastErrorCode: $lastBroadcastErrorCode, '
         'lastBroadcastErrorMessage: $lastBroadcastErrorMessage, '
         'lastCallbackEnqueueAtMillis: $lastCallbackEnqueueAtMillis, '
         'lastCallbackEnqueueFailureAtMillis: $lastCallbackEnqueueFailureAtMillis, '
-        'lastCallbackEnqueueFailureMessage: $lastCallbackEnqueueFailureMessage'
+        'lastCallbackEnqueueFailureMessage: $lastCallbackEnqueueFailureMessage, '
+        'lastCallbackWorkerStartAtMillis: $lastCallbackWorkerStartAtMillis, '
+        'lastCallbackWorkerApiReadyAtMillis: $lastCallbackWorkerApiReadyAtMillis, '
+        'lastCallbackWorkerFinishAtMillis: $lastCallbackWorkerFinishAtMillis, '
+        'lastCallbackWorkerFailureAtMillis: $lastCallbackWorkerFailureAtMillis, '
+        'lastCallbackWorkerResult: $lastCallbackWorkerResult, '
+        'lastCallbackWorkerFailureCode: $lastCallbackWorkerFailureCode, '
+        'lastCallbackWorkerFailureMessage: $lastCallbackWorkerFailureMessage, '
+        'lastCallbackWorkerRunAttempt: $lastCallbackWorkerRunAttempt, '
+        'lastCallbackWorkerEvent: $lastCallbackWorkerEvent, '
+        'lastCallbackWorkerGeofenceIds: [${lastCallbackWorkerGeofenceIds.join(',')}], '
+        'lastRecreateAttemptAtMillis: $lastRecreateAttemptAtMillis, '
+        'lastRecreateSuccessAtMillis: $lastRecreateSuccessAtMillis, '
+        'lastRecreateFailureAtMillis: $lastRecreateFailureAtMillis, '
+        'lastRecreateGeofenceCount: $lastRecreateGeofenceCount, '
+        'lastRecreateReason: $lastRecreateReason, '
+        'lastRecreateFailureMessage: $lastRecreateFailureMessage'
         ')';
   }
 }

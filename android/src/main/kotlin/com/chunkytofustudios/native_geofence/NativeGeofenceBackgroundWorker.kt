@@ -14,6 +14,7 @@ import com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWir
 import com.chunkytofustudios.native_geofence.generated.NativeGeofenceBackgroundApi
 import com.chunkytofustudios.native_geofence.generated.NativeGeofenceTriggerApi
 import com.chunkytofustudios.native_geofence.model.GeofenceCallbackParamsStorage
+import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnostics
 import com.chunkytofustudios.native_geofence.util.Notifications
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -57,12 +58,26 @@ class NativeGeofenceBackgroundWorker(
 
     private val watchdogHandler = Handler(Looper.getMainLooper())
 
+    private val diagnosticLock = Object()
+
+    private var cachedParams: GeofenceCallbackParamsWire? = null
+
+    private var diagnosticFinished = false
+
     private val watchdogRunnable = Runnable {
+        val message = "Geofence callback exceeded ${WATCHDOG_TIMEOUT.inWholeMilliseconds}ms."
         Log.e(
             TAG,
-            "Geofence callback exceeded ${WATCHDOG_TIMEOUT.inWholeMilliseconds}ms; aborting."
+            "$message Aborting."
         )
-        stopEngine(Result.failure())
+        NativeGeofenceDiagnostics.recordCallbackWorkerFailure(
+            context,
+            cachedParams,
+            currentRunAttempt(),
+            "WATCHDOG_TIMEOUT",
+            message
+        )
+        stopEngine(Result.failure(), "failure")
     }
 
     override fun getForegroundInfoAsync(): ListenableFuture<ForegroundInfo> {
@@ -77,6 +92,17 @@ class NativeGeofenceBackgroundWorker(
     override fun startWork(): ListenableFuture<Result> {
         startTime = System.currentTimeMillis()
         watchdogHandler.postDelayed(watchdogRunnable, WATCHDOG_TIMEOUT.inWholeMilliseconds)
+
+        cachedParams = getGeofenceCallbackParams()
+        NativeGeofenceDiagnostics.recordCallbackWorkerStart(
+            context,
+            cachedParams,
+            currentRunAttempt()
+        )
+        if (cachedParams == null) {
+            stopEngine(Result.failure(), "failure")
+            return resolvableFuture
+        }
 
         flutterEngine = FlutterEngine(applicationContext)
 
@@ -96,72 +122,128 @@ class NativeGeofenceBackgroundWorker(
                 .getLong(Constants.CALLBACK_DISPATCHER_HANDLE_KEY, 0)
             if (callbackHandle == 0L) {
                 Log.e(TAG, "No callback dispatcher registered.")
-                stopEngine(Result.failure())
+                NativeGeofenceDiagnostics.recordCallbackWorkerFailure(
+                    context,
+                    cachedParams,
+                    currentRunAttempt(),
+                    "MISSING_CALLBACK_DISPATCHER",
+                    "No callback dispatcher handle was registered."
+                )
+                stopEngine(Result.failure(), "failure")
                 return@ensureInitializationCompleteAsync
             }
 
-            flutterEngine?.let { engine ->
-                val callbackInfo =
-                    FlutterCallbackInformation.lookupCallbackInformation(callbackHandle)
-                if (callbackInfo == null) {
-                    Log.e(TAG, "Failed to find callback dispatcher.")
-                    stopEngine(Result.failure())
-                    return@ensureInitializationCompleteAsync
-                }
-
-                backgroundApiImpl = NativeGeofenceBackgroundApiImpl(context, this)
-                NativeGeofenceBackgroundApi.setUp(
-                    engine.dartExecutor.binaryMessenger,
-                    // Keep the same API instance so Dart's ready signal reaches this worker.
-                    backgroundApiImpl
+            val engine = flutterEngine
+            if (engine == null) {
+                Log.e(TAG, "FlutterEngine was null before callback dispatcher startup.")
+                NativeGeofenceDiagnostics.recordCallbackWorkerFailure(
+                    context,
+                    cachedParams,
+                    currentRunAttempt(),
+                    "FLUTTER_ENGINE_NULL",
+                    "FlutterEngine was null before callback dispatcher startup."
                 )
-
-                engine.dartExecutor.executeDartCallback(
-                    DartCallback(
-                        context.assets,
-                        flutterLoader.findAppBundlePath(),
-                        callbackInfo
-                    )
-                )
+                stopEngine(Result.failure(), "failure")
+                return@ensureInitializationCompleteAsync
             }
+
+            val callbackInfo =
+                FlutterCallbackInformation.lookupCallbackInformation(callbackHandle)
+            if (callbackInfo == null) {
+                Log.e(TAG, "Failed to find callback dispatcher.")
+                NativeGeofenceDiagnostics.recordCallbackWorkerFailure(
+                    context,
+                    cachedParams,
+                    currentRunAttempt(),
+                    "CALLBACK_DISPATCHER_LOOKUP_FAILED",
+                    "FlutterCallbackInformation.lookupCallbackInformation returned null."
+                )
+                stopEngine(Result.failure(), "failure")
+                return@ensureInitializationCompleteAsync
+            }
+
+            backgroundApiImpl = NativeGeofenceBackgroundApiImpl(context, this)
+            NativeGeofenceBackgroundApi.setUp(
+                engine.dartExecutor.binaryMessenger,
+                // Keep the same API instance so Dart's ready signal reaches this worker.
+                backgroundApiImpl
+            )
+
+            engine.dartExecutor.executeDartCallback(
+                DartCallback(
+                    context.assets,
+                    flutterLoader.findAppBundlePath(),
+                    callbackInfo
+                )
+            )
         }
 
         return resolvableFuture
     }
 
     override fun onStopped() {
-        stopEngine(null)
+        synchronized(diagnosticLock) {
+            if (!diagnosticFinished) {
+                NativeGeofenceDiagnostics.recordCallbackWorkerFailure(
+                    context,
+                    cachedParams,
+                    currentRunAttempt(),
+                    "WORKER_STOPPED",
+                    "WorkManager stopped the geofence callback worker before it returned a result."
+                )
+            }
+        }
+        stopEngine(null, "stopped")
     }
 
     fun triggerApiReady() {
         val lEngine = flutterEngine
         if (lEngine == null) {
             Log.e(TAG, "FlutterEngine was null.")
-            stopEngine(Result.failure())
+            NativeGeofenceDiagnostics.recordCallbackWorkerFailure(
+                context,
+                cachedParams,
+                currentRunAttempt(),
+                "FLUTTER_ENGINE_NULL",
+                "FlutterEngine was null when Dart reported API ready."
+            )
+            stopEngine(Result.failure(), "failure")
             return
         }
 
         val nativeGeofenceTriggerApi =
             NativeGeofenceTriggerApi(lEngine.dartExecutor.binaryMessenger)
         Log.d(TAG, "NativeGeofenceTriggerApi setup complete.")
+        NativeGeofenceDiagnostics.recordCallbackWorkerApiReady(
+            context,
+            cachedParams,
+            currentRunAttempt()
+        )
 
-        val params = getGeofenceCallbackParams()
+        val params = cachedParams
         if (params == null) {
-            stopEngine(Result.failure())
+            NativeGeofenceDiagnostics.recordCallbackWorkerFailure(
+                context,
+                null,
+                currentRunAttempt(),
+                "WORKER_PAYLOAD_INVALID",
+                "Worker payload was unavailable when Dart reported API ready."
+            )
+            stopEngine(Result.failure(), "failure")
             return
         }
 
         nativeGeofenceTriggerApi.geofenceTriggered(params) { result ->
             if (result.isSuccess) {
-                stopEngine(Result.success())
+                stopEngine(Result.success(), "success")
             } else {
                 Log.e(TAG, "Geofence callback failed: ${result.exceptionOrNull()}")
-                stopEngine(callbackFailureResult())
+                handleCallbackFailure(result.exceptionOrNull())
             }
         }
     }
 
-    private fun callbackFailureResult(): Result {
+    private fun handleCallbackFailure(exception: Throwable?) {
         val currentAttempt = workerParams.runAttemptCount + 1
         if (currentAttempt < MAX_CALLBACK_RUN_ATTEMPTS) {
             Log.w(
@@ -169,15 +251,44 @@ class NativeGeofenceBackgroundWorker(
                 "Retrying geofence callback after failure. " +
                     "attempt=$currentAttempt/$MAX_CALLBACK_RUN_ATTEMPTS"
             )
-            return Result.retry()
+            NativeGeofenceDiagnostics.recordCallbackWorkerFailure(
+                context,
+                cachedParams,
+                currentAttempt,
+                "DART_CALLBACK_FAILED_RETRY",
+                exception?.toString()
+            )
+            stopEngine(Result.retry(), "retry")
+            return
         }
         Log.e(TAG, "Geofence callback failed after $currentAttempt attempts.")
-        return Result.failure()
+        NativeGeofenceDiagnostics.recordCallbackWorkerFailure(
+            context,
+            cachedParams,
+            currentAttempt,
+            "DART_CALLBACK_FAILED_FINAL",
+            exception?.toString()
+        )
+        stopEngine(Result.failure(), "failure")
     }
 
-    private fun stopEngine(result: Result?) {
+    private fun stopEngine(result: Result?, diagnosticResult: String?) {
         watchdogHandler.removeCallbacks(watchdogRunnable)
         val fetchDuration = System.currentTimeMillis() - startTime
+
+        if (diagnosticResult != null) {
+            synchronized(diagnosticLock) {
+                if (!diagnosticFinished) {
+                    diagnosticFinished = true
+                    NativeGeofenceDiagnostics.recordCallbackWorkerFinish(
+                        context,
+                        cachedParams,
+                        currentRunAttempt(),
+                        diagnosticResult
+                    )
+                }
+            }
+        }
 
         // No result indicates we were signalled to stop by WorkManager. The result is already
         // STOPPED, so no need to resolve another one.
@@ -198,6 +309,13 @@ class NativeGeofenceBackgroundWorker(
         val jsonData = workerParams.inputData.getString(Constants.WORKER_PAYLOAD_KEY)
         if (jsonData == null) {
             Log.e(TAG, "Worker payload was missing.")
+            NativeGeofenceDiagnostics.recordCallbackWorkerFailure(
+                context,
+                null,
+                currentRunAttempt(),
+                "WORKER_PAYLOAD_MISSING",
+                "Worker payload was missing."
+            )
             return null
         }
 
@@ -206,9 +324,21 @@ class NativeGeofenceBackgroundWorker(
         } catch (e: Exception) {
             Log.e(
                 TAG,
-                "Failed to parse worker payload. Data=${jsonData}"
+                "Failed to parse worker payload. Data=${jsonData}",
+                e
+            )
+            NativeGeofenceDiagnostics.recordCallbackWorkerFailure(
+                context,
+                null,
+                currentRunAttempt(),
+                "WORKER_PAYLOAD_PARSE_FAILED",
+                e.toString()
             )
             return null
         }
+    }
+
+    private fun currentRunAttempt(): Int {
+        return workerParams.runAttemptCount + 1
     }
 }

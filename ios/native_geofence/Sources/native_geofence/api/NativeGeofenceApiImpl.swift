@@ -78,7 +78,8 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
             locationAuthorizationStatus: authorizationStatusName(authorizationStatus),
             locationServicesEnabled: CLLocationManager.locationServicesEnabled(),
             lastRemoveGeofenceIds: [],
-            lastBroadcastGeofenceIds: []
+            lastBroadcastGeofenceIds: [],
+            lastCallbackWorkerGeofenceIds: []
         )
         log.info("NativeGeofence diagnostic status: \(String(describing: status))")
         return status

@@ -518,6 +518,9 @@ struct NativeGeofenceStatusWire: Hashable {
   var locationAuthorizationStatus: String? = nil
   var locationServicesEnabled: Bool? = nil
   var batteryOptimizationsIgnored: Bool? = nil
+  var powerSaveMode: Bool? = nil
+  var backgroundRestricted: Bool? = nil
+  var appStandbyBucket: String? = nil
   var googlePlayServicesAvailable: Bool? = nil
   var googlePlayServicesAvailabilityCode: Int64? = nil
   var geofencePendingIntentExists: Bool? = nil
@@ -535,11 +538,32 @@ struct NativeGeofenceStatusWire: Hashable {
   var lastBroadcastReceivedAtMillis: Int64? = nil
   var lastBroadcastEvent: String? = nil
   var lastBroadcastGeofenceIds: [String]
+  var lastBroadcastLocationLatitude: Double? = nil
+  var lastBroadcastLocationLongitude: Double? = nil
+  var lastBroadcastNearestGeofenceId: String? = nil
+  var lastBroadcastDistanceFromNearestGeofenceMeters: Double? = nil
+  var lastBroadcastNearestGeofenceRadiusMeters: Double? = nil
   var lastBroadcastErrorCode: String? = nil
   var lastBroadcastErrorMessage: String? = nil
   var lastCallbackEnqueueAtMillis: Int64? = nil
   var lastCallbackEnqueueFailureAtMillis: Int64? = nil
   var lastCallbackEnqueueFailureMessage: String? = nil
+  var lastCallbackWorkerStartAtMillis: Int64? = nil
+  var lastCallbackWorkerApiReadyAtMillis: Int64? = nil
+  var lastCallbackWorkerFinishAtMillis: Int64? = nil
+  var lastCallbackWorkerFailureAtMillis: Int64? = nil
+  var lastCallbackWorkerResult: String? = nil
+  var lastCallbackWorkerFailureCode: String? = nil
+  var lastCallbackWorkerFailureMessage: String? = nil
+  var lastCallbackWorkerRunAttempt: Int64? = nil
+  var lastCallbackWorkerEvent: String? = nil
+  var lastCallbackWorkerGeofenceIds: [String]
+  var lastRecreateAttemptAtMillis: Int64? = nil
+  var lastRecreateSuccessAtMillis: Int64? = nil
+  var lastRecreateFailureAtMillis: Int64? = nil
+  var lastRecreateGeofenceCount: Int64? = nil
+  var lastRecreateReason: String? = nil
+  var lastRecreateFailureMessage: String? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -555,28 +579,52 @@ struct NativeGeofenceStatusWire: Hashable {
     let locationAuthorizationStatus: String? = nilOrValue(pigeonVar_list[8])
     let locationServicesEnabled: Bool? = nilOrValue(pigeonVar_list[9])
     let batteryOptimizationsIgnored: Bool? = nilOrValue(pigeonVar_list[10])
-    let googlePlayServicesAvailable: Bool? = nilOrValue(pigeonVar_list[11])
-    let googlePlayServicesAvailabilityCode: Int64? = nilOrValue(pigeonVar_list[12])
-    let geofencePendingIntentExists: Bool? = nilOrValue(pigeonVar_list[13])
-    let lastRegisterAttemptAtMillis: Int64? = nilOrValue(pigeonVar_list[14])
-    let lastRegisterSuccessAtMillis: Int64? = nilOrValue(pigeonVar_list[15])
-    let lastRegisterFailureAtMillis: Int64? = nilOrValue(pigeonVar_list[16])
-    let lastRegisterGeofenceId: String? = nilOrValue(pigeonVar_list[17])
-    let lastRegisterFailureCode: String? = nilOrValue(pigeonVar_list[18])
-    let lastRegisterFailureMessage: String? = nilOrValue(pigeonVar_list[19])
-    let lastRemoveAttemptAtMillis: Int64? = nilOrValue(pigeonVar_list[20])
-    let lastRemoveSuccessAtMillis: Int64? = nilOrValue(pigeonVar_list[21])
-    let lastRemoveFailureAtMillis: Int64? = nilOrValue(pigeonVar_list[22])
-    let lastRemoveGeofenceIds = pigeonVar_list[23] as! [String]
-    let lastRemoveFailureMessage: String? = nilOrValue(pigeonVar_list[24])
-    let lastBroadcastReceivedAtMillis: Int64? = nilOrValue(pigeonVar_list[25])
-    let lastBroadcastEvent: String? = nilOrValue(pigeonVar_list[26])
-    let lastBroadcastGeofenceIds = pigeonVar_list[27] as! [String]
-    let lastBroadcastErrorCode: String? = nilOrValue(pigeonVar_list[28])
-    let lastBroadcastErrorMessage: String? = nilOrValue(pigeonVar_list[29])
-    let lastCallbackEnqueueAtMillis: Int64? = nilOrValue(pigeonVar_list[30])
-    let lastCallbackEnqueueFailureAtMillis: Int64? = nilOrValue(pigeonVar_list[31])
-    let lastCallbackEnqueueFailureMessage: String? = nilOrValue(pigeonVar_list[32])
+    let powerSaveMode: Bool? = nilOrValue(pigeonVar_list[11])
+    let backgroundRestricted: Bool? = nilOrValue(pigeonVar_list[12])
+    let appStandbyBucket: String? = nilOrValue(pigeonVar_list[13])
+    let googlePlayServicesAvailable: Bool? = nilOrValue(pigeonVar_list[14])
+    let googlePlayServicesAvailabilityCode: Int64? = nilOrValue(pigeonVar_list[15])
+    let geofencePendingIntentExists: Bool? = nilOrValue(pigeonVar_list[16])
+    let lastRegisterAttemptAtMillis: Int64? = nilOrValue(pigeonVar_list[17])
+    let lastRegisterSuccessAtMillis: Int64? = nilOrValue(pigeonVar_list[18])
+    let lastRegisterFailureAtMillis: Int64? = nilOrValue(pigeonVar_list[19])
+    let lastRegisterGeofenceId: String? = nilOrValue(pigeonVar_list[20])
+    let lastRegisterFailureCode: String? = nilOrValue(pigeonVar_list[21])
+    let lastRegisterFailureMessage: String? = nilOrValue(pigeonVar_list[22])
+    let lastRemoveAttemptAtMillis: Int64? = nilOrValue(pigeonVar_list[23])
+    let lastRemoveSuccessAtMillis: Int64? = nilOrValue(pigeonVar_list[24])
+    let lastRemoveFailureAtMillis: Int64? = nilOrValue(pigeonVar_list[25])
+    let lastRemoveGeofenceIds = pigeonVar_list[26] as! [String]
+    let lastRemoveFailureMessage: String? = nilOrValue(pigeonVar_list[27])
+    let lastBroadcastReceivedAtMillis: Int64? = nilOrValue(pigeonVar_list[28])
+    let lastBroadcastEvent: String? = nilOrValue(pigeonVar_list[29])
+    let lastBroadcastGeofenceIds = pigeonVar_list[30] as! [String]
+    let lastBroadcastLocationLatitude: Double? = nilOrValue(pigeonVar_list[31])
+    let lastBroadcastLocationLongitude: Double? = nilOrValue(pigeonVar_list[32])
+    let lastBroadcastNearestGeofenceId: String? = nilOrValue(pigeonVar_list[33])
+    let lastBroadcastDistanceFromNearestGeofenceMeters: Double? = nilOrValue(pigeonVar_list[34])
+    let lastBroadcastNearestGeofenceRadiusMeters: Double? = nilOrValue(pigeonVar_list[35])
+    let lastBroadcastErrorCode: String? = nilOrValue(pigeonVar_list[36])
+    let lastBroadcastErrorMessage: String? = nilOrValue(pigeonVar_list[37])
+    let lastCallbackEnqueueAtMillis: Int64? = nilOrValue(pigeonVar_list[38])
+    let lastCallbackEnqueueFailureAtMillis: Int64? = nilOrValue(pigeonVar_list[39])
+    let lastCallbackEnqueueFailureMessage: String? = nilOrValue(pigeonVar_list[40])
+    let lastCallbackWorkerStartAtMillis: Int64? = nilOrValue(pigeonVar_list[41])
+    let lastCallbackWorkerApiReadyAtMillis: Int64? = nilOrValue(pigeonVar_list[42])
+    let lastCallbackWorkerFinishAtMillis: Int64? = nilOrValue(pigeonVar_list[43])
+    let lastCallbackWorkerFailureAtMillis: Int64? = nilOrValue(pigeonVar_list[44])
+    let lastCallbackWorkerResult: String? = nilOrValue(pigeonVar_list[45])
+    let lastCallbackWorkerFailureCode: String? = nilOrValue(pigeonVar_list[46])
+    let lastCallbackWorkerFailureMessage: String? = nilOrValue(pigeonVar_list[47])
+    let lastCallbackWorkerRunAttempt: Int64? = nilOrValue(pigeonVar_list[48])
+    let lastCallbackWorkerEvent: String? = nilOrValue(pigeonVar_list[49])
+    let lastCallbackWorkerGeofenceIds = pigeonVar_list[50] as! [String]
+    let lastRecreateAttemptAtMillis: Int64? = nilOrValue(pigeonVar_list[51])
+    let lastRecreateSuccessAtMillis: Int64? = nilOrValue(pigeonVar_list[52])
+    let lastRecreateFailureAtMillis: Int64? = nilOrValue(pigeonVar_list[53])
+    let lastRecreateGeofenceCount: Int64? = nilOrValue(pigeonVar_list[54])
+    let lastRecreateReason: String? = nilOrValue(pigeonVar_list[55])
+    let lastRecreateFailureMessage: String? = nilOrValue(pigeonVar_list[56])
 
     return NativeGeofenceStatusWire(
       platform: platform,
@@ -590,6 +638,9 @@ struct NativeGeofenceStatusWire: Hashable {
       locationAuthorizationStatus: locationAuthorizationStatus,
       locationServicesEnabled: locationServicesEnabled,
       batteryOptimizationsIgnored: batteryOptimizationsIgnored,
+      powerSaveMode: powerSaveMode,
+      backgroundRestricted: backgroundRestricted,
+      appStandbyBucket: appStandbyBucket,
       googlePlayServicesAvailable: googlePlayServicesAvailable,
       googlePlayServicesAvailabilityCode: googlePlayServicesAvailabilityCode,
       geofencePendingIntentExists: geofencePendingIntentExists,
@@ -607,11 +658,32 @@ struct NativeGeofenceStatusWire: Hashable {
       lastBroadcastReceivedAtMillis: lastBroadcastReceivedAtMillis,
       lastBroadcastEvent: lastBroadcastEvent,
       lastBroadcastGeofenceIds: lastBroadcastGeofenceIds,
+      lastBroadcastLocationLatitude: lastBroadcastLocationLatitude,
+      lastBroadcastLocationLongitude: lastBroadcastLocationLongitude,
+      lastBroadcastNearestGeofenceId: lastBroadcastNearestGeofenceId,
+      lastBroadcastDistanceFromNearestGeofenceMeters: lastBroadcastDistanceFromNearestGeofenceMeters,
+      lastBroadcastNearestGeofenceRadiusMeters: lastBroadcastNearestGeofenceRadiusMeters,
       lastBroadcastErrorCode: lastBroadcastErrorCode,
       lastBroadcastErrorMessage: lastBroadcastErrorMessage,
       lastCallbackEnqueueAtMillis: lastCallbackEnqueueAtMillis,
       lastCallbackEnqueueFailureAtMillis: lastCallbackEnqueueFailureAtMillis,
-      lastCallbackEnqueueFailureMessage: lastCallbackEnqueueFailureMessage
+      lastCallbackEnqueueFailureMessage: lastCallbackEnqueueFailureMessage,
+      lastCallbackWorkerStartAtMillis: lastCallbackWorkerStartAtMillis,
+      lastCallbackWorkerApiReadyAtMillis: lastCallbackWorkerApiReadyAtMillis,
+      lastCallbackWorkerFinishAtMillis: lastCallbackWorkerFinishAtMillis,
+      lastCallbackWorkerFailureAtMillis: lastCallbackWorkerFailureAtMillis,
+      lastCallbackWorkerResult: lastCallbackWorkerResult,
+      lastCallbackWorkerFailureCode: lastCallbackWorkerFailureCode,
+      lastCallbackWorkerFailureMessage: lastCallbackWorkerFailureMessage,
+      lastCallbackWorkerRunAttempt: lastCallbackWorkerRunAttempt,
+      lastCallbackWorkerEvent: lastCallbackWorkerEvent,
+      lastCallbackWorkerGeofenceIds: lastCallbackWorkerGeofenceIds,
+      lastRecreateAttemptAtMillis: lastRecreateAttemptAtMillis,
+      lastRecreateSuccessAtMillis: lastRecreateSuccessAtMillis,
+      lastRecreateFailureAtMillis: lastRecreateFailureAtMillis,
+      lastRecreateGeofenceCount: lastRecreateGeofenceCount,
+      lastRecreateReason: lastRecreateReason,
+      lastRecreateFailureMessage: lastRecreateFailureMessage
     )
   }
   func toList() -> [Any?] {
@@ -627,6 +699,9 @@ struct NativeGeofenceStatusWire: Hashable {
       locationAuthorizationStatus,
       locationServicesEnabled,
       batteryOptimizationsIgnored,
+      powerSaveMode,
+      backgroundRestricted,
+      appStandbyBucket,
       googlePlayServicesAvailable,
       googlePlayServicesAvailabilityCode,
       geofencePendingIntentExists,
@@ -644,18 +719,39 @@ struct NativeGeofenceStatusWire: Hashable {
       lastBroadcastReceivedAtMillis,
       lastBroadcastEvent,
       lastBroadcastGeofenceIds,
+      lastBroadcastLocationLatitude,
+      lastBroadcastLocationLongitude,
+      lastBroadcastNearestGeofenceId,
+      lastBroadcastDistanceFromNearestGeofenceMeters,
+      lastBroadcastNearestGeofenceRadiusMeters,
       lastBroadcastErrorCode,
       lastBroadcastErrorMessage,
       lastCallbackEnqueueAtMillis,
       lastCallbackEnqueueFailureAtMillis,
       lastCallbackEnqueueFailureMessage,
+      lastCallbackWorkerStartAtMillis,
+      lastCallbackWorkerApiReadyAtMillis,
+      lastCallbackWorkerFinishAtMillis,
+      lastCallbackWorkerFailureAtMillis,
+      lastCallbackWorkerResult,
+      lastCallbackWorkerFailureCode,
+      lastCallbackWorkerFailureMessage,
+      lastCallbackWorkerRunAttempt,
+      lastCallbackWorkerEvent,
+      lastCallbackWorkerGeofenceIds,
+      lastRecreateAttemptAtMillis,
+      lastRecreateSuccessAtMillis,
+      lastRecreateFailureAtMillis,
+      lastRecreateGeofenceCount,
+      lastRecreateReason,
+      lastRecreateFailureMessage,
     ]
   }
   static func == (lhs: NativeGeofenceStatusWire, rhs: NativeGeofenceStatusWire) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsFlutterBindings(lhs.platform, rhs.platform) && deepEqualsFlutterBindings(lhs.androidSdkInt, rhs.androidSdkInt) && deepEqualsFlutterBindings(lhs.deviceManufacturer, rhs.deviceManufacturer) && deepEqualsFlutterBindings(lhs.deviceModel, rhs.deviceModel) && deepEqualsFlutterBindings(lhs.persistedGeofenceIds, rhs.persistedGeofenceIds) && deepEqualsFlutterBindings(lhs.locationPermissionGranted, rhs.locationPermissionGranted) && deepEqualsFlutterBindings(lhs.backgroundLocationPermissionGranted, rhs.backgroundLocationPermissionGranted) && deepEqualsFlutterBindings(lhs.notificationPermissionGranted, rhs.notificationPermissionGranted) && deepEqualsFlutterBindings(lhs.locationAuthorizationStatus, rhs.locationAuthorizationStatus) && deepEqualsFlutterBindings(lhs.locationServicesEnabled, rhs.locationServicesEnabled) && deepEqualsFlutterBindings(lhs.batteryOptimizationsIgnored, rhs.batteryOptimizationsIgnored) && deepEqualsFlutterBindings(lhs.googlePlayServicesAvailable, rhs.googlePlayServicesAvailable) && deepEqualsFlutterBindings(lhs.googlePlayServicesAvailabilityCode, rhs.googlePlayServicesAvailabilityCode) && deepEqualsFlutterBindings(lhs.geofencePendingIntentExists, rhs.geofencePendingIntentExists) && deepEqualsFlutterBindings(lhs.lastRegisterAttemptAtMillis, rhs.lastRegisterAttemptAtMillis) && deepEqualsFlutterBindings(lhs.lastRegisterSuccessAtMillis, rhs.lastRegisterSuccessAtMillis) && deepEqualsFlutterBindings(lhs.lastRegisterFailureAtMillis, rhs.lastRegisterFailureAtMillis) && deepEqualsFlutterBindings(lhs.lastRegisterGeofenceId, rhs.lastRegisterGeofenceId) && deepEqualsFlutterBindings(lhs.lastRegisterFailureCode, rhs.lastRegisterFailureCode) && deepEqualsFlutterBindings(lhs.lastRegisterFailureMessage, rhs.lastRegisterFailureMessage) && deepEqualsFlutterBindings(lhs.lastRemoveAttemptAtMillis, rhs.lastRemoveAttemptAtMillis) && deepEqualsFlutterBindings(lhs.lastRemoveSuccessAtMillis, rhs.lastRemoveSuccessAtMillis) && deepEqualsFlutterBindings(lhs.lastRemoveFailureAtMillis, rhs.lastRemoveFailureAtMillis) && deepEqualsFlutterBindings(lhs.lastRemoveGeofenceIds, rhs.lastRemoveGeofenceIds) && deepEqualsFlutterBindings(lhs.lastRemoveFailureMessage, rhs.lastRemoveFailureMessage) && deepEqualsFlutterBindings(lhs.lastBroadcastReceivedAtMillis, rhs.lastBroadcastReceivedAtMillis) && deepEqualsFlutterBindings(lhs.lastBroadcastEvent, rhs.lastBroadcastEvent) && deepEqualsFlutterBindings(lhs.lastBroadcastGeofenceIds, rhs.lastBroadcastGeofenceIds) && deepEqualsFlutterBindings(lhs.lastBroadcastErrorCode, rhs.lastBroadcastErrorCode) && deepEqualsFlutterBindings(lhs.lastBroadcastErrorMessage, rhs.lastBroadcastErrorMessage) && deepEqualsFlutterBindings(lhs.lastCallbackEnqueueAtMillis, rhs.lastCallbackEnqueueAtMillis) && deepEqualsFlutterBindings(lhs.lastCallbackEnqueueFailureAtMillis, rhs.lastCallbackEnqueueFailureAtMillis) && deepEqualsFlutterBindings(lhs.lastCallbackEnqueueFailureMessage, rhs.lastCallbackEnqueueFailureMessage)
+    return deepEqualsFlutterBindings(lhs.platform, rhs.platform) && deepEqualsFlutterBindings(lhs.androidSdkInt, rhs.androidSdkInt) && deepEqualsFlutterBindings(lhs.deviceManufacturer, rhs.deviceManufacturer) && deepEqualsFlutterBindings(lhs.deviceModel, rhs.deviceModel) && deepEqualsFlutterBindings(lhs.persistedGeofenceIds, rhs.persistedGeofenceIds) && deepEqualsFlutterBindings(lhs.locationPermissionGranted, rhs.locationPermissionGranted) && deepEqualsFlutterBindings(lhs.backgroundLocationPermissionGranted, rhs.backgroundLocationPermissionGranted) && deepEqualsFlutterBindings(lhs.notificationPermissionGranted, rhs.notificationPermissionGranted) && deepEqualsFlutterBindings(lhs.locationAuthorizationStatus, rhs.locationAuthorizationStatus) && deepEqualsFlutterBindings(lhs.locationServicesEnabled, rhs.locationServicesEnabled) && deepEqualsFlutterBindings(lhs.batteryOptimizationsIgnored, rhs.batteryOptimizationsIgnored) && deepEqualsFlutterBindings(lhs.powerSaveMode, rhs.powerSaveMode) && deepEqualsFlutterBindings(lhs.backgroundRestricted, rhs.backgroundRestricted) && deepEqualsFlutterBindings(lhs.appStandbyBucket, rhs.appStandbyBucket) && deepEqualsFlutterBindings(lhs.googlePlayServicesAvailable, rhs.googlePlayServicesAvailable) && deepEqualsFlutterBindings(lhs.googlePlayServicesAvailabilityCode, rhs.googlePlayServicesAvailabilityCode) && deepEqualsFlutterBindings(lhs.geofencePendingIntentExists, rhs.geofencePendingIntentExists) && deepEqualsFlutterBindings(lhs.lastRegisterAttemptAtMillis, rhs.lastRegisterAttemptAtMillis) && deepEqualsFlutterBindings(lhs.lastRegisterSuccessAtMillis, rhs.lastRegisterSuccessAtMillis) && deepEqualsFlutterBindings(lhs.lastRegisterFailureAtMillis, rhs.lastRegisterFailureAtMillis) && deepEqualsFlutterBindings(lhs.lastRegisterGeofenceId, rhs.lastRegisterGeofenceId) && deepEqualsFlutterBindings(lhs.lastRegisterFailureCode, rhs.lastRegisterFailureCode) && deepEqualsFlutterBindings(lhs.lastRegisterFailureMessage, rhs.lastRegisterFailureMessage) && deepEqualsFlutterBindings(lhs.lastRemoveAttemptAtMillis, rhs.lastRemoveAttemptAtMillis) && deepEqualsFlutterBindings(lhs.lastRemoveSuccessAtMillis, rhs.lastRemoveSuccessAtMillis) && deepEqualsFlutterBindings(lhs.lastRemoveFailureAtMillis, rhs.lastRemoveFailureAtMillis) && deepEqualsFlutterBindings(lhs.lastRemoveGeofenceIds, rhs.lastRemoveGeofenceIds) && deepEqualsFlutterBindings(lhs.lastRemoveFailureMessage, rhs.lastRemoveFailureMessage) && deepEqualsFlutterBindings(lhs.lastBroadcastReceivedAtMillis, rhs.lastBroadcastReceivedAtMillis) && deepEqualsFlutterBindings(lhs.lastBroadcastEvent, rhs.lastBroadcastEvent) && deepEqualsFlutterBindings(lhs.lastBroadcastGeofenceIds, rhs.lastBroadcastGeofenceIds) && deepEqualsFlutterBindings(lhs.lastBroadcastLocationLatitude, rhs.lastBroadcastLocationLatitude) && deepEqualsFlutterBindings(lhs.lastBroadcastLocationLongitude, rhs.lastBroadcastLocationLongitude) && deepEqualsFlutterBindings(lhs.lastBroadcastNearestGeofenceId, rhs.lastBroadcastNearestGeofenceId) && deepEqualsFlutterBindings(lhs.lastBroadcastDistanceFromNearestGeofenceMeters, rhs.lastBroadcastDistanceFromNearestGeofenceMeters) && deepEqualsFlutterBindings(lhs.lastBroadcastNearestGeofenceRadiusMeters, rhs.lastBroadcastNearestGeofenceRadiusMeters) && deepEqualsFlutterBindings(lhs.lastBroadcastErrorCode, rhs.lastBroadcastErrorCode) && deepEqualsFlutterBindings(lhs.lastBroadcastErrorMessage, rhs.lastBroadcastErrorMessage) && deepEqualsFlutterBindings(lhs.lastCallbackEnqueueAtMillis, rhs.lastCallbackEnqueueAtMillis) && deepEqualsFlutterBindings(lhs.lastCallbackEnqueueFailureAtMillis, rhs.lastCallbackEnqueueFailureAtMillis) && deepEqualsFlutterBindings(lhs.lastCallbackEnqueueFailureMessage, rhs.lastCallbackEnqueueFailureMessage) && deepEqualsFlutterBindings(lhs.lastCallbackWorkerStartAtMillis, rhs.lastCallbackWorkerStartAtMillis) && deepEqualsFlutterBindings(lhs.lastCallbackWorkerApiReadyAtMillis, rhs.lastCallbackWorkerApiReadyAtMillis) && deepEqualsFlutterBindings(lhs.lastCallbackWorkerFinishAtMillis, rhs.lastCallbackWorkerFinishAtMillis) && deepEqualsFlutterBindings(lhs.lastCallbackWorkerFailureAtMillis, rhs.lastCallbackWorkerFailureAtMillis) && deepEqualsFlutterBindings(lhs.lastCallbackWorkerResult, rhs.lastCallbackWorkerResult) && deepEqualsFlutterBindings(lhs.lastCallbackWorkerFailureCode, rhs.lastCallbackWorkerFailureCode) && deepEqualsFlutterBindings(lhs.lastCallbackWorkerFailureMessage, rhs.lastCallbackWorkerFailureMessage) && deepEqualsFlutterBindings(lhs.lastCallbackWorkerRunAttempt, rhs.lastCallbackWorkerRunAttempt) && deepEqualsFlutterBindings(lhs.lastCallbackWorkerEvent, rhs.lastCallbackWorkerEvent) && deepEqualsFlutterBindings(lhs.lastCallbackWorkerGeofenceIds, rhs.lastCallbackWorkerGeofenceIds) && deepEqualsFlutterBindings(lhs.lastRecreateAttemptAtMillis, rhs.lastRecreateAttemptAtMillis) && deepEqualsFlutterBindings(lhs.lastRecreateSuccessAtMillis, rhs.lastRecreateSuccessAtMillis) && deepEqualsFlutterBindings(lhs.lastRecreateFailureAtMillis, rhs.lastRecreateFailureAtMillis) && deepEqualsFlutterBindings(lhs.lastRecreateGeofenceCount, rhs.lastRecreateGeofenceCount) && deepEqualsFlutterBindings(lhs.lastRecreateReason, rhs.lastRecreateReason) && deepEqualsFlutterBindings(lhs.lastRecreateFailureMessage, rhs.lastRecreateFailureMessage)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -671,6 +767,9 @@ struct NativeGeofenceStatusWire: Hashable {
     deepHashFlutterBindings(value: locationAuthorizationStatus, hasher: &hasher)
     deepHashFlutterBindings(value: locationServicesEnabled, hasher: &hasher)
     deepHashFlutterBindings(value: batteryOptimizationsIgnored, hasher: &hasher)
+    deepHashFlutterBindings(value: powerSaveMode, hasher: &hasher)
+    deepHashFlutterBindings(value: backgroundRestricted, hasher: &hasher)
+    deepHashFlutterBindings(value: appStandbyBucket, hasher: &hasher)
     deepHashFlutterBindings(value: googlePlayServicesAvailable, hasher: &hasher)
     deepHashFlutterBindings(value: googlePlayServicesAvailabilityCode, hasher: &hasher)
     deepHashFlutterBindings(value: geofencePendingIntentExists, hasher: &hasher)
@@ -688,11 +787,32 @@ struct NativeGeofenceStatusWire: Hashable {
     deepHashFlutterBindings(value: lastBroadcastReceivedAtMillis, hasher: &hasher)
     deepHashFlutterBindings(value: lastBroadcastEvent, hasher: &hasher)
     deepHashFlutterBindings(value: lastBroadcastGeofenceIds, hasher: &hasher)
+    deepHashFlutterBindings(value: lastBroadcastLocationLatitude, hasher: &hasher)
+    deepHashFlutterBindings(value: lastBroadcastLocationLongitude, hasher: &hasher)
+    deepHashFlutterBindings(value: lastBroadcastNearestGeofenceId, hasher: &hasher)
+    deepHashFlutterBindings(value: lastBroadcastDistanceFromNearestGeofenceMeters, hasher: &hasher)
+    deepHashFlutterBindings(value: lastBroadcastNearestGeofenceRadiusMeters, hasher: &hasher)
     deepHashFlutterBindings(value: lastBroadcastErrorCode, hasher: &hasher)
     deepHashFlutterBindings(value: lastBroadcastErrorMessage, hasher: &hasher)
     deepHashFlutterBindings(value: lastCallbackEnqueueAtMillis, hasher: &hasher)
     deepHashFlutterBindings(value: lastCallbackEnqueueFailureAtMillis, hasher: &hasher)
     deepHashFlutterBindings(value: lastCallbackEnqueueFailureMessage, hasher: &hasher)
+    deepHashFlutterBindings(value: lastCallbackWorkerStartAtMillis, hasher: &hasher)
+    deepHashFlutterBindings(value: lastCallbackWorkerApiReadyAtMillis, hasher: &hasher)
+    deepHashFlutterBindings(value: lastCallbackWorkerFinishAtMillis, hasher: &hasher)
+    deepHashFlutterBindings(value: lastCallbackWorkerFailureAtMillis, hasher: &hasher)
+    deepHashFlutterBindings(value: lastCallbackWorkerResult, hasher: &hasher)
+    deepHashFlutterBindings(value: lastCallbackWorkerFailureCode, hasher: &hasher)
+    deepHashFlutterBindings(value: lastCallbackWorkerFailureMessage, hasher: &hasher)
+    deepHashFlutterBindings(value: lastCallbackWorkerRunAttempt, hasher: &hasher)
+    deepHashFlutterBindings(value: lastCallbackWorkerEvent, hasher: &hasher)
+    deepHashFlutterBindings(value: lastCallbackWorkerGeofenceIds, hasher: &hasher)
+    deepHashFlutterBindings(value: lastRecreateAttemptAtMillis, hasher: &hasher)
+    deepHashFlutterBindings(value: lastRecreateSuccessAtMillis, hasher: &hasher)
+    deepHashFlutterBindings(value: lastRecreateFailureAtMillis, hasher: &hasher)
+    deepHashFlutterBindings(value: lastRecreateGeofenceCount, hasher: &hasher)
+    deepHashFlutterBindings(value: lastRecreateReason, hasher: &hasher)
+    deepHashFlutterBindings(value: lastRecreateFailureMessage, hasher: &hasher)
   }
 }
 

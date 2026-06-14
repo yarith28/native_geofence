@@ -27,7 +27,9 @@ class NativeGeofenceRebootBroadcastReceiver : BroadcastReceiver() {
         // the receiver before Play services accepts all geofences.
         val pendingResult = goAsync()
         try {
-            NativeGeofenceApiImpl(context.applicationContext).reCreateAfterReboot {
+            NativeGeofenceApiImpl(context.applicationContext).reCreateAfterReboot(
+                reason = intent.action
+            ) {
                 pendingResult.finish()
             }
         } catch (e: Exception) {
