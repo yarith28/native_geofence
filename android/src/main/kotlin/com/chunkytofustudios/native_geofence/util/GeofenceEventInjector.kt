@@ -3,6 +3,7 @@ package com.chunkytofustudios.native_geofence.util
 import android.content.Context
 import android.location.Location
 import android.util.Log
+import com.chunkytofustudios.native_geofence.Constants
 import com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWire
 import com.chunkytofustudios.native_geofence.generated.GeofenceEvent
 
@@ -23,6 +24,7 @@ object GeofenceEventInjector {
      * @param geofenceId the registered geofence's id.
      * @param event the confirmed transition.
      * @param location optional location to attach to the event.
+     * @param source source label for logging and diagnostics.
      * @return true if an event was enqueued, false if dropped (unknown id or
      *         already-delivered state).
      */
@@ -33,23 +35,24 @@ object GeofenceEventInjector {
         event: GeofenceEvent,
         location: Location?,
         isMock: Boolean = false,
+        source: String = Constants.EVENT_SOURCE_EXTERNAL_INJECTION,
     ): Boolean {
         val appContext = context.applicationContext
         val fence = NativeGeofencePersistence.getAllGeofences(appContext)
             .firstOrNull { it.id == geofenceId }
         if (fence == null) {
-            Log.w(TAG, "Inject ignored: unknown geofence ID=$geofenceId.")
+            Log.w(TAG, "Inject ignored: unknown geofence ID=$geofenceId source=$source.")
             return false
         }
         if (!fence.triggers.contains(event)) {
-            Log.d(TAG, "Inject ignored: $event not configured for ID=$geofenceId.")
+            Log.d(TAG, "Inject ignored: $event not configured for ID=$geofenceId source=$source.")
             return false
         }
         if (NativeGeofencePersistence.wasSameGeofenceTransitionStateDelivered(
                 appContext, geofenceId, event
             )
         ) {
-            Log.d(TAG, "Inject de-duped: ID=$geofenceId event=$event already delivered.")
+            Log.d(TAG, "Inject de-duped: ID=$geofenceId event=$event source=$source already delivered.")
             return false
         }
 
@@ -70,8 +73,8 @@ object GeofenceEventInjector {
             locationWire,
             fence.callbackHandle,
         )
-        GeofenceCallbackWork.enqueue(appContext, params)
-        Log.i(TAG, "Injected geofence event ID=$geofenceId event=$event.")
+        GeofenceCallbackWork.enqueue(appContext, params, source)
+        Log.i(TAG, "Injected geofence event ID=$geofenceId event=$event source=$source.")
         return true
     }
 }

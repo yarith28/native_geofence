@@ -25,14 +25,20 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
 
         val dedupedParams = removeAlreadyDeliveredGeofenceStates(
             context,
-            geofenceCallbackParams
+            geofenceCallbackParams,
+            Constants.EVENT_SOURCE_ANDROID_GEOFENCING_API
         ) ?: return
-        GeofenceCallbackWork.enqueue(context, dedupedParams)
+        GeofenceCallbackWork.enqueue(
+            context,
+            dedupedParams,
+            Constants.EVENT_SOURCE_ANDROID_GEOFENCING_API
+        )
     }
 
     private fun removeAlreadyDeliveredGeofenceStates(
         context: Context,
-        params: GeofenceCallbackParamsWire
+        params: GeofenceCallbackParamsWire,
+        source: String
     ): GeofenceCallbackParamsWire? {
         val now = System.currentTimeMillis()
         val geofencesToDeliver = params.geofences.filter { geofence ->
@@ -45,14 +51,15 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
             if (sameStateDelivered) {
                 Log.d(
                     TAG,
-                    "Skipping already-delivered geofence state ID=${geofence.id}, event=${params.event}."
+                    "Skipping already-delivered geofence state ID=${geofence.id}, " +
+                        "event=${params.event} source=$source."
                 )
             }
             !sameStateDelivered
         }
 
         if (geofencesToDeliver.isEmpty()) {
-            Log.d(TAG, "No new geofence events to enqueue after state de-dupe.")
+            Log.d(TAG, "No new geofence events to enqueue after state de-dupe source=$source.")
             return null
         }
 

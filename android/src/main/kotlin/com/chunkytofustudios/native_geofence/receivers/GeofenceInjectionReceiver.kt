@@ -35,10 +35,12 @@ class GeofenceInjectionReceiver : BroadcastReceiver() {
 
         val location = extractLocation(intent)
         val isMock = intent.getBooleanExtra(Constants.INJECT_EXTRA_MOCK, false)
+        val source = intent.getStringExtra(Constants.INJECT_EXTRA_SOURCE)?.takeIf { it.isNotBlank() }
+            ?: Constants.EVENT_SOURCE_EXTERNAL_INJECTION
 
         val pending = goAsync()
         try {
-            GeofenceEventInjector.inject(context, id, event, location, isMock)
+            GeofenceEventInjector.inject(context, id, event, location, isMock, source)
         } catch (e: Throwable) {
             Log.w(TAG, "Injection failed: ${e.message}")
         } finally {

@@ -1,6 +1,7 @@
 package com.chunkytofustudios.native_geofence.util
 
 import android.content.Context
+import android.util.Log
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -15,7 +16,13 @@ import kotlinx.serialization.json.Json
 
 class GeofenceCallbackWork {
     companion object {
-        fun enqueue(context: Context, geofenceCallbackParams: GeofenceCallbackParamsWire) {
+        private const val TAG = "GeofenceCallbackWork"
+
+        fun enqueue(
+            context: Context,
+            geofenceCallbackParams: GeofenceCallbackParamsWire,
+            source: String
+        ) {
             val jsonData =
                 Json.encodeToString(GeofenceCallbackParamsStorage.fromWire(geofenceCallbackParams))
             val workRequest = OneTimeWorkRequestBuilder<NativeGeofenceBackgroundWorker>()
@@ -35,6 +42,11 @@ class GeofenceCallbackWork {
                 workRequest
             )
             work.enqueue()
+            Log.i(
+                TAG,
+                "Enqueued geofence callback source=$source event=${geofenceCallbackParams.event} " +
+                    "ids=${geofenceCallbackParams.geofences.map { it.id }}."
+            )
         }
     }
 }
