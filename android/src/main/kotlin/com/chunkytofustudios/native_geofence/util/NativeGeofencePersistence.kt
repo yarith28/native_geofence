@@ -2,7 +2,6 @@ package com.chunkytofustudios.native_geofence.util
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.util.Log
 import com.chunkytofustudios.native_geofence.Constants
 import com.chunkytofustudios.native_geofence.generated.GeofenceWire
 import com.chunkytofustudios.native_geofence.model.GeofenceStorage
@@ -59,9 +58,9 @@ class NativeGeofencePersistence {
                 }
                 // Geofence storage is lifecycle-critical; wait for it to reach disk.
                 if (!editor.commit()) {
-                    Log.e(TAG, "Failed to persist Geofence ID=${geofence.id}.")
+                    NativeGeofenceLogger.e(context, TAG, "Failed to persist Geofence ID=${geofence.id}.")
                 }
-                Log.d(TAG, "Saved Geofence ID=${geofence.id} to storage.")
+                NativeGeofenceLogger.d(context, TAG, "Saved Geofence ID=${geofence.id} to storage.")
             }
         }
 
@@ -98,7 +97,7 @@ class NativeGeofencePersistence {
                 for (id in persistentGeofences) {
                     getGeofenceLocked(context, p, id)?.let { result.add(it) }
                 }
-                Log.d(TAG, "Retrieved ${result.size} Geofences from storage.")
+                NativeGeofenceLogger.d(context, TAG, "Retrieved ${result.size} Geofences from storage.")
                 return result
             }
         }
@@ -124,7 +123,7 @@ class NativeGeofencePersistence {
                     .remove(getGeofenceKey(geofenceId))
                     .remove(getGeofenceExpirationKey(geofenceId))
                     .commit()
-                Log.d(TAG, "Removed Geofence ID=${geofenceId} from storage.")
+                NativeGeofenceLogger.d(context, TAG, "Removed Geofence ID=${geofenceId} from storage.")
             }
         }
 
@@ -153,9 +152,9 @@ class NativeGeofencePersistence {
                     editor.remove(getGeofenceExpirationKey(id))
                 }
                 if (!editor.commit()) {
-                    Log.e(TAG, "Failed to remove all Geofences from storage.")
+                    NativeGeofenceLogger.e(context, TAG, "Failed to remove all Geofences from storage.")
                 }
-                Log.d(TAG, "Removed ${persistentGeofences.size} Geofences from storage.")
+                NativeGeofenceLogger.d(context, TAG, "Removed ${persistentGeofences.size} Geofences from storage.")
             }
         }
 
@@ -167,16 +166,18 @@ class NativeGeofencePersistence {
         ): GeofenceWire? {
             val jsonData = p.getString(getGeofenceKey(id), null)
             if (jsonData == null) {
-                Log.e(TAG, "No data found for Geofence ID=${id} in storage.")
+                NativeGeofenceLogger.e(context, TAG, "No data found for Geofence ID=${id} in storage.")
                 removeGeofence(context, id)
                 return null
             }
             val geofence = try {
                 Json.decodeFromString<GeofenceStorage>(jsonData).toWire()
             } catch (e: Exception) {
-                Log.e(
+                NativeGeofenceLogger.e(
+                    context,
                     TAG,
-                    "Failed to parse Geofence ID=${id} from storage. Data=${jsonData}"
+                    "Failed to parse Geofence ID=${id} from storage. Data=${jsonData}",
+                    e
                 )
                 removeGeofence(context, id)
                 return null
@@ -189,7 +190,7 @@ class NativeGeofencePersistence {
             // Recreate with remaining time only; never grant a fresh full duration.
             val remainingMillis = p.getLong(getGeofenceExpirationKey(id), 0) - System.currentTimeMillis()
             if (remainingMillis <= 0) {
-                Log.d(TAG, "Geofence ID=${id} expired; removing it from storage.")
+                NativeGeofenceLogger.d(context, TAG, "Geofence ID=${id} expired; removing it from storage.")
                 removeGeofence(context, id)
                 return null
             }

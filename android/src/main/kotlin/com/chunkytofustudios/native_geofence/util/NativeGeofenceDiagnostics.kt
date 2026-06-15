@@ -9,7 +9,6 @@ import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.os.Build
 import android.os.PowerManager
-import android.util.Log
 import androidx.core.content.ContextCompat
 import com.chunkytofustudios.native_geofence.Constants
 import com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWire
@@ -82,6 +81,7 @@ object NativeGeofenceDiagnostics {
 
     fun recordRegisterAttempt(context: Context, geofenceId: String) {
         persist(
+            context,
             "register_attempt",
             preferences(context).edit()
                 .putLong(LAST_REGISTER_ATTEMPT_AT, System.currentTimeMillis())
@@ -91,6 +91,7 @@ object NativeGeofenceDiagnostics {
 
     fun recordRegisterSuccess(context: Context, geofenceId: String) {
         persist(
+            context,
             "register_success",
             preferences(context).edit()
                 .putLong(LAST_REGISTER_SUCCESS_AT, System.currentTimeMillis())
@@ -107,17 +108,20 @@ object NativeGeofenceDiagnostics {
         message: String?
     ) {
         persist(
+            context,
             "register_failure",
             preferences(context).edit()
                 .putLong(LAST_REGISTER_FAILURE_AT, System.currentTimeMillis())
                 .putString(LAST_REGISTER_GEOFENCE_ID, geofenceId)
                 .putNullableString(LAST_REGISTER_FAILURE_CODE, code)
-                .putNullableString(LAST_REGISTER_FAILURE_MESSAGE, message)
+                .putNullableString(LAST_REGISTER_FAILURE_MESSAGE, message),
+            detail = "id=$geofenceId, code=$code, message=$message"
         )
     }
 
     fun recordRemoveAttempt(context: Context, geofenceIds: List<String>) {
         persist(
+            context,
             "remove_attempt",
             preferences(context).edit()
                 .putLong(LAST_REMOVE_ATTEMPT_AT, System.currentTimeMillis())
@@ -127,6 +131,7 @@ object NativeGeofenceDiagnostics {
 
     fun recordRemoveSuccess(context: Context, geofenceIds: List<String>) {
         persist(
+            context,
             "remove_success",
             preferences(context).edit()
                 .putLong(LAST_REMOVE_SUCCESS_AT, System.currentTimeMillis())
@@ -137,16 +142,19 @@ object NativeGeofenceDiagnostics {
 
     fun recordRemoveFailure(context: Context, geofenceIds: List<String>, message: String?) {
         persist(
+            context,
             "remove_failure",
             preferences(context).edit()
                 .putLong(LAST_REMOVE_FAILURE_AT, System.currentTimeMillis())
                 .putStringSet(LAST_REMOVE_GEOFENCE_IDS, geofenceIds.toSet())
-                .putNullableString(LAST_REMOVE_FAILURE_MESSAGE, message)
+                .putNullableString(LAST_REMOVE_FAILURE_MESSAGE, message),
+            detail = "ids=${geofenceIds.joinToString(",")}, message=$message"
         )
     }
 
     fun recordBroadcastReceived(context: Context) {
         persist(
+            context,
             "broadcast_received",
             preferences(context).edit()
                 .putLong(LAST_BROADCAST_RECEIVED_AT, System.currentTimeMillis())
@@ -159,12 +167,14 @@ object NativeGeofenceDiagnostics {
         geofenceIds: List<String>
     ) {
         persist(
+            context,
             "broadcast_event",
             preferences(context).edit()
                 .putString(LAST_BROADCAST_EVENT, event.name)
                 .putStringSet(LAST_BROADCAST_GEOFENCE_IDS, geofenceIds.toSet())
                 .remove(LAST_BROADCAST_ERROR_CODE)
-                .remove(LAST_BROADCAST_ERROR_MESSAGE)
+                .remove(LAST_BROADCAST_ERROR_MESSAGE),
+            detail = "event=${event.name}, ids=${geofenceIds.joinToString(",")}"
         )
     }
 
@@ -177,6 +187,7 @@ object NativeGeofenceDiagnostics {
         nearestGeofenceRadiusMeters: Double?
     ) {
         persist(
+            context,
             "broadcast_location",
             preferences(context).edit()
                 .putDoubleString(LAST_BROADCAST_LOCATION_LATITUDE, latitude)
@@ -195,10 +206,12 @@ object NativeGeofenceDiagnostics {
 
     fun recordBroadcastError(context: Context, code: String, message: String?) {
         persist(
+            context,
             "broadcast_error",
             preferences(context).edit()
                 .putString(LAST_BROADCAST_ERROR_CODE, code)
-                .putNullableString(LAST_BROADCAST_ERROR_MESSAGE, message)
+                .putNullableString(LAST_BROADCAST_ERROR_MESSAGE, message),
+            detail = "code=$code, message=$message"
         )
     }
 
@@ -208,6 +221,7 @@ object NativeGeofenceDiagnostics {
         geofenceIds: List<String>
     ) {
         persist(
+            context,
             "callback_enqueue_attempt",
             preferences(context).edit()
                 .putLong(LAST_CALLBACK_ENQUEUE_AT, System.currentTimeMillis())
@@ -227,7 +241,12 @@ object NativeGeofenceDiagnostics {
             .putNullableString(LAST_CALLBACK_ENQUEUE_FAILURE_MESSAGE, message)
             .putStringSet(LAST_BROADCAST_GEOFENCE_IDS, geofenceIds.toSet())
         event?.let { editor.putString(LAST_BROADCAST_EVENT, it.name) }
-        persist("callback_enqueue_failure", editor)
+        persist(
+            context,
+            "callback_enqueue_failure",
+            editor,
+            detail = "event=${event?.name}, ids=${geofenceIds.joinToString(",")}, message=$message"
+        )
     }
 
     fun recordCallbackWorkerStart(
@@ -243,6 +262,7 @@ object NativeGeofenceDiagnostics {
                 .remove(LAST_CALLBACK_WORKER_FAILURE_MESSAGE)
         }
         persist(
+            context,
             "callback_worker_start",
             editor
         )
@@ -254,6 +274,7 @@ object NativeGeofenceDiagnostics {
         runAttempt: Int
     ) {
         persist(
+            context,
             "callback_worker_api_ready",
             callbackWorkerEditor(context, params, runAttempt)
                 .putLong(LAST_CALLBACK_WORKER_API_READY_AT, System.currentTimeMillis())
@@ -274,7 +295,7 @@ object NativeGeofenceDiagnostics {
             editor.remove(LAST_CALLBACK_WORKER_FAILURE_CODE)
                 .remove(LAST_CALLBACK_WORKER_FAILURE_MESSAGE)
         }
-        persist("callback_worker_finish", editor)
+        persist(context, "callback_worker_finish", editor)
     }
 
     fun recordCallbackWorkerFailure(
@@ -285,16 +306,21 @@ object NativeGeofenceDiagnostics {
         message: String?
     ) {
         persist(
+            context,
             "callback_worker_failure",
             callbackWorkerEditor(context, params, runAttempt)
                 .putLong(LAST_CALLBACK_WORKER_FAILURE_AT, System.currentTimeMillis())
                 .putString(LAST_CALLBACK_WORKER_FAILURE_CODE, code)
-                .putNullableString(LAST_CALLBACK_WORKER_FAILURE_MESSAGE, message)
+                .putNullableString(LAST_CALLBACK_WORKER_FAILURE_MESSAGE, message),
+            detail = "event=${params?.event?.name}, " +
+                "ids=${geofenceIds(params).joinToString(",")}, " +
+                "runAttempt=$runAttempt, code=$code, message=$message"
         )
     }
 
     fun recordRecreateAttempt(context: Context, geofenceCount: Int, reason: String?) {
         persist(
+            context,
             "recreate_attempt",
             preferences(context).edit()
                 .putLong(LAST_RECREATE_ATTEMPT_AT, System.currentTimeMillis())
@@ -305,6 +331,7 @@ object NativeGeofenceDiagnostics {
 
     fun recordRecreateSuccess(context: Context, geofenceCount: Int, reason: String?) {
         persist(
+            context,
             "recreate_success",
             preferences(context).edit()
                 .putLong(LAST_RECREATE_SUCCESS_AT, System.currentTimeMillis())
@@ -321,12 +348,14 @@ object NativeGeofenceDiagnostics {
         message: String?
     ) {
         persist(
+            context,
             "recreate_failure",
             preferences(context).edit()
                 .putLong(LAST_RECREATE_FAILURE_AT, System.currentTimeMillis())
                 .putLong(LAST_RECREATE_GEOFENCE_COUNT, geofenceCount.toLong())
                 .putNullableString(LAST_RECREATE_REASON, reason)
-                .putNullableString(LAST_RECREATE_FAILURE_MESSAGE, message)
+                .putNullableString(LAST_RECREATE_FAILURE_MESSAGE, message),
+            detail = "count=$geofenceCount, reason=$reason, message=$message"
         )
     }
 
@@ -416,11 +445,24 @@ object NativeGeofenceDiagnostics {
         return context.getSharedPreferences(Constants.SHARED_PREFERENCES_KEY, Context.MODE_PRIVATE)
     }
 
-    private fun persist(label: String, editor: SharedPreferences.Editor) {
+    private fun persist(
+        context: Context,
+        label: String,
+        editor: SharedPreferences.Editor,
+        detail: String? = null
+    ) {
         if (!editor.commit()) {
-            Log.e(TAG, "Failed to persist diagnostic event=$label.")
+            NativeGeofenceLogger.e(context, TAG, "Failed to persist diagnostic event=$label.")
         }
-        Log.d(TAG, "Recorded diagnostic event=$label.")
+        // Funnel every diagnostic event into the file logger (and logcat).
+        // Failures surface as warnings so host apps can filter on level.
+        val message =
+            if (detail == null) "event=$label" else "event=$label ($detail)"
+        if (label.endsWith("_failure") || label.endsWith("_error")) {
+            NativeGeofenceLogger.w(context, TAG, message)
+        } else {
+            NativeGeofenceLogger.d(context, TAG, message)
+        }
     }
 
     private fun SharedPreferences.Editor.putNullableString(
@@ -517,7 +559,7 @@ object NativeGeofenceDiagnostics {
                     locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to read location enabled state.", e)
+            NativeGeofenceLogger.e(context, TAG, "Failed to read location enabled state.", e)
             null
         }
     }

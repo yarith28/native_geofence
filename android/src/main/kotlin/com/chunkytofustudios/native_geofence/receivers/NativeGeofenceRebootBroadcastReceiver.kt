@@ -3,8 +3,8 @@ package com.chunkytofustudios.native_geofence.receivers
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
 import com.chunkytofustudios.native_geofence.api.NativeGeofenceApiImpl
+import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 
 class NativeGeofenceRebootBroadcastReceiver : BroadcastReceiver() {
     companion object {
@@ -18,11 +18,11 @@ class NativeGeofenceRebootBroadcastReceiver : BroadcastReceiver() {
             intent.action != "android.intent.action.QUICKBOOT_POWERON" &&
             intent.action != "com.htc.intent.action.QUICKBOOT_POWERON"
         ) {
-            Log.w(TAG, "Ignoring unsupported broadcast action=${intent.action}.")
+            NativeGeofenceLogger.w(context, TAG, "Ignoring unsupported broadcast action=${intent.action}.")
             return
         }
 
-        Log.i(TAG, "${intent.action} broadcast received. Re-creating geofences!")
+        NativeGeofenceLogger.i(context, TAG, "${intent.action} broadcast received. Re-creating geofences!")
         // Re-registration is asynchronous; without goAsync Android may finish
         // the receiver before Play services accepts all geofences.
         val pendingResult = goAsync()
@@ -33,7 +33,7 @@ class NativeGeofenceRebootBroadcastReceiver : BroadcastReceiver() {
                 pendingResult.finish()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to re-create geofences after ${intent.action}: $e")
+            NativeGeofenceLogger.e(context, TAG, "Failed to re-create geofences after ${intent.action}: $e", e)
             pendingResult.finish()
         }
     }

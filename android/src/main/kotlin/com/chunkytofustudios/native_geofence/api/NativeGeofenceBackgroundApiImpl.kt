@@ -3,11 +3,11 @@ package com.chunkytofustudios.native_geofence.api
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.util.Log
 import com.chunkytofustudios.native_geofence.Constants
 import com.chunkytofustudios.native_geofence.NativeGeofenceForegroundService
 import com.chunkytofustudios.native_geofence.NativeGeofenceBackgroundWorker
 import com.chunkytofustudios.native_geofence.generated.NativeGeofenceBackgroundApi
+import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 
 class NativeGeofenceBackgroundApiImpl(
     private val context: Context,
@@ -24,14 +24,14 @@ class NativeGeofenceBackgroundApiImpl(
 
     override fun promoteToForeground() {
         startForegroundServiceCompat(Intent(context, NativeGeofenceForegroundService::class.java))
-        Log.d(TAG, "Promoted background service to foreground service.")
+        NativeGeofenceLogger.d(context, TAG, "Promoted background service to foreground service.")
     }
 
     override fun demoteToBackground() {
         val intent = Intent(context, NativeGeofenceForegroundService::class.java)
         intent.setAction(Constants.ACTION_SHUTDOWN)
         startForegroundServiceCompat(intent)
-        Log.d(TAG, "Demoted foreground service back to background service.")
+        NativeGeofenceLogger.d(context, TAG, "Demoted foreground service back to background service.")
     }
 
     private fun startForegroundServiceCompat(intent: Intent) {
@@ -43,7 +43,7 @@ class NativeGeofenceBackgroundApiImpl(
                 context.startService(intent)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start NativeGeofenceForegroundService.", e)
+            NativeGeofenceLogger.e(context, TAG, "Failed to start NativeGeofenceForegroundService.", e)
             throw e
         }
     }

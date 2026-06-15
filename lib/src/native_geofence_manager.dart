@@ -1,8 +1,9 @@
-import 'dart:async';
 import 'dart:ui';
 
+import 'package:flutter/services.dart';
 import 'package:native_geofence/src/callback_dispatcher.dart';
 import 'package:native_geofence/src/generated/platform_bindings.g.dart';
+import 'package:native_geofence/src/model/log_file_config.dart';
 import 'package:native_geofence/src/model/model.dart';
 import 'package:native_geofence/src/model/model_mapper.dart';
 import 'package:native_geofence/src/model/native_geofence_exception.dart';
@@ -26,6 +27,9 @@ class NativeGeofenceManager {
   }
 
   final NativeGeofenceApi _api;
+
+  static const MethodChannel _logFileChannel =
+      MethodChannel('native_geofence/log_file');
 
   NativeGeofenceManager._() : _api = NativeGeofenceApi();
 
@@ -150,6 +154,48 @@ class NativeGeofenceManager {
   Future<NativeGeofenceStatus> getDiagnosticStatus() async =>
       _api.getDiagnosticStatus().then((value) => value.fromWire()).catchError(
           NativeGeofenceExceptionMapper.catchError<NativeGeofenceStatus>);
+
+  /// Configure the app-private Android log file.
+  ///
+  /// File logging is disabled by default. When enabled, native_geofence writes a
+  /// bounded text log that can be fetched later with [readLogFile]. This is
+  /// Android-only; on iOS and web this is a no-op.
+  Future<void> configureLogFile({
+    NativeGeofenceLogFileConfig config = const NativeGeofenceLogFileConfig(),
+  }) async {
+    if (!isAndroid) return;
+    try {
+      await _logFileChannel.invokeMethod<void>(
+        'configureLogFile',
+        config.toMap(),
+      );
+    } catch (e, stackTrace) {
+      throw NativeGeofenceExceptionMapper.fromError(e, stackTrace);
+    }
+  }
+
+  /// Read the current app-private Android log file.
+  ///
+  /// Returns an empty string when no log file exists, file logging is disabled
+  /// and no previous file remains, or the platform is not Android.
+  Future<String> readLogFile() async {
+    if (!isAndroid) return '';
+    try {
+      return await _logFileChannel.invokeMethod<String>('readLogFile') ?? '';
+    } catch (e, stackTrace) {
+      throw NativeGeofenceExceptionMapper.fromError(e, stackTrace);
+    }
+  }
+
+  /// Clear the app-private Android log file. No-op outside Android.
+  Future<void> clearLogFile() async {
+    if (!isAndroid) return;
+    try {
+      await _logFileChannel.invokeMethod<void>('clearLogFile');
+    } catch (e, stackTrace) {
+      throw NativeGeofenceExceptionMapper.fromError(e, stackTrace);
+    }
+  }
 
   /// Stop receiving geofence events for a given [Geofence].
   ///

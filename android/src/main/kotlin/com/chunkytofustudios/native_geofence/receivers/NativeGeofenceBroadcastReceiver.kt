@@ -4,7 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.location.Location
-import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.work.BackoffPolicy
 import androidx.work.Data
@@ -22,6 +21,7 @@ import com.chunkytofustudios.native_geofence.util.ActiveGeofenceWires
 import com.chunkytofustudios.native_geofence.util.GeofenceEvents
 import com.chunkytofustudios.native_geofence.util.LocationWires
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnostics
+import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 import com.chunkytofustudios.native_geofence.util.NativeGeofencePersistence
 import com.google.android.gms.location.GeofencingEvent
 import com.google.android.gms.location.GeofenceStatusCodes
@@ -35,7 +35,7 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
     }
 
     override fun onReceive(context: Context, intent: Intent) {
-        Log.d(TAG, "Geofence broadcast received.")
+        NativeGeofenceLogger.d(context, TAG, "Geofence broadcast received.")
         NativeGeofenceDiagnostics.recordBroadcastReceived(context)
 
         val geofenceCallbackParams = getGeofenceCallbackParams(context, intent) ?: return
@@ -88,7 +88,8 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                     geofenceCallbackParams.event,
                     geofenceIdList
                 )
-                Log.i(
+                NativeGeofenceLogger.i(
+                    context,
                     TAG,
                     "Queueing geofence callback work: event=${geofenceCallbackParams.event}, " +
                         "ids=$geofenceIds, callbackHandle=${geofenceCallbackParams.callbackHandle}, " +
@@ -117,7 +118,8 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                     {
                         try {
                             enqueueResult.get()
-                            Log.d(
+                            NativeGeofenceLogger.d(
+                                context,
                                 TAG,
                                 "Enqueued geofence callback work: event=${geofenceCallbackParams.event}, " +
                                     "ids=$geofenceIds."
@@ -129,7 +131,8 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                                 geofenceIdList,
                                 e.toString()
                             )
-                            Log.e(
+                            NativeGeofenceLogger.e(
+                                context,
                                 TAG,
                                 "Failed to enqueue geofence callback work: " +
                                     "event=${geofenceCallbackParams.event}, ids=$geofenceIds.",
@@ -149,7 +152,7 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                 params.flatMap { it.geofences.map { geofence -> geofence.id } }.distinct(),
                 e.toString()
             )
-            Log.e(TAG, "Failed while queueing geofence callback work; callbacks may be dropped.", e)
+            NativeGeofenceLogger.e(context, TAG, "Failed while queueing geofence callback work; callbacks may be dropped.", e)
             finishPendingResult()
         }
     }
@@ -165,7 +168,7 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                 "NULL_GEOFENCING_EVENT",
                 "GeofencingEvent.fromIntent returned null."
             )
-            Log.e(TAG, "GeofencingEvent is null.")
+            NativeGeofenceLogger.e(context, TAG, "GeofencingEvent is null.")
             return null
         }
         if (geofencingEvent.hasError()) {
@@ -174,7 +177,7 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                 "GeofenceStatusCodes=${geofencingEvent.errorCode}",
                 "GeofencingEvent has error Code=${geofencingEvent.errorCode}."
             )
-            Log.e(TAG, "GeofencingEvent has error Code=${geofencingEvent.errorCode}.")
+            NativeGeofenceLogger.e(context, TAG, "GeofencingEvent has error Code=${geofencingEvent.errorCode}.")
             if (geofencingEvent.errorCode == GeofenceStatusCodes.GEOFENCE_NOT_AVAILABLE) {
                 reCreatePersistedGeofences(context)
             }
@@ -189,7 +192,8 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                 "INVALID_TRANSITION",
                 "GeofencingEvent has invalid transition ID=${geofencingEvent.geofenceTransition}."
             )
-            Log.e(
+            NativeGeofenceLogger.e(
+                context,
                 TAG,
                 "GeofencingEvent has invalid transition ID=${geofencingEvent.geofenceTransition}."
             )
@@ -207,7 +211,7 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                 "NO_TRIGGERING_GEOFENCES",
                 "GeofencingEvent had no triggering geofences."
             )
-            Log.e(TAG, "No triggering geofences found.")
+            NativeGeofenceLogger.e(context, TAG, "No triggering geofences found.")
             return null
         }
         NativeGeofenceDiagnostics.recordBroadcastEvent(
@@ -218,7 +222,7 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
 
         val location = geofencingEvent.triggeringLocation
         if (location == null) {
-            Log.w(TAG, "No triggering location found.")
+            NativeGeofenceLogger.w(context, TAG, "No triggering location found.")
         } else {
             recordTriggerLocation(context, location, triggeringGeofences)
         }
@@ -232,7 +236,7 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                 NativeGeofencePersistence.getGeofence(context, geofence.id)?.callbackHandle
                     ?: fallbackCallbackHandle
             if (callbackHandle == 0L) {
-                Log.e(TAG, "Callback handle for Geofence ID=${geofence.id} is missing.")
+                NativeGeofenceLogger.e(context, TAG, "Callback handle for Geofence ID=${geofence.id} is missing.")
                 continue
             }
             geofencesByCallbackHandle.getOrPut(callbackHandle) { mutableListOf() }.add(geofence)
@@ -244,7 +248,7 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                 "NO_CALLBACK_HANDLE",
                 "No callback handles could be resolved for triggered geofences."
             )
-            Log.e(TAG, "No geofence callbacks could be resolved.")
+            NativeGeofenceLogger.e(context, TAG, "No geofence callbacks could be resolved.")
             return null
         }
 
@@ -287,7 +291,8 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
             nearest?.distanceMeters,
             nearest?.radiusMeters
         )
-        Log.i(
+        NativeGeofenceLogger.i(
+            context,
             TAG,
             "Triggering location: latitude=${location.latitude}, longitude=${location.longitude}, " +
                 "nearestGeofenceId=${nearest?.geofenceId}, " +
@@ -306,7 +311,7 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                 pendingResult.finish()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to re-create persisted geofences after geofence service error: $e")
+            NativeGeofenceLogger.e(context, TAG, "Failed to re-create persisted geofences after geofence service error: $e", e)
             pendingResult.finish()
         }
     }

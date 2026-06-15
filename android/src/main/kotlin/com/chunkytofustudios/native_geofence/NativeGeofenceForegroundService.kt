@@ -7,8 +7,8 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
-import android.util.Log
 import androidx.core.app.ServiceCompat
+import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 import com.chunkytofustudios.native_geofence.util.Notifications
 import kotlin.time.Duration.Companion.minutes
 
@@ -46,9 +46,10 @@ class NativeGeofenceForegroundService : Service() {
                 else
                     0
             )
-            Log.d(TAG, "Foreground service started with notification ID=$NOTIFICATION_ID.")
+            NativeGeofenceLogger.d(applicationContext, TAG, "Foreground service started with notification ID=$NOTIFICATION_ID.")
         } catch (e: Exception) {
-            Log.e(
+            NativeGeofenceLogger.e(
+                applicationContext,
                 TAG,
                 "Failed to start foreground service. Declare foregroundServiceType=\"location\" " +
                     "and the foreground service location permissions when using promoteToForeground().",
@@ -64,7 +65,7 @@ class NativeGeofenceForegroundService : Service() {
             releaseWakeLock()
             stopForegroundCompat()
             stopSelf()
-            Log.d(TAG, "Foreground service stopped.")
+            NativeGeofenceLogger.d(applicationContext, TAG, "Foreground service stopped.")
             return START_NOT_STICKY
         }
         return START_STICKY

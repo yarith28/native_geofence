@@ -5,7 +5,6 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
-import android.util.Log
 import androidx.core.app.NotificationCompat
 
 class Notifications {
@@ -35,7 +34,7 @@ class Notifications {
             val smallIconId = if (launcherIconId != 0) {
                 launcherIconId
             } else {
-                Log.w(TAG, "mipmap/ic_launcher not found; using a fallback notification icon.")
+                NativeGeofenceLogger.w(context, TAG, "mipmap/ic_launcher not found; using a fallback notification icon.")
                 android.R.drawable.ic_dialog_info
             }
 
