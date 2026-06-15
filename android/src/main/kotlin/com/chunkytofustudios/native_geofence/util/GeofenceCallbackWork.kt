@@ -23,6 +23,7 @@ class GeofenceCallbackWork {
         fun enqueue(
             context: Context,
             geofenceCallbackParams: GeofenceCallbackParamsWire,
+            source: String = Constants.EVENT_SOURCE_EXTERNAL_INJECTION,
             onFinished: (() -> Unit)? = null
         ) {
             val geofenceIdList = geofenceCallbackParams.geofences.map { it.id }
@@ -35,8 +36,9 @@ class GeofenceCallbackWork {
             NativeGeofenceLogger.i(
                 context,
                 TAG,
-                "Queueing geofence callback work: event=${geofenceCallbackParams.event}, " +
-                    "ids=$geofenceIds, callbackHandle=${geofenceCallbackParams.callbackHandle}, " +
+                "Queueing geofence callback work: source=$source, " +
+                    "event=${geofenceCallbackParams.event}, ids=$geofenceIds, " +
+                    "callbackHandle=${geofenceCallbackParams.callbackHandle}, " +
                     "hasLocation=${geofenceCallbackParams.location != null}."
             )
 
@@ -69,8 +71,8 @@ class GeofenceCallbackWork {
                             NativeGeofenceLogger.d(
                                 context,
                                 TAG,
-                                "Enqueued geofence callback work: event=${geofenceCallbackParams.event}, " +
-                                    "ids=$geofenceIds."
+                                "Enqueued geofence callback work: source=$source, " +
+                                    "event=${geofenceCallbackParams.event}, ids=$geofenceIds."
                             )
                         } catch (e: Exception) {
                             NativeGeofenceDiagnostics.recordCallbackEnqueueFailure(
@@ -82,7 +84,7 @@ class GeofenceCallbackWork {
                             NativeGeofenceLogger.e(
                                 context,
                                 TAG,
-                                "Failed to enqueue geofence callback work: " +
+                                "Failed to enqueue geofence callback work: source=$source, " +
                                     "event=${geofenceCallbackParams.event}, ids=$geofenceIds.",
                                 e
                             )
@@ -102,7 +104,7 @@ class GeofenceCallbackWork {
                 NativeGeofenceLogger.e(
                     context,
                     TAG,
-                    "Failed while queueing geofence callback work: " +
+                    "Failed while queueing geofence callback work: source=$source, " +
                         "event=${geofenceCallbackParams.event}, ids=$geofenceIds.",
                     e
                 )

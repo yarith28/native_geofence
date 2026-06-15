@@ -27,17 +27,20 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
         NativeGeofenceLogger.d(context, TAG, "Geofence broadcast received.")
         NativeGeofenceDiagnostics.recordBroadcastReceived(context)
 
+        val source = Constants.EVENT_SOURCE_ANDROID_GEOFENCING_API
         val geofenceCallbackParams = getGeofenceCallbackParams(context, intent) ?: return
         val dedupedParams = removeAlreadyDeliveredGeofenceStates(
             context,
-            geofenceCallbackParams
+            geofenceCallbackParams,
+            source
         )
-        enqueueGeofenceCallbacks(context, dedupedParams)
+        enqueueGeofenceCallbacks(context, dedupedParams, source)
     }
 
     private fun removeAlreadyDeliveredGeofenceStates(
         context: Context,
-        params: List<GeofenceCallbackParamsWire>
+        params: List<GeofenceCallbackParamsWire>,
+        source: String
     ): List<GeofenceCallbackParamsWire> {
         val now = System.currentTimeMillis()
         return params.mapNotNull { callbackParams ->
@@ -53,7 +56,7 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                         context,
                         TAG,
                         "Skipping already-delivered geofence state ID=${geofence.id}, " +
-                            "event=${callbackParams.event}."
+                            "event=${callbackParams.event}, source=$source."
                     )
                 }
                 !sameStateDelivered
@@ -63,7 +66,8 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                 NativeGeofenceLogger.d(
                     context,
                     TAG,
-                    "No new geofence events to enqueue after state de-dupe."
+                    "No new geofence events to enqueue after state de-dupe: " +
+                        "event=${callbackParams.event}, source=$source."
                 )
                 return@mapNotNull null
             }
@@ -87,7 +91,8 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
 
     private fun enqueueGeofenceCallbacks(
         context: Context,
-        params: List<GeofenceCallbackParamsWire>
+        params: List<GeofenceCallbackParamsWire>,
+        source: String
     ) {
         if (params.isEmpty()) {
             return
@@ -123,7 +128,7 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
 
         try {
             for (geofenceCallbackParams in params) {
-                GeofenceCallbackWork.enqueue(context, geofenceCallbackParams) {
+                GeofenceCallbackWork.enqueue(context, geofenceCallbackParams, source) {
                     finishOne()
                 }
             }
@@ -137,7 +142,7 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
             NativeGeofenceLogger.e(
                 context,
                 TAG,
-                "Failed while queueing geofence callback work; callbacks may be dropped.",
+                "Failed while queueing geofence callback work from source=$source; callbacks may be dropped.",
                 e
             )
             finishPendingResult()

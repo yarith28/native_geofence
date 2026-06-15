@@ -31,6 +31,10 @@ class Constants {
         const val INJECT_EXTRA_ACCURACY = "$PACKAGE_NAME.inject.accuracy"
         const val INJECT_EXTRA_TIME = "$PACKAGE_NAME.inject.time"
         const val INJECT_EXTRA_MOCK = "$PACKAGE_NAME.inject.mock"
+        const val INJECT_EXTRA_SOURCE = "$PACKAGE_NAME.inject.source"
+
+        const val EVENT_SOURCE_ANDROID_GEOFENCING_API = "android_geofencing_api"
+        const val EVENT_SOURCE_EXTERNAL_INJECTION = "external_injection"
 
         const val WORKER_PAYLOAD_KEY = "$PACKAGE_NAME.worker_payload"
         const val GEOFENCE_CALLBACK_WORK_GROUP = "geofence_callback_work_group"
