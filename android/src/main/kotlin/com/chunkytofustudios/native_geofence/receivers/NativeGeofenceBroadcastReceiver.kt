@@ -8,6 +8,7 @@ import com.chunkytofustudios.native_geofence.Constants
 import com.chunkytofustudios.native_geofence.api.NativeGeofenceApiImpl
 import com.chunkytofustudios.native_geofence.generated.ActiveGeofenceWire
 import com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWire
+import com.chunkytofustudios.native_geofence.generated.GeofenceEvent
 import com.chunkytofustudios.native_geofence.util.ActiveGeofenceWires
 import com.chunkytofustudios.native_geofence.util.GeofenceCallbackWork
 import com.chunkytofustudios.native_geofence.util.GeofenceEvents
@@ -29,28 +30,39 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
 
         val source = Constants.EVENT_SOURCE_ANDROID_GEOFENCING_API
         val geofenceCallbackParams = getGeofenceCallbackParams(context, intent) ?: return
-        val dedupedParams = removeAlreadyDeliveredGeofenceStates(
+        val claimedParams = claimUndeliveredGeofenceStates(
             context,
             geofenceCallbackParams,
             source
         )
-        enqueueGeofenceCallbacks(context, dedupedParams, source)
+        enqueueGeofenceCallbacks(context, claimedParams, source)
     }
 
-    private fun removeAlreadyDeliveredGeofenceStates(
+    private fun claimUndeliveredGeofenceStates(
         context: Context,
         params: List<GeofenceCallbackParamsWire>,
         source: String
-    ): List<GeofenceCallbackParamsWire> {
+    ): List<ClaimedGeofenceCallbackParams> {
         return params.mapNotNull { callbackParams ->
+            val claims = mutableListOf<DeliveredGeofenceEventClaim>()
             val geofencesToDeliver = callbackParams.geofences.filter { geofence ->
-                val sameStateDelivered =
-                    NativeGeofencePersistence.wasSameGeofenceTransitionStateDelivered(
+                val claimedAt = System.currentTimeMillis()
+                val claimed =
+                    NativeGeofencePersistence.claimDeliveredGeofenceEvent(
                         context,
                         geofence.id,
-                        callbackParams.event
+                        callbackParams.event,
+                        claimedAt
                     )
-                if (sameStateDelivered) {
+                if (claimed) {
+                    claims.add(
+                        DeliveredGeofenceEventClaim(
+                            geofence.id,
+                            callbackParams.event,
+                            claimedAt
+                        )
+                    )
+                } else {
                     NativeGeofenceLogger.d(
                         context,
                         TAG,
@@ -58,7 +70,7 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                             "event=${callbackParams.event}, source=$source."
                     )
                 }
-                !sameStateDelivered
+                claimed
             }
 
             if (geofencesToDeliver.isEmpty()) {
@@ -71,18 +83,21 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                 return@mapNotNull null
             }
 
-            GeofenceCallbackParamsWire(
-                geofencesToDeliver,
-                callbackParams.event,
-                callbackParams.location,
-                callbackParams.callbackHandle
+            ClaimedGeofenceCallbackParams(
+                GeofenceCallbackParamsWire(
+                    geofencesToDeliver,
+                    callbackParams.event,
+                    callbackParams.location,
+                    callbackParams.callbackHandle
+                ),
+                claims
             )
         }
     }
 
     private fun enqueueGeofenceCallbacks(
         context: Context,
-        params: List<GeofenceCallbackParamsWire>,
+        params: List<ClaimedGeofenceCallbackParams>,
         source: String
     ) {
         if (params.isEmpty()) {
@@ -118,10 +133,11 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
         }
 
         try {
-            for (geofenceCallbackParams in params) {
+            for (claimedParams in params) {
+                val geofenceCallbackParams = claimedParams.params
                 GeofenceCallbackWork.enqueue(context, geofenceCallbackParams, source) { enqueued ->
-                    if (enqueued) {
-                        recordDeliveredGeofenceStates(context, geofenceCallbackParams)
+                    if (!enqueued) {
+                        releaseDeliveredGeofenceStateClaims(context, claimedParams.claims)
                     }
                     finishOne()
                 }
@@ -130,7 +146,7 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
             NativeGeofenceDiagnostics.recordCallbackEnqueueFailure(
                 context,
                 params.firstOrNull()?.event,
-                params.flatMap { it.geofences.map { geofence -> geofence.id } }.distinct(),
+                params.flatMap { it.params.geofences.map { geofence -> geofence.id } }.distinct(),
                 e.toString()
             )
             NativeGeofenceLogger.e(
@@ -139,21 +155,21 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                 "Failed while queueing geofence callback work from source=$source; callbacks may be dropped.",
                 e
             )
+            params.forEach { releaseDeliveredGeofenceStateClaims(context, it.claims) }
             finishPendingResult()
         }
     }
 
-    private fun recordDeliveredGeofenceStates(
+    private fun releaseDeliveredGeofenceStateClaims(
         context: Context,
-        params: GeofenceCallbackParamsWire
+        claims: List<DeliveredGeofenceEventClaim>
     ) {
-        val now = System.currentTimeMillis()
-        for (geofence in params.geofences) {
-            NativeGeofencePersistence.recordDeliveredGeofenceEvent(
+        for (claim in claims) {
+            NativeGeofencePersistence.releaseDeliveredGeofenceEventClaim(
                 context,
-                geofence.id,
-                params.event,
-                now
+                claim.geofenceId,
+                claim.event,
+                claim.timestampMillis
             )
         }
     }
@@ -326,5 +342,18 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
         val geofenceId: String,
         val distanceMeters: Double,
         val radiusMeters: Double
+    )
+
+    private data class ClaimedGeofenceCallbackParams(
+        val params: GeofenceCallbackParamsWire,
+        val claims: List<DeliveredGeofenceEventClaim>
+    ) {
+        val event: GeofenceEvent = params.event
+    }
+
+    private data class DeliveredGeofenceEventClaim(
+        val geofenceId: String,
+        val event: GeofenceEvent,
+        val timestampMillis: Long
     )
 }

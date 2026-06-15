@@ -196,38 +196,99 @@ class NativeGeofencePersistence {
         }
 
         @JvmStatic
+        fun claimDeliveredGeofenceEvent(
+            context: Context,
+            geofenceId: String,
+            event: GeofenceEvent,
+            timestampMillis: Long = System.currentTimeMillis()
+        ): Boolean {
+            synchronized(sharedPreferencesLock) {
+                val p = context.getSharedPreferences(
+                    Constants.SHARED_PREFERENCES_KEY,
+                    Context.MODE_PRIVATE
+                )
+                if (wasSameGeofenceTransitionStateDeliveredLocked(p, geofenceId, event)) {
+                    return false
+                }
+                val editor = p.edit()
+                    .putString(getLastDeliveredGeofenceEventKey(geofenceId), event.name)
+                    .putLong(getLastDeliveredGeofenceEventTimeKey(geofenceId), timestampMillis)
+                if (!editor.commit()) {
+                    NativeGeofenceLogger.e(context, TAG, "Failed to claim delivered state for Geofence ID=${geofenceId}.")
+                }
+                return true
+            }
+        }
+
+        @JvmStatic
+        fun releaseDeliveredGeofenceEventClaim(
+            context: Context,
+            geofenceId: String,
+            event: GeofenceEvent,
+            timestampMillis: Long
+        ) {
+            synchronized(sharedPreferencesLock) {
+                val p = context.getSharedPreferences(
+                    Constants.SHARED_PREFERENCES_KEY,
+                    Context.MODE_PRIVATE
+                )
+                val eventKey = getLastDeliveredGeofenceEventKey(geofenceId)
+                val timeKey = getLastDeliveredGeofenceEventTimeKey(geofenceId)
+                if (p.getString(eventKey, null) != event.name ||
+                    p.getLong(timeKey, Long.MIN_VALUE) != timestampMillis
+                ) {
+                    return
+                }
+                val editor = p.edit()
+                    .remove(eventKey)
+                    .remove(timeKey)
+                if (!editor.commit()) {
+                    NativeGeofenceLogger.e(context, TAG, "Failed to release delivered state claim for Geofence ID=${geofenceId}.")
+                }
+            }
+        }
+
+        @JvmStatic
         fun wasSameGeofenceTransitionStateDelivered(
             context: Context,
+            geofenceId: String,
+            event: GeofenceEvent
+        ): Boolean {
+            synchronized(sharedPreferencesLock) {
+                val p = context.getSharedPreferences(
+                    Constants.SHARED_PREFERENCES_KEY,
+                    Context.MODE_PRIVATE
+                )
+                return wasSameGeofenceTransitionStateDeliveredLocked(p, geofenceId, event)
+            }
+        }
+
+        private fun wasSameGeofenceTransitionStateDeliveredLocked(
+            p: SharedPreferences,
             geofenceId: String,
             event: GeofenceEvent
         ): Boolean {
             if (event == GeofenceEvent.DWELL) {
                 return false
             }
-            synchronized(sharedPreferencesLock) {
-                val p = context.getSharedPreferences(
-                    Constants.SHARED_PREFERENCES_KEY,
-                    Context.MODE_PRIVATE
-                )
-                val lastEventName = p.getString(getLastDeliveredGeofenceEventKey(geofenceId), null)
-                    ?: return false
-                val lastEvent = try {
-                    GeofenceEvent.valueOf(lastEventName)
-                } catch (e: IllegalArgumentException) {
-                    return false
-                }
-                val lastInside = when (lastEvent) {
-                    GeofenceEvent.ENTER -> true
-                    GeofenceEvent.DWELL -> true
-                    GeofenceEvent.EXIT -> false
-                }
-                val currentInside = when (event) {
-                    GeofenceEvent.ENTER -> true
-                    GeofenceEvent.DWELL -> true
-                    GeofenceEvent.EXIT -> false
-                }
-                return lastInside == currentInside
+            val lastEventName = p.getString(getLastDeliveredGeofenceEventKey(geofenceId), null)
+                ?: return false
+            val lastEvent = try {
+                GeofenceEvent.valueOf(lastEventName)
+            } catch (e: IllegalArgumentException) {
+                return false
             }
+            val lastInside = when (lastEvent) {
+                GeofenceEvent.ENTER -> true
+                GeofenceEvent.DWELL -> true
+                GeofenceEvent.EXIT -> false
+            }
+            val currentInside = when (event) {
+                GeofenceEvent.ENTER -> true
+                GeofenceEvent.DWELL -> true
+                GeofenceEvent.EXIT -> false
+            }
+            return lastInside == currentInside
         }
 
         @JvmStatic

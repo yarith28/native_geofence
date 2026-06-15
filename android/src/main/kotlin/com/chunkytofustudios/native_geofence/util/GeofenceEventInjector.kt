@@ -50,10 +50,13 @@ object GeofenceEventInjector {
             NativeGeofenceLogger.d(appContext, TAG, "Inject ignored: $event not configured for ID=$geofenceId source=$source.")
             return false
         }
-        if (NativeGeofencePersistence.wasSameGeofenceTransitionStateDelivered(
-                appContext, geofenceId, event
-            )
-        ) {
+        val claimedAt = System.currentTimeMillis()
+        if (!NativeGeofencePersistence.claimDeliveredGeofenceEvent(
+                appContext,
+                geofenceId,
+                event,
+                claimedAt
+            )) {
             NativeGeofenceLogger.d(appContext, TAG, "Inject de-duped: ID=$geofenceId event=$event source=$source already delivered.")
             return false
         }
@@ -75,11 +78,12 @@ object GeofenceEventInjector {
             fence.callbackHandle,
         )
         GeofenceCallbackWork.enqueue(appContext, params, source) { enqueued ->
-            if (enqueued) {
-                NativeGeofencePersistence.recordDeliveredGeofenceEvent(
+            if (!enqueued) {
+                NativeGeofencePersistence.releaseDeliveredGeofenceEventClaim(
                     appContext,
                     geofenceId,
-                    event
+                    event,
+                    claimedAt
                 )
             }
             onFinished?.invoke(enqueued)
