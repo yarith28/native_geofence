@@ -6,13 +6,23 @@ import 'package:native_geofence/src/model/native_geofence_exception.dart';
 
 extension LocationMapper on Location {
   LocationWire toWire() {
-    return LocationWire(latitude: latitude, longitude: longitude);
+    return LocationWire(
+      latitude: latitude,
+      longitude: longitude,
+      accuracyMeters: accuracyMeters,
+      isMock: isMock,
+    );
   }
 }
 
 extension LocationWireMapper on LocationWire {
   Location fromWire() {
-    return Location(latitude: latitude, longitude: longitude);
+    return Location(
+      latitude: latitude,
+      longitude: longitude,
+      accuracyMeters: accuracyMeters,
+      isMock: isMock,
+    );
   }
 }
 

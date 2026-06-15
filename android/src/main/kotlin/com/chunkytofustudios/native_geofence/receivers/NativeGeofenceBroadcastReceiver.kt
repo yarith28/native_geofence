@@ -4,30 +4,19 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.location.Location
-import androidx.core.content.ContextCompat
-import androidx.work.BackoffPolicy
-import androidx.work.Data
-import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.OutOfQuotaPolicy
-import androidx.work.WorkManager
 import com.chunkytofustudios.native_geofence.Constants
-import com.chunkytofustudios.native_geofence.NativeGeofenceBackgroundWorker
 import com.chunkytofustudios.native_geofence.api.NativeGeofenceApiImpl
 import com.chunkytofustudios.native_geofence.generated.ActiveGeofenceWire
 import com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWire
-import com.chunkytofustudios.native_geofence.model.GeofenceCallbackParamsStorage
 import com.chunkytofustudios.native_geofence.util.ActiveGeofenceWires
+import com.chunkytofustudios.native_geofence.util.GeofenceCallbackWork
 import com.chunkytofustudios.native_geofence.util.GeofenceEvents
 import com.chunkytofustudios.native_geofence.util.LocationWires
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnostics
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 import com.chunkytofustudios.native_geofence.util.NativeGeofencePersistence
-import com.google.android.gms.location.GeofencingEvent
 import com.google.android.gms.location.GeofenceStatusCodes
-import java.util.concurrent.TimeUnit
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import com.google.android.gms.location.GeofencingEvent
 
 class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
     companion object {
@@ -39,7 +28,61 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
         NativeGeofenceDiagnostics.recordBroadcastReceived(context)
 
         val geofenceCallbackParams = getGeofenceCallbackParams(context, intent) ?: return
-        enqueueGeofenceCallbacks(context, geofenceCallbackParams)
+        val dedupedParams = removeAlreadyDeliveredGeofenceStates(
+            context,
+            geofenceCallbackParams
+        )
+        enqueueGeofenceCallbacks(context, dedupedParams)
+    }
+
+    private fun removeAlreadyDeliveredGeofenceStates(
+        context: Context,
+        params: List<GeofenceCallbackParamsWire>
+    ): List<GeofenceCallbackParamsWire> {
+        val now = System.currentTimeMillis()
+        return params.mapNotNull { callbackParams ->
+            val geofencesToDeliver = callbackParams.geofences.filter { geofence ->
+                val sameStateDelivered =
+                    NativeGeofencePersistence.wasSameGeofenceTransitionStateDelivered(
+                        context,
+                        geofence.id,
+                        callbackParams.event
+                    )
+                if (sameStateDelivered) {
+                    NativeGeofenceLogger.d(
+                        context,
+                        TAG,
+                        "Skipping already-delivered geofence state ID=${geofence.id}, " +
+                            "event=${callbackParams.event}."
+                    )
+                }
+                !sameStateDelivered
+            }
+
+            if (geofencesToDeliver.isEmpty()) {
+                NativeGeofenceLogger.d(
+                    context,
+                    TAG,
+                    "No new geofence events to enqueue after state de-dupe."
+                )
+                return@mapNotNull null
+            }
+
+            for (geofence in geofencesToDeliver) {
+                NativeGeofencePersistence.recordDeliveredGeofenceEvent(
+                    context,
+                    geofence.id,
+                    callbackParams.event,
+                    now
+                )
+            }
+            GeofenceCallbackParamsWire(
+                geofencesToDeliver,
+                callbackParams.event,
+                callbackParams.location,
+                callbackParams.callbackHandle
+            )
+        }
     }
 
     private fun enqueueGeofenceCallbacks(
@@ -79,71 +122,10 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
         }
 
         try {
-            val workManager = WorkManager.getInstance(context)
             for (geofenceCallbackParams in params) {
-                val geofenceIdList = geofenceCallbackParams.geofences.map { it.id }
-                val geofenceIds = geofenceIdList.joinToString(",")
-                NativeGeofenceDiagnostics.recordCallbackEnqueueAttempt(
-                    context,
-                    geofenceCallbackParams.event,
-                    geofenceIdList
-                )
-                NativeGeofenceLogger.i(
-                    context,
-                    TAG,
-                    "Queueing geofence callback work: event=${geofenceCallbackParams.event}, " +
-                        "ids=$geofenceIds, callbackHandle=${geofenceCallbackParams.callbackHandle}, " +
-                        "hasLocation=${geofenceCallbackParams.location != null}."
-                )
-
-                val jsonData =
-                    Json.encodeToString(GeofenceCallbackParamsStorage.fromWire(geofenceCallbackParams))
-                val workRequest = OneTimeWorkRequestBuilder<NativeGeofenceBackgroundWorker>()
-                    .setInputData(
-                        Data.Builder().putString(Constants.WORKER_PAYLOAD_KEY, jsonData).build()
-                    )
-                    .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
-                    .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-                    .build()
-
-                val work = workManager.beginUniqueWork(
-                    Constants.GEOFENCE_CALLBACK_WORK_GROUP,
-                    // Process geofence callbacks sequentially without letting a failed
-                    // historical chain poison future geofence events.
-                    ExistingWorkPolicy.APPEND_OR_REPLACE,
-                    workRequest
-                )
-                val enqueueResult = work.enqueue().result
-                enqueueResult.addListener(
-                    {
-                        try {
-                            enqueueResult.get()
-                            NativeGeofenceLogger.d(
-                                context,
-                                TAG,
-                                "Enqueued geofence callback work: event=${geofenceCallbackParams.event}, " +
-                                    "ids=$geofenceIds."
-                            )
-                        } catch (e: Exception) {
-                            NativeGeofenceDiagnostics.recordCallbackEnqueueFailure(
-                                context,
-                                geofenceCallbackParams.event,
-                                geofenceIdList,
-                                e.toString()
-                            )
-                            NativeGeofenceLogger.e(
-                                context,
-                                TAG,
-                                "Failed to enqueue geofence callback work: " +
-                                    "event=${geofenceCallbackParams.event}, ids=$geofenceIds.",
-                                e
-                            )
-                        } finally {
-                            finishOne()
-                        }
-                    },
-                    ContextCompat.getMainExecutor(context)
-                )
+                GeofenceCallbackWork.enqueue(context, geofenceCallbackParams) {
+                    finishOne()
+                }
             }
         } catch (e: Exception) {
             NativeGeofenceDiagnostics.recordCallbackEnqueueFailure(
@@ -152,7 +134,12 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                 params.flatMap { it.geofences.map { geofence -> geofence.id } }.distinct(),
                 e.toString()
             )
-            NativeGeofenceLogger.e(context, TAG, "Failed while queueing geofence callback work; callbacks may be dropped.", e)
+            NativeGeofenceLogger.e(
+                context,
+                TAG,
+                "Failed while queueing geofence callback work; callbacks may be dropped.",
+                e
+            )
             finishPendingResult()
         }
     }
@@ -311,7 +298,12 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                 pendingResult.finish()
             }
         } catch (e: Exception) {
-            NativeGeofenceLogger.e(context, TAG, "Failed to re-create persisted geofences after geofence service error: $e", e)
+            NativeGeofenceLogger.e(
+                context,
+                TAG,
+                "Failed to re-create persisted geofences after geofence service error: $e",
+                e
+            )
             pendingResult.finish()
         }
     }
