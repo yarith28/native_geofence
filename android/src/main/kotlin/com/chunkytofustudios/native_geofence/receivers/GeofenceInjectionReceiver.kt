@@ -51,10 +51,10 @@ class GeofenceInjectionReceiver : BroadcastReceiver() {
         }
 
         try {
-            val enqueued = GeofenceEventInjector.inject(context, id, event, location, isMock, source) {
+            val accepted = GeofenceEventInjector.inject(context, id, event, location, isMock, source) { _ ->
                 finishPendingResult()
             }
-            if (!enqueued) {
+            if (!accepted) {
                 finishPendingResult()
             }
         } catch (e: Throwable) {

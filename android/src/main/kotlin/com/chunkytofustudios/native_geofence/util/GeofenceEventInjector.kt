@@ -24,7 +24,10 @@ object GeofenceEventInjector {
      * @param event the confirmed transition.
      * @param location optional location to attach to the event.
      * @param source source label for logging and diagnostics.
-     * @return true if an event was enqueued, false if dropped (unknown id or
+     * @param onFinished called after WorkManager reports whether the enqueue
+     *         completed.
+     * @return true if the event was accepted for enqueue, false if dropped
+     *         before enqueue (unknown id, unsupported trigger, or
      *         already-delivered state).
      */
     @JvmStatic
@@ -35,7 +38,7 @@ object GeofenceEventInjector {
         location: Location?,
         isMock: Boolean = false,
         source: String = Constants.EVENT_SOURCE_EXTERNAL_INJECTION,
-        onFinished: (() -> Unit)? = null,
+        onFinished: ((Boolean) -> Unit)? = null,
     ): Boolean {
         val appContext = context.applicationContext
         val fence = NativeGeofencePersistence.getGeofence(appContext, geofenceId)
@@ -55,7 +58,6 @@ object GeofenceEventInjector {
             return false
         }
 
-        NativeGeofencePersistence.recordDeliveredGeofenceEvent(appContext, geofenceId, event)
         // Build the wire with the out-of-band mock flag: a constructed Location
         // cannot carry the OS mock state, so the caller passes it explicitly.
         val locationWire = location?.let {
@@ -72,8 +74,17 @@ object GeofenceEventInjector {
             locationWire,
             fence.callbackHandle,
         )
-        GeofenceCallbackWork.enqueue(appContext, params, source, onFinished)
-        NativeGeofenceLogger.i(appContext, TAG, "Injected geofence event ID=$geofenceId event=$event source=$source.")
+        GeofenceCallbackWork.enqueue(appContext, params, source) { enqueued ->
+            if (enqueued) {
+                NativeGeofencePersistence.recordDeliveredGeofenceEvent(
+                    appContext,
+                    geofenceId,
+                    event
+                )
+            }
+            onFinished?.invoke(enqueued)
+        }
+        NativeGeofenceLogger.i(appContext, TAG, "Queued injected geofence event ID=$geofenceId event=$event source=$source.")
         return true
     }
 }

@@ -24,7 +24,7 @@ class GeofenceCallbackWork {
             context: Context,
             geofenceCallbackParams: GeofenceCallbackParamsWire,
             source: String = Constants.EVENT_SOURCE_EXTERNAL_INJECTION,
-            onFinished: (() -> Unit)? = null
+            onFinished: ((Boolean) -> Unit)? = null
         ) {
             val geofenceIdList = geofenceCallbackParams.geofences.map { it.id }
             val geofenceIds = geofenceIdList.joinToString(",")
@@ -74,6 +74,7 @@ class GeofenceCallbackWork {
                                 "Enqueued geofence callback work: source=$source, " +
                                     "event=${geofenceCallbackParams.event}, ids=$geofenceIds."
                             )
+                            onFinished?.invoke(true)
                         } catch (e: Exception) {
                             NativeGeofenceDiagnostics.recordCallbackEnqueueFailure(
                                 context,
@@ -88,8 +89,7 @@ class GeofenceCallbackWork {
                                     "event=${geofenceCallbackParams.event}, ids=$geofenceIds.",
                                 e
                             )
-                        } finally {
-                            onFinished?.invoke()
+                            onFinished?.invoke(false)
                         }
                     },
                     ContextCompat.getMainExecutor(context)
@@ -108,7 +108,7 @@ class GeofenceCallbackWork {
                         "event=${geofenceCallbackParams.event}, ids=$geofenceIds.",
                     e
                 )
-                onFinished?.invoke()
+                onFinished?.invoke(false)
             }
         }
     }

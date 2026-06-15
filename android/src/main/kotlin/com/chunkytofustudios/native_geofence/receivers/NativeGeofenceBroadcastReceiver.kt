@@ -42,7 +42,6 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
         params: List<GeofenceCallbackParamsWire>,
         source: String
     ): List<GeofenceCallbackParamsWire> {
-        val now = System.currentTimeMillis()
         return params.mapNotNull { callbackParams ->
             val geofencesToDeliver = callbackParams.geofences.filter { geofence ->
                 val sameStateDelivered =
@@ -72,14 +71,6 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                 return@mapNotNull null
             }
 
-            for (geofence in geofencesToDeliver) {
-                NativeGeofencePersistence.recordDeliveredGeofenceEvent(
-                    context,
-                    geofence.id,
-                    callbackParams.event,
-                    now
-                )
-            }
             GeofenceCallbackParamsWire(
                 geofencesToDeliver,
                 callbackParams.event,
@@ -128,7 +119,10 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
 
         try {
             for (geofenceCallbackParams in params) {
-                GeofenceCallbackWork.enqueue(context, geofenceCallbackParams, source) {
+                GeofenceCallbackWork.enqueue(context, geofenceCallbackParams, source) { enqueued ->
+                    if (enqueued) {
+                        recordDeliveredGeofenceStates(context, geofenceCallbackParams)
+                    }
                     finishOne()
                 }
             }
@@ -146,6 +140,21 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                 e
             )
             finishPendingResult()
+        }
+    }
+
+    private fun recordDeliveredGeofenceStates(
+        context: Context,
+        params: GeofenceCallbackParamsWire
+    ) {
+        val now = System.currentTimeMillis()
+        for (geofence in params.geofences) {
+            NativeGeofencePersistence.recordDeliveredGeofenceEvent(
+                context,
+                geofence.id,
+                params.event,
+                now
+            )
         }
     }
 
