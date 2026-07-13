@@ -40,6 +40,27 @@ class GeofenceRegistrationStoreTest {
     }
 
     @Test
+    fun `new insertion rollback removes every newly persisted field`() {
+        val backend = FakeGeofencePersistenceBackend()
+        val store = GeofenceRegistrationStore(backend) { 1_000L }
+        val emptySnapshot = store.snapshot("office")
+
+        assertTrue(
+            store.saveConfiguredGeofence(
+                geofence(duration = 500),
+                recoveryEligible = true,
+                active = false
+            )
+        )
+        assertTrue(store.restore(emptySnapshot))
+
+        assertFalse(backend.values.containsKey(recordKey("office")))
+        assertFalse(backend.values.containsKey(expirationKey("office")))
+        assertTrue(store.rawIds().isEmpty())
+        assertTrue(store.configuredIds().isEmpty())
+    }
+
+    @Test
     fun `expired registration stays canonical and raw but is not recoverable`() {
         var now = 5_000L
         val backend = FakeGeofencePersistenceBackend()
