@@ -104,6 +104,18 @@ class NativeGeofencePersistence {
             }
 
         @JvmStatic
+        fun isCallbackRefreshRequired(context: Context): Boolean =
+            synchronized(sharedPreferencesLock) {
+                store(context).isCallbackRefreshRequired()
+            }
+
+        @JvmStatic
+        fun markCallbackRefreshRequired(context: Context): Boolean =
+            synchronized(sharedPreferencesLock) {
+                store(context).markCallbackRefreshRequired()
+            }
+
+        @JvmStatic
         internal fun snapshot(
             context: Context,
             id: String

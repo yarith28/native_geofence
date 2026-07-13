@@ -20,10 +20,15 @@ class Constants {
         const val CALLBACK_DISPATCHER_HANDLE_KEY = "callback_dispatch_handler"
         const val CALLBACK_DISPATCHER_PACKAGE_FINGERPRINT_KEY =
             "$PACKAGE_NAME.callback_dispatcher_package_fingerprint"
+        const val CALLBACK_REFRESH_REQUIRED_KEY = "$PACKAGE_NAME.callback_refresh_required"
 
         const val ACTION_SHUTDOWN = "SHUTDOWN"
 
         const val WORKER_PAYLOAD_KEY = "$PACKAGE_NAME.worker_payload"
+        const val WORKER_PAYLOAD_REFERENCE_KEY = "$PACKAGE_NAME.worker_payload_reference"
+        const val LEGACY_WORKER_PAYLOAD_FILE_KEY = "$PACKAGE_NAME.worker_payload_file"
+        const val CALLBACK_PAYLOAD_DIRECTORY = "native_geofence_callback_payloads"
+        const val LEGACY_CALLBACK_PAYLOAD_DIRECTORY = "geofence_callback_payloads"
         const val GEOFENCE_CALLBACK_WORK_GROUP = "geofence_callback_work_group"
 
         const val RECOVERY_GENERATION_KEY = "$PACKAGE_NAME.recovery_generation"
