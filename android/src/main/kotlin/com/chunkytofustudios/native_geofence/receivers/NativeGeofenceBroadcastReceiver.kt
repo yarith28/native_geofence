@@ -15,9 +15,13 @@ import com.chunkytofustudios.native_geofence.model.GeofenceCallbackParamsStorage
 import com.chunkytofustudios.native_geofence.util.GeofenceCallbackRouting
 import com.chunkytofustudios.native_geofence.util.GeofenceCallbackRoutingResult
 import com.chunkytofustudios.native_geofence.util.GeofenceEvents
+import com.chunkytofustudios.native_geofence.util.GeofenceMutationQueues
+import com.chunkytofustudios.native_geofence.util.GeofenceMutationRunner
 import com.chunkytofustudios.native_geofence.util.LocationWires
 import com.chunkytofustudios.native_geofence.util.NativeGeofencePersistence
+import com.chunkytofustudios.native_geofence.util.OrphanedGeofenceCleanupCoordinator
 import com.google.android.gms.location.GeofencingEvent
+import com.google.android.gms.location.LocationServices
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -31,10 +35,7 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
 
         val routing = getGeofenceCallbackParams(context, intent) ?: return
         if (routing.orphanIds.isNotEmpty()) {
-            Log.w(
-                TAG,
-                "Triggered geofences without usable durable registrations were classified as orphans."
-            )
+            cleanupOrphans(context, routing.orphanIds)
         }
         if (routing.callbackGroups.isEmpty()) {
             Log.e(TAG, "No triggered geofences could be resolved through durable storage.")
@@ -57,6 +58,41 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                 workRequest
             )
             work.enqueue()
+        }
+    }
+
+    private fun cleanupOrphans(context: Context, orphanIds: List<String>) {
+        val applicationContext = context.applicationContext
+        val geofencingClient = LocationServices.getGeofencingClient(applicationContext)
+        val mutationRunner = GeofenceMutationRunner(
+            GeofenceMutationQueues.forContext(applicationContext) { error ->
+                Log.e(TAG, "Unhandled orphan cleanup mutation failure.", error)
+            }
+        ) { error ->
+            Log.e(TAG, "Orphan cleanup callback threw an exception.", error)
+        }
+        val coordinator = OrphanedGeofenceCleanupCoordinator(
+            mutationRunner = mutationRunner,
+            lookup = { id -> NativeGeofencePersistence.getGeofence(applicationContext, id) },
+            markForPlatformCleanup = { id ->
+                NativeGeofencePersistence.markGeofenceForPlatformCleanup(applicationContext, id)
+            },
+            removeFromPlatform = { id, complete ->
+                geofencingClient.removeGeofences(listOf(id))
+                    .addOnSuccessListener { complete(Result.success(Unit)) }
+                    .addOnFailureListener { complete(Result.failure(it)) }
+            },
+            clearDurableState = { id ->
+                NativeGeofencePersistence.removeGeofence(applicationContext, id)
+            }
+        )
+
+        orphanIds.forEach { id ->
+            coordinator.cleanup(id) { result ->
+                result.onFailure { error ->
+                    Log.e(TAG, "Failed to clean an orphaned geofence ID=$id.", error)
+                }
+            }
         }
     }
 

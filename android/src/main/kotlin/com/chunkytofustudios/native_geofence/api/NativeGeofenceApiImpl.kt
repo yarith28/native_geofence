@@ -24,12 +24,16 @@ import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationFai
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationTransaction
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationTransactionException
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceTransactionStepOutcome
+import com.chunkytofustudios.native_geofence.util.GeofenceMutationQueue
+import com.chunkytofustudios.native_geofence.util.GeofenceMutationQueues
+import com.chunkytofustudios.native_geofence.util.GeofenceMutationRunner
 import com.chunkytofustudios.native_geofence.util.GeofenceWires
 import com.chunkytofustudios.native_geofence.util.GeofencePersistenceSnapshot
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 import com.chunkytofustudios.native_geofence.util.NativeGeofencePersistence
 import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.LocationServices
+import java.util.concurrent.atomic.AtomicBoolean
 
 class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
     companion object {
@@ -38,6 +42,24 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
     }
 
     private val geofencingClient = LocationServices.getGeofencingClient(context)
+    private val mutationQueue: GeofenceMutationQueue = GeofenceMutationQueues.forContext(
+        context
+    ) { error ->
+        NativeGeofenceLogger.e(
+            context,
+            TAG,
+            "Unhandled geofence mutation failure.",
+            error,
+        )
+    }
+    private val mutationRunner = GeofenceMutationRunner(mutationQueue) { error ->
+        NativeGeofenceLogger.e(
+            context,
+            TAG,
+            "Geofence mutation callback threw an exception.",
+            error,
+        )
+    }
 
     override fun initialize(callbackDispatcherHandle: Long) {
         persistCallbackDispatcherHandle(callbackDispatcherHandle) { handle ->
@@ -56,15 +78,16 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         geofence: GeofenceWire,
         callback: (Result<Unit>) -> Unit
     ) {
-        createGeofenceHelper(geofence, true, callback)
+        mutationRunner.run(callback) { complete ->
+            createGeofenceHelper(geofence, true, complete)
+        }
     }
 
     override fun reCreateAfterReboot() {
-        val geofences = NativeGeofencePersistence.getAllGeofences(context)
-        for (geofence in geofences) {
-            createGeofenceHelper(geofence, false, null)
+        mutationQueue.enqueue { done ->
+            val geofences = NativeGeofencePersistence.getAllGeofences(context)
+            recreateSequentially(geofences, index = 0, done = done)
         }
-        NativeGeofenceLogger.d(context, TAG, "${geofences.size} geofences re-created.")
     }
 
     override fun getGeofenceIds(): List<String> {
@@ -77,6 +100,12 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
     }
 
     override fun removeGeofenceById(id: String, callback: (Result<Unit>) -> Unit) {
+        mutationRunner.run(callback) { complete ->
+            removeGeofenceByIdLocked(id, complete)
+        }
+    }
+
+    private fun removeGeofenceByIdLocked(id: String, callback: (Result<Unit>) -> Unit) {
         geofencingClient.removeGeofences(listOf(id)).run {
             addOnSuccessListener {
                 if (!NativeGeofencePersistence.removeGeofence(context, id)) {
@@ -116,6 +145,12 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
     }
 
     override fun removeAllGeofences(callback: (Result<Unit>) -> Unit) {
+        mutationRunner.run(callback) { complete ->
+            removeAllGeofencesLocked(complete)
+        }
+    }
+
+    private fun removeAllGeofencesLocked(callback: (Result<Unit>) -> Unit) {
         val rawIds = NativeGeofencePersistence.getAllRawGeofenceIds(context)
         if (rawIds.isEmpty()) {
             if (!NativeGeofencePersistence.removeAllGeofences(context)) {
@@ -168,6 +203,39 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                     )
                 )
             }
+        }
+    }
+
+    private fun recreateSequentially(
+        geofences: List<GeofenceWire>,
+        index: Int,
+        done: () -> Unit
+    ) {
+        if (index >= geofences.size) {
+            NativeGeofenceLogger.d(context, TAG, "${geofences.size} geofences re-created.")
+            done()
+            return
+        }
+
+        val completed = AtomicBoolean(false)
+        fun advance() {
+            if (completed.compareAndSet(false, true)) {
+                recreateSequentially(geofences, index + 1, done)
+            }
+        }
+
+        try {
+            createGeofenceHelper(geofences[index], cache = false) {
+                advance()
+            }
+        } catch (error: Throwable) {
+            NativeGeofenceLogger.e(
+                context,
+                TAG,
+                "Failed to start geofence recreation.",
+                error,
+            )
+            advance()
         }
     }
 
