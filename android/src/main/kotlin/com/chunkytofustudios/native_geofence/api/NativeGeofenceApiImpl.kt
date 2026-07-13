@@ -73,7 +73,18 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
     override fun removeGeofenceById(id: String, callback: (Result<Unit>) -> Unit) {
         geofencingClient.removeGeofences(listOf(id)).run {
             addOnSuccessListener {
-                NativeGeofencePersistence.removeGeofence(context, id)
+                if (!NativeGeofencePersistence.removeGeofence(context, id)) {
+                    callback.invoke(
+                        Result.failure(
+                            FlutterError(
+                                NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                                "The geofence was removed from Play services, but durable " +
+                                    "plugin state could not be updated."
+                            )
+                        )
+                    )
+                    return@addOnSuccessListener
+                }
                 NativeGeofenceLogger.d(context, TAG, "Removed Geofence ID=$id.")
                 callback.invoke(Result.success(Unit))
             }
@@ -99,9 +110,37 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
     }
 
     override fun removeAllGeofences(callback: (Result<Unit>) -> Unit) {
-        geofencingClient.removeGeofences(getGeofencePendingIndent(context, null)).run {
+        val rawIds = NativeGeofencePersistence.getAllRawGeofenceIds(context)
+        if (rawIds.isEmpty()) {
+            if (!NativeGeofencePersistence.removeAllGeofences(context)) {
+                callback.invoke(
+                    Result.failure(
+                        FlutterError(
+                            NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                            "Failed to clear durable plugin geofence state."
+                        )
+                    )
+                )
+                return
+            }
+            callback.invoke(Result.success(Unit))
+            return
+        }
+
+        geofencingClient.removeGeofences(rawIds).run {
             addOnSuccessListener {
-                NativeGeofencePersistence.removeAllGeofences(context)
+                if (!NativeGeofencePersistence.removeAllGeofences(context)) {
+                    callback.invoke(
+                        Result.failure(
+                            FlutterError(
+                                NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                                "All geofences were removed from Play services, but durable " +
+                                    "plugin state could not be updated."
+                            )
+                        )
+                    )
+                    return@addOnSuccessListener
+                }
                 NativeGeofenceLogger.d(context, TAG, "Removed all geofences (if any).")
                 callback.invoke(Result.success(Unit))
             }
@@ -208,7 +247,36 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         ).run {
             addOnSuccessListener {
                 if (cache) {
-                    NativeGeofencePersistence.saveGeofence(context, geofence)
+                    if (!NativeGeofencePersistence.saveGeofence(context, geofence)) {
+                        callback?.invoke(
+                            Result.failure(
+                                FlutterError(
+                                    NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                                    "Play services registered the geofence, but its canonical " +
+                                        "configuration could not be durably persisted."
+                                )
+                            )
+                        )
+                        return@addOnSuccessListener
+                    }
+                } else if (
+                    !NativeGeofencePersistence.setLifecycleState(
+                        context,
+                        geofence.id,
+                        recoveryEligible = true,
+                        active = true
+                    )
+                ) {
+                    callback?.invoke(
+                        Result.failure(
+                            FlutterError(
+                                NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                                "The recovered geofence became active, but durable plugin " +
+                                    "state could not be updated."
+                            )
+                        )
+                    )
+                    return@addOnSuccessListener
                 }
                 NativeGeofenceLogger.d(
                     context,

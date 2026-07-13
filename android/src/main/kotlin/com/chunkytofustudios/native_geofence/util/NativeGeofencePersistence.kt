@@ -1,12 +1,9 @@
 package com.chunkytofustudios.native_geofence.util
 
 import android.content.Context
-import android.util.Log
+import android.content.SharedPreferences
 import com.chunkytofustudios.native_geofence.Constants
 import com.chunkytofustudios.native_geofence.generated.GeofenceWire
-import com.chunkytofustudios.native_geofence.model.GeofenceStorage
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.encodeToString
 
 class NativeGeofencePersistence {
     companion object {
@@ -17,133 +14,190 @@ class NativeGeofencePersistence {
         private val sharedPreferencesLock = Object()
 
         @JvmStatic
-        private fun getGeofenceKey(id: String): String {
-            return Constants.PERSISTENT_GEOFENCE_KEY_PREFIX + id
+        fun saveGeofence(
+            context: Context,
+            geofence: GeofenceWire,
+            recoveryEligible: Boolean = true,
+            active: Boolean = true
+        ): Boolean = synchronized(sharedPreferencesLock) {
+            val saved = store(context).saveConfiguredGeofence(
+                geofence,
+                recoveryEligible = recoveryEligible,
+                active = active
+            )
+            if (saved) {
+                NativeGeofenceLogger.d(context, TAG, "Saved Geofence ID=${geofence.id}.")
+            } else {
+                NativeGeofenceLogger.e(
+                    context,
+                    TAG,
+                    "Failed to durably persist Geofence ID=${geofence.id}."
+                )
+            }
+            saved
         }
 
         @JvmStatic
-        fun saveGeofence(context: Context, geofence: GeofenceWire) {
+        fun getGeofence(context: Context, id: String): GeofenceWire? =
             synchronized(sharedPreferencesLock) {
-                val p = context.getSharedPreferences(
-                    Constants.SHARED_PREFERENCES_KEY,
-                    Context.MODE_PRIVATE
+                store(context).getConfiguredGeofence(id)?.configuredGeofence
+            }
+
+        @JvmStatic
+        fun getRecoverableGeofence(context: Context, id: String): GeofenceWire? =
+            synchronized(sharedPreferencesLock) {
+                store(context).getRecoverableGeofence(id)
+            }
+
+        @JvmStatic
+        fun getAllGeofenceIds(context: Context): List<String> =
+            synchronized(sharedPreferencesLock) {
+                store(context).configuredIds()
+            }
+
+        @JvmStatic
+        fun getAllRawGeofenceIds(context: Context): List<String> =
+            synchronized(sharedPreferencesLock) {
+                store(context).rawIds()
+            }
+
+        @JvmStatic
+        fun getAllGeofences(context: Context): List<GeofenceWire> =
+            synchronized(sharedPreferencesLock) {
+                store(context).getRecoverableGeofences()
+            }
+
+        @JvmStatic
+        fun getAllConfiguredGeofences(context: Context): List<GeofenceWire> =
+            synchronized(sharedPreferencesLock) {
+                store(context).getConfiguredGeofences().map { it.configuredGeofence }
+            }
+
+        @JvmStatic
+        internal fun snapshot(
+            context: Context,
+            id: String
+        ): GeofencePersistenceSnapshot = synchronized(sharedPreferencesLock) {
+            store(context).snapshot(id)
+        }
+
+        @JvmStatic
+        internal fun restore(
+            context: Context,
+            snapshot: GeofencePersistenceSnapshot
+        ): Boolean = synchronized(sharedPreferencesLock) {
+            val restored = store(context).restore(snapshot)
+            if (!restored) {
+                NativeGeofenceLogger.e(
+                    context,
+                    TAG,
+                    "Failed to restore the persisted Geofence ID=${snapshot.id}."
                 )
-                val jsonData = Json.encodeToString(GeofenceStorage.fromWire(geofence))
-                var persistentGeofences =
-                    p.getStringSet(Constants.PERSISTENT_GEOFENCES_IDS_KEY, null)
-                persistentGeofences = if (persistentGeofences == null) {
-                    HashSet<String>()
+            }
+            restored
+        }
+
+        @JvmStatic
+        fun setLifecycleState(
+            context: Context,
+            id: String,
+            recoveryEligible: Boolean,
+            active: Boolean
+        ): Boolean = synchronized(sharedPreferencesLock) {
+            store(context).setLifecycleState(id, recoveryEligible, active)
+        }
+
+        /** Call only after Play services confirms cleanup for [geofenceId]. */
+        @JvmStatic
+        fun removeGeofence(context: Context, geofenceId: String): Boolean =
+            synchronized(sharedPreferencesLock) {
+                val removed = store(context).removeAfterPlatformCleanup(geofenceId)
+                if (removed) {
+                    NativeGeofenceLogger.d(context, TAG, "Removed Geofence ID=$geofenceId.")
                 } else {
-                    HashSet<String>(persistentGeofences)
+                    NativeGeofenceLogger.e(
+                        context,
+                        TAG,
+                        "Failed to remove Geofence ID=$geofenceId from durable storage."
+                    )
                 }
-                persistentGeofences.add(geofence.id)
-                context.getSharedPreferences(Constants.SHARED_PREFERENCES_KEY, Context.MODE_PRIVATE)
-                    .edit()
-                    .putStringSet(Constants.PERSISTENT_GEOFENCES_IDS_KEY, persistentGeofences)
-                    .putString(getGeofenceKey(geofence.id), jsonData)
-                    .apply()
-                Log.d(TAG, "Saved Geofence ID=${geofence.id} to storage.")
+                removed
             }
-        }
 
+        /** Call only after Play services confirms cleanup for all plugin-owned IDs. */
         @JvmStatic
-        fun getAllGeofenceIds(context: Context): List<String> {
-            synchronized(sharedPreferencesLock) {
-                val p = context.getSharedPreferences(
-                    Constants.SHARED_PREFERENCES_KEY,
-                    Context.MODE_PRIVATE
+        fun removeAllGeofences(context: Context): Boolean = synchronized(sharedPreferencesLock) {
+            val rawCount = store(context).rawIds().size
+            val removed = store(context).removeAllAfterPlatformCleanup()
+            if (removed) {
+                NativeGeofenceLogger.d(context, TAG, "Removed $rawCount Geofences.")
+            } else {
+                NativeGeofenceLogger.e(
+                    context,
+                    TAG,
+                    "Failed to remove all Geofences from durable storage."
                 )
-                val persistentGeofences =
-                    p.getStringSet(Constants.PERSISTENT_GEOFENCES_IDS_KEY, null)
-                        ?: return emptyList()
-                Log.d(TAG, "There are ${persistentGeofences.size} Geofences saved.")
-                return persistentGeofences.toList()
             }
+            removed
         }
 
-        @JvmStatic
-        fun getAllGeofences(context: Context): List<GeofenceWire> {
-            synchronized(sharedPreferencesLock) {
-                val p = context.getSharedPreferences(
-                    Constants.SHARED_PREFERENCES_KEY,
-                    Context.MODE_PRIVATE
+        private fun store(context: Context): GeofenceRegistrationStore =
+            GeofenceRegistrationStore(
+                SharedPreferencesGeofencePersistenceBackend(
+                    context.getSharedPreferences(
+                        Constants.SHARED_PREFERENCES_KEY,
+                        Context.MODE_PRIVATE
+                    )
                 )
-                val persistentGeofences =
-                    p.getStringSet(Constants.PERSISTENT_GEOFENCES_IDS_KEY, null)
-                        ?: return emptyList()
+            )
+    }
+}
 
-                val result = mutableListOf<GeofenceWire>()
-                for (id in persistentGeofences) {
-                    val jsonData = p.getString(getGeofenceKey(id), null)
-                    if (jsonData == null) {
-                        Log.e(TAG, "No data found for Geofence ID=${id} in storage.")
-                        continue
-                    }
-                    try {
-                        val geofenceStorage = Json.decodeFromString<GeofenceStorage>(jsonData)
-                        result.add(geofenceStorage.toWire())
-                    } catch (e: Exception) {
-                        Log.e(
-                            TAG,
-                            "Failed to parse Geofence ID=${id} from storage. Data=${jsonData}"
-                        )
-                    }
-                }
-                Log.d(TAG, "Retrieved ${result.size} Geofences from storage.")
-                return result
-            }
-        }
+private class SharedPreferencesGeofencePersistenceBackend(
+    private val preferences: SharedPreferences
+) : GeofencePersistenceBackend {
+    override fun keys(): Set<String> = preferences.all.keys
 
-        @JvmStatic
-        fun removeGeofence(context: Context, geofenceId: String) {
-            synchronized(sharedPreferencesLock) {
-                val p = context.getSharedPreferences(
-                    Constants.SHARED_PREFERENCES_KEY,
-                    Context.MODE_PRIVATE
-                )
-                var persistentGeofences =
-                    p.getStringSet(Constants.PERSISTENT_GEOFENCES_IDS_KEY, null)
-                persistentGeofences = if (persistentGeofences == null) {
-                    HashSet<String>()
-                } else {
-                    HashSet<String>(persistentGeofences)
-                }
-                persistentGeofences.remove(geofenceId)
-                context.getSharedPreferences(Constants.SHARED_PREFERENCES_KEY, Context.MODE_PRIVATE)
-                    .edit()
-                    .putStringSet(Constants.PERSISTENT_GEOFENCES_IDS_KEY, persistentGeofences)
-                    .remove(getGeofenceKey(geofenceId))
-                    .apply()
-                Log.d(TAG, "Removed Geofence ID=${geofenceId} from storage.")
-            }
-        }
+    override fun contains(key: String): Boolean = preferences.contains(key)
 
-        @JvmStatic
-        fun removeAllGeofences(context: Context) {
-            synchronized(sharedPreferencesLock) {
-                val p = context.getSharedPreferences(
-                    Constants.SHARED_PREFERENCES_KEY,
-                    Context.MODE_PRIVATE
-                )
-                var persistentGeofences =
-                    p.getStringSet(Constants.PERSISTENT_GEOFENCES_IDS_KEY, null)
-                persistentGeofences = if (persistentGeofences == null) {
-                    HashSet<String>()
-                } else {
-                    HashSet<String>(persistentGeofences)
-                }
-                val editor = context.getSharedPreferences(
-                    Constants.SHARED_PREFERENCES_KEY,
-                    Context.MODE_PRIVATE
-                )
-                    .edit()
-                    .remove(Constants.PERSISTENT_GEOFENCES_IDS_KEY)
-                for (id in persistentGeofences) {
-                    editor.remove(getGeofenceKey(id))
-                }
-                editor.apply()
-                Log.d(TAG, "Removed ${persistentGeofences.size} Geofences from storage.")
-            }
-        }
+    override fun getString(key: String): String? = preferences.getString(key, null)
+
+    override fun getStringSet(key: String): Set<String>? =
+        preferences.getStringSet(key, null)?.toSet()
+
+    override fun getLong(key: String, defaultValue: Long): Long =
+        preferences.getLong(key, defaultValue)
+
+    override fun getBoolean(key: String, defaultValue: Boolean): Boolean =
+        preferences.getBoolean(key, defaultValue)
+
+    override fun edit(block: GeofencePersistenceEditor.() -> Unit): Boolean {
+        val editor = preferences.edit()
+        SharedPreferencesGeofencePersistenceEditor(editor).block()
+        return editor.commit()
+    }
+}
+
+private class SharedPreferencesGeofencePersistenceEditor(
+    private val editor: SharedPreferences.Editor
+) : GeofencePersistenceEditor {
+    override fun putString(key: String, value: String) {
+        editor.putString(key, value)
+    }
+
+    override fun putStringSet(key: String, value: Set<String>) {
+        editor.putStringSet(key, value.toSet())
+    }
+
+    override fun putLong(key: String, value: Long) {
+        editor.putLong(key, value)
+    }
+
+    override fun putBoolean(key: String, value: Boolean) {
+        editor.putBoolean(key, value)
+    }
+
+    override fun remove(key: String) {
+        editor.remove(key)
     }
 }
