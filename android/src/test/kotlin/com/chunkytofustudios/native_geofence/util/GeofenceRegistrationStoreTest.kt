@@ -23,19 +23,30 @@ class GeofenceRegistrationStoreTest {
         val backend = FakeGeofencePersistenceBackend()
         val store = GeofenceRegistrationStore(backend) { now }
 
-        assertTrue(store.saveConfiguredGeofence(geofence(callbackHandle = 11, duration = 500)))
+        assertTrue(
+            store.saveConfiguredGeofence(
+                geofence(callbackHandle = 11, duration = 500),
+                callbackPackageFingerprint = "package-v1"
+            )
+        )
         val snapshot = store.snapshot("office")
         val originalJson = backend.values[recordKey("office")]
         val originalDeadline = backend.values[expirationKey("office")]
 
         now = 1_200L
-        assertTrue(store.saveConfiguredGeofence(geofence(callbackHandle = 22, duration = 900)))
+        assertTrue(
+            store.saveConfiguredGeofence(
+                geofence(callbackHandle = 22, duration = 900),
+                callbackPackageFingerprint = "package-v2"
+            )
+        )
         assertEquals(22L, store.getConfiguredGeofence("office")?.configuredGeofence?.callbackHandle)
 
         assertTrue(store.restore(snapshot))
         assertEquals(originalJson, backend.values[recordKey("office")])
         assertEquals(originalDeadline, backend.values[expirationKey("office")])
         assertEquals(11L, store.getConfiguredGeofence("office")?.configuredGeofence?.callbackHandle)
+        assertEquals("package-v1", store.callbackPackageFingerprint("office"))
         assertEquals(1_500L, backend.values[expirationKey("office")])
     }
 

@@ -25,11 +25,12 @@ import com.chunkytofustudios.native_geofence.receivers.RecoveryScheduleOutcome
 import com.chunkytofustudios.native_geofence.util.ActiveGeofenceWires
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceAsyncOperation
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceFailureMapper
+import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRecoveryPlanner
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationFailureStage
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationTransaction
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationTransactionException
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceTransactionStepOutcome
-import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRecoveryPlanner
+import com.chunkytofustudios.native_geofence.util.AndroidPackageFingerprint
 import com.chunkytofustudios.native_geofence.util.GeofenceEvents
 import com.chunkytofustudios.native_geofence.util.GeofenceMutationQueue
 import com.chunkytofustudios.native_geofence.util.GeofenceMutationQueues
@@ -70,6 +71,7 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
     }
 
     override fun initialize(callbackDispatcherHandle: Long) {
+        val packageFingerprint = AndroidPackageFingerprint.current(context)
         persistCallbackDispatcherHandle(callbackDispatcherHandle) { handle ->
             context.getSharedPreferences(
                 Constants.SHARED_PREFERENCES_KEY,
@@ -77,6 +79,10 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
             )
                 .edit()
                 .putLong(Constants.CALLBACK_DISPATCHER_HANDLE_KEY, handle)
+                .putString(
+                    Constants.CALLBACK_DISPATCHER_PACKAGE_FINGERPRINT_KEY,
+                    packageFingerprint
+                )
                 .commit()
         }
         NativeGeofenceLogger.d(context, TAG, "Initialized NativeGeofenceApi.")
@@ -825,6 +831,7 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
             expirationDeadlineMillis.present ||
             recoveryEligible.present ||
             active.present ||
+            callbackPackageFingerprint.present ||
             rawIds.value.orEmpty().contains(id) ||
             configuredIds.value.orEmpty().contains(id)
 }

@@ -13,9 +13,13 @@ class Constants {
         const val PERSISTENT_GEOFENCE_RECOVERY_ELIGIBLE_KEY_PREFIX =
             "persistent_geofence_recovery_eligible/"
         const val PERSISTENT_GEOFENCE_ACTIVE_KEY_PREFIX = "persistent_geofence_active/"
+        const val PERSISTENT_GEOFENCE_CALLBACK_PACKAGE_FINGERPRINT_KEY_PREFIX =
+            "persistent_geofence_callback_package_fingerprint/"
 
         const val CALLBACK_HANDLE_KEY = "$PACKAGE_NAME.callback_handle"
         const val CALLBACK_DISPATCHER_HANDLE_KEY = "callback_dispatch_handler"
+        const val CALLBACK_DISPATCHER_PACKAGE_FINGERPRINT_KEY =
+            "$PACKAGE_NAME.callback_dispatcher_package_fingerprint"
 
         const val ACTION_SHUTDOWN = "SHUTDOWN"
 

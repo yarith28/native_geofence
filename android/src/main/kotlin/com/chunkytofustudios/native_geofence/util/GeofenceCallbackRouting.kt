@@ -21,10 +21,12 @@ internal object GeofenceCallbackRouting {
         event: GeofenceEvent,
         location: LocationWire?,
         eventAtMillis: Long,
+        isCallbackFresh: (String) -> Boolean = { true },
         lookup: (String) -> GeofenceWire?
     ): GeofenceCallbackRoutingResult {
         val grouped = linkedMapOf<Long, MutableList<GeofenceWire>>()
         val orphanIds = mutableListOf<String>()
+        val staleIds = mutableListOf<String>()
         triggeredIds.distinct().forEach { id ->
             val configured = lookup(id)
             if (configured == null) {
@@ -33,6 +35,10 @@ internal object GeofenceCallbackRouting {
             }
             if (configured.callbackHandle == 0L) {
                 orphanIds.add(id)
+                return@forEach
+            }
+            if (!isCallbackFresh(id)) {
+                staleIds.add(id)
                 return@forEach
             }
             grouped.getOrPut(configured.callbackHandle) { mutableListOf() }.add(configured)
@@ -49,7 +55,8 @@ internal object GeofenceCallbackRouting {
                     eventId = null
                 )
             },
-            orphanIds = orphanIds
+            orphanIds = orphanIds,
+            staleIds = staleIds
         )
     }
 }
