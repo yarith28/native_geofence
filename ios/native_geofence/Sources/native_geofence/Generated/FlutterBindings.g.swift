@@ -233,35 +233,47 @@ enum NativeGeofenceErrorCode: Int {
 struct LocationWire: Hashable {
   var latitude: Double
   var longitude: Double
+  /// Horizontal accuracy in meters, when known.
+  var accuracyMeters: Double? = nil
+  /// Whether this fix came from a mock location provider.
+  var isMock: Bool
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> LocationWire? {
     let latitude = pigeonVar_list[0] as! Double
     let longitude = pigeonVar_list[1] as! Double
+    let accuracyMeters: Double? = nilOrValue(pigeonVar_list[2])
+    let isMock = pigeonVar_list[3] as! Bool
 
     return LocationWire(
       latitude: latitude,
-      longitude: longitude
+      longitude: longitude,
+      accuracyMeters: accuracyMeters,
+      isMock: isMock
     )
   }
   func toList() -> [Any?] {
     return [
       latitude,
       longitude,
+      accuracyMeters,
+      isMock,
     ]
   }
   static func == (lhs: LocationWire, rhs: LocationWire) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsFlutterBindings(lhs.latitude, rhs.latitude) && deepEqualsFlutterBindings(lhs.longitude, rhs.longitude)
+    return deepEqualsFlutterBindings(lhs.latitude, rhs.latitude) && deepEqualsFlutterBindings(lhs.longitude, rhs.longitude) && deepEqualsFlutterBindings(lhs.accuracyMeters, rhs.accuracyMeters) && deepEqualsFlutterBindings(lhs.isMock, rhs.isMock)
   }
 
   func hash(into hasher: inout Hasher) {
     hasher.combine("LocationWire")
     deepHashFlutterBindings(value: latitude, hasher: &hasher)
     deepHashFlutterBindings(value: longitude, hasher: &hasher)
+    deepHashFlutterBindings(value: accuracyMeters, hasher: &hasher)
+    deepHashFlutterBindings(value: isMock, hasher: &hasher)
   }
 }
 

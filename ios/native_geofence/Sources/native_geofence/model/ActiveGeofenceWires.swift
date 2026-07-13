@@ -7,7 +7,8 @@ class ActiveGeofenceWires {
             id: circularRegion.identifier,
             location: LocationWire(
                 latitude: circularRegion.center.latitude,
-                longitude: circularRegion.center.longitude
+                longitude: circularRegion.center.longitude,
+                isMock: false
             ),
             radiusMeters: circularRegion.radius,
             triggers: [

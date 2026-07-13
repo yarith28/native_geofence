@@ -11,7 +11,9 @@ class ActiveGeofenceWires {
         fun fromGeofence(e: Geofence): ActiveGeofenceWire {
             return ActiveGeofenceWire(
                 e.requestId,
-                LocationWire(e.latitude, e.longitude),
+                // A fence center is not a device fix, so it has no accuracy or
+                // mock-provider state.
+                LocationWire(e.latitude, e.longitude, null, false),
                 e.radius.toDouble(),
                 GeofenceEvents.fromMask(e.transitionTypes),
                 AndroidGeofenceSettingsWire(

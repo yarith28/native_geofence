@@ -8,7 +8,23 @@ class Location {
   final double latitude;
   final double longitude;
 
-  const Location({required this.latitude, required this.longitude});
+  /// Horizontal accuracy in meters, when known.
+  final double? accuracyMeters;
+
+  /// Whether this fix came from a mock location provider.
+  ///
+  /// This is informational metadata for app policy; it is not proof that a
+  /// location is trustworthy and native_geofence does not reject mock fixes.
+  /// It is effectively Android-only because iOS geofence callbacks do not
+  /// include a location fix.
+  final bool isMock;
+
+  const Location({
+    required this.latitude,
+    required this.longitude,
+    this.accuracyMeters,
+    this.isMock = false,
+  });
 
   /// Whether this location instance is valid.
   bool get isValid =>
@@ -19,7 +35,9 @@ class Location {
 
   @override
   String toString() {
-    return 'Location(${latitude.toStringAsFixed(4)}, ${longitude.toStringAsFixed(4)})';
+    return 'Location(${latitude.toStringAsFixed(4)}, ${longitude.toStringAsFixed(4)}'
+        '${accuracyMeters != null ? ', ±${accuracyMeters!.toStringAsFixed(0)}m' : ''}'
+        '${isMock ? ', mock' : ''})';
   }
 }
 

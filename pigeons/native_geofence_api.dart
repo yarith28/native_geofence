@@ -30,7 +30,18 @@ class LocationWire {
   final double latitude;
   final double longitude;
 
-  const LocationWire({required this.latitude, required this.longitude});
+  /// Horizontal accuracy in meters, when known.
+  final double? accuracyMeters;
+
+  /// Whether this fix came from a mock location provider.
+  final bool isMock;
+
+  const LocationWire({
+    required this.latitude,
+    required this.longitude,
+    this.accuracyMeters,
+    this.isMock = false,
+  });
 }
 
 class IosGeofenceSettingsWire {
