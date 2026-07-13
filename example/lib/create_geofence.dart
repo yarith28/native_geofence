@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:native_geofence/native_geofence.dart';
 import 'package:native_geofence_example/callback.dart';
@@ -13,9 +15,17 @@ class CreateGeofence extends StatefulWidget {
 class CreateGeofenceState extends State<CreateGeofence> {
   static const Location _timesSquare =
       Location(latitude: 40.75798, longitude: -73.98554);
+  static const int _zoneCallbackContext = 1001;
 
   List<String> activeGeofences = [];
+  String synchronizationState = 'Not inspected';
   late Geofence data;
+
+  GeofenceRegistration get registration => GeofenceRegistration(
+        geofence: data,
+        callback: geofenceTriggered,
+        callbackContext: _zoneCallbackContext,
+      );
 
   @override
   void initState() {
@@ -35,7 +45,7 @@ class CreateGeofenceState extends State<CreateGeofence> {
         initialTriggers: {GeofenceEvent.enter},
       ),
     );
-    _updateRegisteredGeofences();
+    unawaited(_updateRegisteredGeofences());
   }
 
   @override
@@ -43,6 +53,7 @@ class CreateGeofenceState extends State<CreateGeofence> {
     return Column(
       children: [
         Text('Active Geofences: $activeGeofences'),
+        Text('Synchronization: $synchronizationState'),
         SizedBox(height: 40),
         Form(
           child: Column(
@@ -91,22 +102,57 @@ class CreateGeofenceState extends State<CreateGeofence> {
                     );
                     return;
                   }
-                  await NativeGeofenceManager.instance
-                      .createGeofence(data, geofenceTriggered);
+                  await NativeGeofenceManager.instance.createGeofence(
+                    data,
+                    geofenceTriggered,
+                    callbackContext: _zoneCallbackContext,
+                  );
                   debugPrint('Geofence created: ${data.id}');
                   await _updateRegisteredGeofences();
-                  await Future.delayed(const Duration(seconds: 1));
+                },
+                child: const Text('Register directly'),
+              ),
+              SizedBox(height: 22),
+              ElevatedButton(
+                onPressed: () async {
+                  final inspection = await NativeGeofenceManager.instance
+                      .inspectSynchronization([registration]);
+                  if (!mounted) return;
+                  setState(() {
+                    synchronizationState = inspection.matchesDesired
+                        ? 'Desired state matches'
+                        : 'Needs: ${inspection.reasons.map((e) => e.name).join(', ')}';
+                  });
+                },
+                child: const Text('Inspect synchronization'),
+              ),
+              SizedBox(height: 22),
+              ElevatedButton(
+                onPressed: () async {
+                  if (!(await _checkPermissions())) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Lacking permissions!')),
+                    );
+                    return;
+                  }
+                  final report = await NativeGeofenceManager.instance
+                      .ensureSynchronized([registration]);
+                  if (!mounted) return;
+                  setState(() {
+                    synchronizationState = report.didSynchronize
+                        ? 'Synchronized: ${report.reasons.map((e) => e.name).join(', ')}'
+                        : 'Already synchronized';
+                  });
                   await _updateRegisteredGeofences();
                 },
-                child: const Text('Register'),
+                child: const Text('Ensure synchronized'),
               ),
               SizedBox(height: 22),
               ElevatedButton(
                 onPressed: () async {
                   await NativeGeofenceManager.instance.removeGeofence(data);
                   debugPrint('Geofence removed: ${data.id}');
-                  await _updateRegisteredGeofences();
-                  await Future.delayed(const Duration(seconds: 1));
                   await _updateRegisteredGeofences();
                 },
                 child: const Text('Unregister'),
@@ -121,6 +167,7 @@ class CreateGeofenceState extends State<CreateGeofence> {
   Future<void> _updateRegisteredGeofences() async {
     final List<String> geofences =
         await NativeGeofenceManager.instance.getRegisteredGeofenceIds();
+    if (!mounted) return;
     setState(() {
       activeGeofences = geofences;
     });
@@ -165,19 +212,21 @@ extension ModifyLocation on Location {
     return Location(
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
+      accuracyMeters: accuracyMeters,
+      isMock: isMock,
     );
   }
 }
 
 extension ModifyAndroidGeofenceSettings on AndroidGeofenceSettings {
   AndroidGeofenceSettings copyWith({
-    Set<GeofenceEvent> Function()? initialTrigger,
+    Set<GeofenceEvent> Function()? initialTriggers,
     Duration Function()? expiration,
     Duration Function()? loiteringDelay,
     Duration Function()? notificationResponsiveness,
   }) {
     return AndroidGeofenceSettings(
-      initialTriggers: initialTrigger?.call() ?? initialTriggers,
+      initialTriggers: initialTriggers?.call() ?? this.initialTriggers,
       expiration: expiration?.call() ?? this.expiration,
       loiteringDelay: loiteringDelay?.call() ?? this.loiteringDelay,
       notificationResponsiveness:

@@ -33,6 +33,13 @@ class Location {
       longitude >= -180 &&
       longitude <= 180;
 
+  Map<String, Object?> toJson() => {
+        'latitude': latitude,
+        'longitude': longitude,
+        'accuracyMeters': accuracyMeters,
+        'isMock': isMock,
+      };
+
   @override
   String toString() {
     return 'Location(${latitude.toStringAsFixed(4)}, ${longitude.toStringAsFixed(4)}'
@@ -61,6 +68,8 @@ class IosGeofenceSettings {
     this.initialTrigger = false,
   });
 
+  Map<String, Object?> toJson() => {'initialTrigger': initialTrigger};
+
   @override
   String toString() {
     return 'IosGeofenceSettings(initialTrigger: $initialTrigger)';
@@ -82,15 +91,20 @@ class AndroidGeofenceSettings {
 
   /// The delay between [GeofenceEvent.enter] and [GeofenceEvent.dwell].
   /// Only has impact if [GeofenceEvent.dwell] is one of the triggers.
+  ///
+  /// Android Play services accepts a non-negative 32-bit millisecond value, so
+  /// keep this at or below `Duration(milliseconds: 2147483647)`.
   final Duration loiteringDelay;
 
   /// The responsiveness of the geofence.
   ///
-  /// Defaults to 0. Setting a big responsiveness value, for example 5 minutes,
-  /// can save power significantly. However, setting a very small responsiveness
-  /// value, for example 5 seconds, doesn't necessarily mean you will get
-  /// notified right after the user enters or exits a geofence: internally, the
-  /// OS might adjust the responsiveness value to save power when needed.
+  /// When null, Android keeps the platform's fastest default (`0ms`). A larger
+  /// value, for example 5 minutes, can save power at the cost of latency.
+  /// However, a very small value does not guarantee immediate delivery: the OS
+  /// may adjust timing to save power or protect system health.
+  ///
+  /// Android Play services accepts a non-negative 32-bit millisecond value, so
+  /// keep this at or below `Duration(milliseconds: 2147483647)`.
   final Duration? notificationResponsiveness;
 
   const AndroidGeofenceSettings({
@@ -99,6 +113,15 @@ class AndroidGeofenceSettings {
     this.loiteringDelay = const Duration(minutes: 5),
     this.notificationResponsiveness,
   });
+
+  Map<String, Object?> toJson() => {
+        'initialTriggers': initialTriggers.map((event) => event.name).toList()
+          ..sort(),
+        'expirationMillis': expiration?.inMilliseconds,
+        'loiteringDelayMillis': loiteringDelay.inMilliseconds,
+        'notificationResponsivenessMillis':
+            notificationResponsiveness?.inMilliseconds,
+      };
 
   @override
   String toString() {
@@ -111,6 +134,11 @@ class AndroidGeofenceSettings {
 }
 
 /// A circular region which represents a geofence.
+///
+/// Platform limits apply: iOS permits at most 20 monitored regions per app,
+/// including regions owned outside this plugin, and Android permits at most
+/// 100 geofences per app. Apps with larger catalogs should rotate the most
+/// relevant regions as the user moves.
 class Geofence {
   /// The ID associated with the geofence.
   ///
@@ -150,6 +178,15 @@ class Geofence {
     required this.androidSettings,
   });
 
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'location': location.toJson(),
+        'radiusMeters': radiusMeters,
+        'triggers': triggers.map((event) => event.name).toList()..sort(),
+        'iosSettings': iosSettings.toJson(),
+        'androidSettings': androidSettings.toJson(),
+      };
+
   @override
   String toString() {
     return 'Geofence('
@@ -186,8 +223,11 @@ class ActiveGeofence {
 
   /// Only available on Android.
   ///
-  /// The [initialTriggers] field will always be an empty list because Android
-  /// does not provide this information when a Geofence triggers.
+  /// Registered-state queries return the plugin's canonical configured
+  /// settings. Callback payloads are reconstructed from durable registration
+  /// metadata when available, but callers should treat one-shot
+  /// [AndroidGeofenceSettings.initialTriggers] as configuration rather than
+  /// proof that an initial event occurred.
   final AndroidGeofenceSettings? androidSettings;
 
   ActiveGeofence({
@@ -197,6 +237,14 @@ class ActiveGeofence {
     required this.triggers,
     required this.androidSettings,
   });
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'location': location.toJson(),
+        'radiusMeters': radiusMeters,
+        'triggers': triggers.map((event) => event.name).toList()..sort(),
+        'androidSettings': androidSettings?.toJson(),
+      };
 
   @override
   String toString() {
@@ -228,7 +276,10 @@ class GeofenceCallbackParams {
 
   /// Device wall-clock time captured when native code created this event.
   ///
-  /// This is diagnostic metadata, not a monotonic clock or unique event ID.
+  /// Android delivery may happen minutes later if the device is idle or work is
+  /// deferred. Prefer this value, usually converted with `toUtc()`, over
+  /// `DateTime.now()` inside the callback when the distinction matters. This is
+  /// diagnostic metadata, not a monotonic clock or unique event ID.
   final DateTime? eventAt;
 
   /// Unique ID for this native delivery attempt.

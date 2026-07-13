@@ -224,6 +224,13 @@ class NativeGeofenceManager {
   ///
   /// Must be called before any other method.
   ///
+  /// Android initialization may repair plugin-owned registrations from durable
+  /// native storage. Recovery preserves stored callback handles and contexts;
+  /// it cannot resolve live Dart functions from the current application build.
+  /// Use [ensureSynchronized] with app-owned [GeofenceRegistration] values to
+  /// refresh callback metadata after an update, obfuscated rebuild, or callback
+  /// move/rename.
+  ///
   /// Throws [NativeGeofenceException].
   Future<void> initialize() async {
     final CallbackHandle? callback;
@@ -249,13 +256,28 @@ class NativeGeofenceManager {
 
   /// Register for geofence events for a [Geofence].
   ///
-  /// [region] is the geofence region to register with the system.
+  /// [geofence] is the geofence region to register with the system.
   /// [callback] is the method to be called when a geofence event associated
-  /// with [region] occurs.
-  /// [callbackContext] is an optional opaque 64-bit value persisted with this
-  /// registration and returned by geofence ID in
+  /// with [geofence] occurs. It must be a top-level or static function annotated
+  /// with `@pragma('vm:entry-point')`; closures and instance methods cannot be
+  /// resolved from a background isolate and are rejected.
+  ///
+  /// Platform limits apply. iOS permits at most 20 monitored regions per app,
+  /// including regions not owned by this plugin, and Android permits at most
+  /// 100 geofences per app.
+  ///
+  /// Android schedules expedited WorkManager delivery but Doze, App Standby,
+  /// system load, OEM restrictions, exhausted expedited quota, and retries can
+  /// still delay callback startup. The worker uses 20-second startup,
+  /// 15-second API-readiness, and 60-second callback watchdogs. iOS callback
+  /// startup/execution is bounded to 30 seconds. Persist important state first
+  /// and move long-running work to an app-owned durable system.
+  ///
+  /// [callbackContext] is an optional opaque signed 64-bit value persisted with
+  /// this registration and returned by geofence ID in
   /// [GeofenceCallbackParams.callbackContextsByGeofenceId]. The plugin never
-  /// interprets it.
+  /// interprets it. Registrations without a context remain valid and are absent
+  /// from that map.
   ///
   /// Throws [NativeGeofenceException].
   Future<void> createGeofence(
@@ -332,8 +354,20 @@ class NativeGeofenceManager {
   }
 
   /// Compares app-owned desired registrations with complete plugin-owned
-  /// native state without mutating either platform. The result is a
-  /// point-in-time observation and does not reserve the inspected state.
+  /// native state without mutating registrations or fingerprints.
+  ///
+  /// This performs the same validation, callback resolution, platform
+  /// normalization, and reason definitions as [ensureSynchronized], but is a
+  /// point-in-time observation and does not reserve state.
+  /// [NativeGeofenceSynchronizationInspection.matchesDesired] predicts a native
+  /// no-op only while state remains unchanged; [ensureSynchronized] revalidates
+  /// under the shared native mutation authority.
+  ///
+  /// With the default [removeUnlisted] value, IDs omitted from [registrations]
+  /// are reported as drift. Set it to false when the desired list intentionally
+  /// manages only a subset of plugin-owned registrations.
+  ///
+  /// Throws [NativeGeofenceException].
   Future<NativeGeofenceSynchronizationInspection> inspectSynchronization(
     List<GeofenceRegistration> registrations, {
     bool removeUnlisted = true,
@@ -348,10 +382,38 @@ class NativeGeofenceManager {
     });
   }
 
-  /// Delegates one complete inspect-and-mutate pass to the shared native
-  /// mutation authority. Native code revalidates current state, owns the no-op
-  /// decision and returned reasons, counts, and fingerprint, leaves matching
-  /// registrations armed, and reports any rollback failure explicitly.
+  /// Conditionally reconciles plugin-owned native registrations with
+  /// [registrations].
+  ///
+  /// The application list supplies live callback functions and optional
+  /// contexts. With the default [removeUnlisted] value it is authoritative:
+  /// plugin-owned IDs omitted from the list are removed. Set it to false to
+  /// preserve registrations outside the supplied subset.
+  ///
+  /// Unchanged registrations stay armed. Callback/context-only changes refresh
+  /// durable metadata without an unnecessary platform stop/start.
+  ///
+  /// Each invocation is one native-authoritative inspect-and-mutate pass,
+  /// serialized with create, remove, and other synchronization work across
+  /// foreground and headless paths. Native code re-reads state at that boundary
+  /// and owns the no-op decision and report, so two isolates cannot act on the
+  /// same stale inspection.
+  ///
+  /// Native code owns the transaction snapshot. A partial failure restores the
+  /// previous registrations, expiration deadlines, callback metadata, iOS
+  /// duplicate-suppression baselines, and synchronization fingerprint. Any
+  /// rollback failure is reported explicitly in [NativeGeofenceException].
+  /// Rollback and automatic recovery suppress initial triggers. Synchronization
+  /// never re-arms unchanged registrations; metadata-only refreshes also avoid
+  /// initial triggers. A new or platform-changed Android registration still
+  /// applies its configured [AndroidGeofenceSettings.initialTriggers], while
+  /// iOS synchronization does not request an initial-state callback.
+  ///
+  /// This is the live callback-handle refresh path after app updates,
+  /// obfuscated builds, or callback moves/renames. [reCreateAfterReboot] and
+  /// automatic recovery use the previously stored handles and contexts.
+  ///
+  /// Throws [NativeGeofenceException].
   Future<NativeGeofenceSynchronizationReport> ensureSynchronized(
     List<GeofenceRegistration> registrations, {
     bool removeUnlisted = true,
@@ -418,11 +480,13 @@ class NativeGeofenceManager {
     }();
   }
 
-  /// Re-register geofences after reboot.
+  /// Re-register geofences from durable native storage.
   ///
-  /// Optiona: This function can be called when the autostart feature is not
-  /// working as it should (e.g. for some Android OEMs). This way you can ensure
-  /// all Geofences are re-created at app launch.
+  /// This is an explicit Android recovery pass for environments where automatic
+  /// reboot/location recovery may be delayed by OEM restrictions. It preserves
+  /// finite expiration deadlines and suppresses recovery initial triggers.
+  /// Because it uses stored callback handles and contexts, it does not refresh
+  /// metadata for the current Dart build; use [ensureSynchronized] for that.
   ///
   /// Throws [NativeGeofenceException].
   Future<void> reCreateAfterReboot() async => _api
@@ -432,7 +496,9 @@ class NativeGeofenceManager {
   /// Returns a read-only, privacy-safe snapshot of native plugin evidence.
   ///
   /// This does not mutate registrations and does not imply Android can
-  /// enumerate the live Play Services geofence set.
+  /// enumerate the live Play Services geofence set. Lifecycle facts are the
+  /// latest observation for each stage, not an audit trail, proof that a
+  /// geofence is armed, or a guarantee of future delivery.
   Future<NativeGeofenceStatus> getStatus() async =>
       _api.getStatus().then((value) => value.fromWire()).catchError(
           NativeGeofenceExceptionMapper.catchError<NativeGeofenceStatus>);

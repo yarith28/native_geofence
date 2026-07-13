@@ -13,14 +13,15 @@ Battery efficient Flutter geofencing plugin that uses native iOS and Android API
 
 * Uses [CLLocationManager](https://developer.apple.com/documentation/corelocation/cllocationmanager) on iOS and [GeofencingClient](https://developer.android.com/develop/sensors-and-location/location/geofencing) on Android
 * Create geofences
-* Be notified of enter/exit/dwell events
+* Be notified of enter/exit events and Android dwell events
 * Works when the application is:
   * In the foreground
   * In the background
-  * Terminated
-* Geofences are re-registered after device reboot
+  * Terminated, subject to platform delivery, force-stop, permission, and OEM
+    background restrictions
+* [Android] Re-register geofences after device reboot
 * Fetch currently registered geofences
-* [Android] Run foreground service to handle geofence event
+* [Android] Promote bounded callback work to a foreground service
 
 ## Setup
 
@@ -46,7 +47,7 @@ NOTE: You may also need Gradle 8+ to use this plugin. See this [issue](https://g
 
 See the [example plugin](https://github.com/ChunkyTofuStudios/native_geofence/blob/main/example/android/app/src/main/AndroidManifest.xml) for a full demonstration.
 
-3. In the same file declare the necessary location permissions before the
+3. Declare the host application's location capabilities before the
 `<application ...` line:
 
 ```xml
@@ -56,18 +57,66 @@ See the [example plugin](https://github.com/ChunkyTofuStudios/native_geofence/bl
 <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 ```
 
-*Explanation: The coarse and fine locations are required to create a geofence.
-The background location permission is [also required](https://developer.android.com/develop/sensors-and-location/location/geofencing#RequestGeofences)
-for geofence creation on Android API level 29+. The plugin automatically merges
-its non-exported callback receiver, foreground service,
-reboot/package-replacement receiver, and the normal permissions required for
-boot recovery, wake locks, and location-type foreground services. It also
-declares `POST_NOTIFICATIONS`; the app must still request that runtime permission
-on Android 13+ before foreground promotion. The plugin listens for location
-services becoming available through a live non-exported receiver while the
-plugin is attached and a non-exported manifest receiver where Android delivers
-the location-mode broadcast. Platform background-broadcast restrictions mean
-the manifest path is a fallback, not a guarantee on every Android release or OEM.*
+The coarse and fine location capabilities are required to create a geofence.
+Background location is [also required](https://developer.android.com/develop/sensors-and-location/location/geofencing#RequestGeofences)
+on Android 10+. Manifest declarations do not grant access: the application must
+still explain and request the applicable runtime location permissions before
+registration.
+
+4. Review the plugin's manifest-merged defaults.
+
+The plugin automatically merges its non-exported callback receiver,
+non-exported location-mode recovery receiver, foreground service,
+reboot/package-replacement receiver, and the permissions used for boot recovery,
+wake locks, location-type foreground services, and notifications.
+The application must still request `POST_NOTIFICATIONS` at runtime on Android
+13+ before foreground promotion. Removing or disabling the callback receiver
+causes registration to fail with a typed manifest-component error.
+
+The plugin observes location services becoming available through a live
+non-exported receiver while attached and through the manifest receiver where
+Android delivers the location-mode broadcast. Background-broadcast restrictions
+mean the manifest path is a fallback, not a guarantee on every Android release
+or OEM.
+
+Hosts that do not use automatic reboot recovery or foreground promotion may
+remove the corresponding optional declarations in their app manifest. Only
+remove a permission when no other part of the application needs it:
+
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools">
+    <!-- Opt out of automatic reboot/package-replacement recovery. -->
+    <uses-permission
+        android:name="android.permission.RECEIVE_BOOT_COMPLETED"
+        tools:node="remove" />
+
+    <!-- Opt out of callback foreground promotion. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"
+                     tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"
+                     tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"
+                     tools:node="remove" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"
+                     tools:node="remove" />
+
+    <application ...>
+        <receiver
+            android:name="com.chunkytofustudios.native_geofence.receivers.NativeGeofenceRebootBroadcastReceiver"
+            tools:node="remove" />
+        <service
+            android:name="com.chunkytofustudios.native_geofence.NativeGeofenceForegroundService"
+            tools:node="remove" />
+    </application>
+</manifest>
+```
+
+Removing the reboot receiver disables automatic reboot and package-replacement
+recovery; explicit recovery remains available through `reCreateAfterReboot()`.
+Removing the service or its permissions disables `promoteToForeground()`. The
+foreground-notification strings can instead be customized without opting out;
+see [Foreground work](#android-only-foreground-work).
 
 Android recovery preserves each finite registration's original absolute
 expiration deadline; reboot or repair never grants a new full lifetime.
@@ -78,12 +127,25 @@ failures retry after 4, 8, 16, and 32 minutes, followed by ten hourly attempts
 (14 delayed attempts over 660 minutes, or about 11 hours). Missing location
 permissions stop that retry generation. The explicit
 `reCreateAfterReboot()` API is asynchronous and reports recovery failures.
+Recovery reuses the callback handles and contexts already in native storage;
+it cannot resolve live Dart functions from a newly installed app build. Call
+`ensureSynchronized()` with your app-owned registration list to perform that
+refresh.
 
-4. Optional: Disable battery optimization
+5. Understand Android background-delivery limits
 
-If you want to perform any heavy work when a Geofence triggers (within the Geofence callback), such as calling a backend API, you will need to ask the user to disable battery optimization for your app.
+Geofence broadcasts are handed to expedited WorkManager work. Android may still
+delay that work in Doze, restrictive App Standby buckets, under system load, or
+after expedited-job quota is exhausted; native_geofence then allows ordinary
+background work rather than dropping the callback. Aggressive OEM task killers,
+force-stop, revoked permissions, disabled location services, and battery
+restrictions can delay or prevent delivery.
 
-You can do so by using the [disable_battery_optimization package](https://pub.dev/packages/disable_battery_optimization). You can find a code sample [here](https://gist.github.com/orkun1675/5803f43f897b22365651bdf9561ca4f4).
+Keep callbacks short and durable: persist the event first, enqueue app-owned
+long-running work, then return. If timely background behavior is central to the
+product, explain the tradeoff before directing users to the system's unrestricted
+battery setting. Foreground promotion can extend work after a worker starts, but
+it cannot make a delayed worker start promptly and Android may reject the start.
 
 </details>
 
@@ -92,9 +154,11 @@ You can do so by using the [disable_battery_optimization package](https://pub.de
  
 ### iOS
 
-1. Migrate your app to Swift
+1. Use a Swift AppDelegate
 
-If your app is using Objective-C you will need to migrate to Swift. [Here is a guide](https://medium.com/@serge_shkurko/50-shades-of-pain-or-how-to-migrate-a-flutter-project-from-objective-c-to-swift-76ada31ab0e3) you can follow.
+The plugin's background registrant callback is exposed through the Swift API.
+Apps using an Objective-C AppDelegate must migrate it to Swift before completing
+the setup below.
 
 2. In your `Info.plist` add the following key-value pairs:
 
@@ -107,12 +171,7 @@ If your app is using Objective-C you will need to migrate to Swift. [Here is a g
 
 *Explanation: iOS geofence monitoring in this plugin requires Always location authorization before calling `createGeofence()`. When-In-Use authorization is not enough because the plugin is designed for background and terminated-app geofence delivery.*
 
-3. Update your AppDelegate to call `NativeGeofencePlugin`:
-
-<details>
-<summary>Swift</summary>
-
-#### Swift
+3. Update `AppDelegate.swift` to configure `NativeGeofencePlugin`.
 
 In your `AppDelegate.swift` file import the plugin:
 
@@ -129,35 +188,13 @@ NativeGeofencePlugin.setPluginRegistrantCallback { registry in
 }
 ```
 
-</details>
+Set the callback before the normal
+`GeneratedPluginRegistrant.register(with: self)` call. The plugin shares one
+serialized callback runtime between foreground and headless delivery paths.
+If this setup is missing, iOS terminates with an explicit registrant setup error
+instead of silently dropping background callbacks.
 
-<details>
-<summary>Objective-C</summary>
-
-#### Objective-C
-
-In your `AppDelegate.m` file import the plugin and define the `registerPlugins` function:
-
-```objc
-#import <native_geofence/NativeGofencePlugin.h>
-
-void registerPlugins(NSObject<FlutterPluginRegistry>* registry) {
-  [GeneratedPluginRegistrant registerWithRegistry:registry];
-}
-```
-
-and add the following within the `application(_:didFinishLaunchingWithOptions:)` function:
-
-```objc
-// Used by plugin: native_geofence
-[NativeGofencePlugin setPluginRegistrantCallback:registerPlugins];
-```
-
-</details>
-
-<br>
-
-3. Set your iOS version to `14.0` or above.
+4. Set your iOS version to `14.0` or above.
 
 You can do so in your `Podfile` by adding the line `platform :ios, '14.0'`.
 
@@ -171,7 +208,7 @@ See the [example plugin](https://github.com/ChunkyTofuStudios/native_geofence/tr
 
 ### Initialize the plugin
 
-Before accesing any methods ensure you initialize the plugin:
+Before accessing any other API, initialize the plugin:
 
 ```dart
 await NativeGeofenceManager.instance.initialize();
@@ -183,72 +220,170 @@ before native delivery is marked ready.
 
 ### Obtain permissions
 
-This plugin does not deal with obtaining permissions from the user. Please use a 3rd party plugin, such as [permission_handler](https://pub.dev/packages/permission_handler) for that.
+This plugin does not request permissions. Use an application-level permission
+flow, such as [permission_handler](https://pub.dev/packages/permission_handler).
 
 As noted in the setup section you will need to obtain the following permissions:
 
 * `Permission.location`
-* `Permission.locationAlways`: required on iOS before `createGeofence()`
+* `Permission.locationAlways`: required for iOS background monitoring and on
+  Android 10+ before registration
 * `Permission.notification`: required on Android 13+ before calling
   `promoteToForeground()`
 
 ### Create geofence
 
-First, define your geofence parameters using the `Geofence` class, for example:
-
-*Note: The ID must be unqiue. Please see the API reference for details.*
+First, define the region. IDs must be unique within the plugin-owned set:
 
 ```dart
 final zone1 = Geofence(
   id: 'zone1',
-  location: Location(latitude: 40.75798, longitude: -73.98554), // Times Square
+  location: const Location(
+    latitude: 40.75798,
+    longitude: -73.98554,
+  ), // Times Square
   radiusMeters: 500,
   triggers: {
     GeofenceEvent.enter,
     GeofenceEvent.exit,
     GeofenceEvent.dwell,
   },
-  iosSettings: IosGeofenceSettings(
+  iosSettings: const IosGeofenceSettings(
     initialTrigger: true,
   ),
   androidSettings: AndroidGeofenceSettings(
     initialTriggers: {GeofenceEvent.enter},
     expiration: const Duration(days: 7),
     loiteringDelay: const Duration(minutes: 5),
-    notificationResponsiveness: const Duration(minutes: 5),
   ),
 );
 ```
 
-Next, create a top-level function that has the `@pragma('vm:entry-point')` annotation; this will act as your geofence callback/handler:
-
-*Note: You can (optional) specify a unique callback function for each geofence.*
+The callback must be a top-level or static function annotated with
+`@pragma('vm:entry-point')`. Flutter must retain and resolve it in release/AOT
+builds and from a background isolate; closures and instance methods are
+rejected. Different registrations may use different valid callbacks.
 
 ```dart
 @pragma('vm:entry-point')
 Future<void> geofenceTriggered(GeofenceCallbackParams params) async {
-  debugPrint('Geofence triggered with params: $params');
+  for (final geofence in params.geofences) {
+    final context = params.callbackContextsByGeofenceId[geofence.id];
+    debugPrint('id=${geofence.id}, context=$context');
+  }
+  debugPrint('eventAt=${params.eventAt}, deliveryId=${params.eventId}');
 }
 ```
 
-Finally, create the geofence:
+Register directly when the application owns a one-off mutation. The optional
+`callbackContext` is an opaque signed 64-bit routing value. The plugin stores it
+with this registration and never interprets it:
 
 ```dart
-await NativeGeofenceManager.instance.createGeofence(zone1, geofenceTriggered);
+await NativeGeofenceManager.instance.createGeofence(
+  zone1,
+  geofenceTriggered,
+  callbackContext: 1001,
+);
 ```
+
+Contexts are returned in `callbackContextsByGeofenceId`. Registrations without
+a context are absent from the map. The map is keyed by geofence ID because one
+Android delivery can contain several triggering registrations.
 
 On Android, a finite `expiration` is persisted as an absolute deadline. Reboot,
 repair, and explicit recreation use only the remaining lifetime; they never
 grant the geofence a fresh full duration. Lifecycle-critical registration state
 is written synchronously, and a failed durable write is reported as an error.
 
+Android `notificationResponsiveness` defaults to fastest delivery (`0ms`) when
+unset. Larger values, such as two or five minutes, may reduce power use at the
+cost of latency. `Duration.zero` is useful when overriding a previously slower
+value. The OS may still adjust actual timing for battery and system health.
+
+iOS allows at most 20 monitored regions per app, including regions registered
+outside this plugin. Android allows at most 100 geofences per app. Background
+location can be coarse, especially on idle devices; radii of at least 150 meters
+are generally more reliable than very small regions.
+
+### Synchronize an app-owned registration list
+
+Use `GeofenceRegistration` when your database or configuration is the canonical
+registration source:
+
+```dart
+final desired = <GeofenceRegistration>[
+  GeofenceRegistration(
+    geofence: zone1,
+    callback: geofenceTriggered,
+    callbackContext: 1001,
+  ),
+];
+
+final inspection =
+    await NativeGeofenceManager.instance.inspectSynchronization(desired);
+debugPrint('matches=${inspection.matchesDesired}, reasons=${inspection.reasons}');
+
+final report =
+    await NativeGeofenceManager.instance.ensureSynchronized(desired);
+debugPrint('changed=${report.didSynchronize}, reasons=${report.reasons}');
+```
+
+`inspectSynchronization()` validates callbacks and returns a read-only,
+point-in-time comparison without modifying registrations, callback metadata, or
+fingerprints. It is advisory, not a reservation: `ensureSynchronized()` always
+re-inspects inside the shared native mutation boundary and can return a different
+decision if native state changes first.
+
+`ensureSynchronized()` resolves callback handles from the live functions in the
+desired list. By default, `removeUnlisted: true` makes that list authoritative
+and removes plugin-owned IDs it omits; pass `removeUnlisted: false` to manage a
+subset. Unchanged registrations stay armed, and callback/context-only changes
+update metadata without an unnecessary platform restart. Registration changes
+run as a native transaction; a partial failure restores the prior registrations,
+finite deadlines, callback metadata, iOS duplicate baseline, and fingerprint.
+Rollback failures are reported explicitly.
+
+Every `ensureSynchronized()` call is one native-authoritative
+inspect-and-mutate pass, serialized with create, remove, and other
+synchronization mutations across foreground and headless engine paths. Native
+code owns the no-op decision, reasons, counts, fingerprint, and rollback
+snapshot.
+
+Rollback and automatic recovery suppress initial triggers. Synchronization does
+not re-arm unchanged regions. A new or platform-changed Android registration
+still applies its configured `initialTriggers`; iOS synchronization does not
+request an initial-state callback. The fingerprints exposed by inspection and
+reports are opaque comparison tokens that may contain registration and callback
+metadata—do not treat them as privacy-safe log values.
+
+Call `ensureSynchronized()` after initialization and permissions whenever the
+app has its canonical desired list. This is distinct from recovery: reboot,
+location-service, and explicit `reCreateAfterReboot()` paths reuse stored
+callback handles and contexts. Only synchronization can resolve live Dart
+functions after an app update, obfuscated rebuild, or callback move/rename.
+
+### Callback delivery semantics
+
 Android splits each broadcast by its persisted callback handle, stores callback
 payloads in app-private files, and passes only a bounded reference through
-WorkManager. Infrastructure and Dart-delivery failures retry a bounded number
-of times; missing or invalid callbacks are terminally dropped without blocking
-later queued events. Each callback receives a non-null `eventId` identifying
-that delivery attempt. It is useful for tracing short-lived delivery attempts,
-but it is not a durable business idempotency key.
+WorkManager. Infrastructure and Dart-delivery failures are attempted up to four
+times; missing or invalid callbacks are terminally dropped without blocking
+later queued events. Worker startup, Dart API readiness, and callback execution
+have 20-second, 15-second, and 60-second watchdogs respectively.
+
+iOS serializes foreground and headless delivery through one shared callback
+runtime and applies a 30-second execution bound. Best-effort same-direction
+duplicate bursts are suppressed for 10 seconds, but business-level deduplication
+still belongs in the app or backend.
+
+Both native platforms attach an `eventId` for one delivery attempt. A retry or
+later delivery for the same physical transition may have a different value, so
+it is useful for tracing but is not a durable business idempotency key. Use an
+app-owned key and state machine for check-in, attendance, billing, or other
+irreversible actions. `eventAt` is the device wall-clock time captured when
+native code creates the event; on Android it can be much earlier than callback
+execution when WorkManager is delayed.
 
 #### [Android only] Optional native event bridge
 
@@ -280,20 +415,23 @@ their completion may be invoked from any thread.
 If you need to access certain APIs or run a long job in your geofence callback you can promote the runner to a foreground service. You have access to the following functions when running within a geofence callback:
 
 ```dart
-NativeGeofenceBackgroundManager.instance.promoteToForeground();
-// Do a lot of work or access live location?
-NativeGeofenceBackgroundManager.instance.demoteToBackground();
+await NativeGeofenceBackgroundManager.instance.promoteToForeground();
+// Do bounded work that needs foreground-service privileges.
+await NativeGeofenceBackgroundManager.instance.demoteToBackground();
 ```
 
 *Note: Most tasks that complete in a few seconds, such as sending a notification,
 don't require foreground promotion. Promotion waits up to 10 seconds for the
 service to confirm `startForeground()`. The callback delivery itself has a
 60-second watchdog, so foreground promotion does not make callback execution
-unbounded. Android may also reject a foreground-service start when the app is
-background-restricted. The returned `NativeGeofenceException` distinguishes a
-missing notification permission, invalid service configuration, a background
-start restriction, and promotion timeout. The worker always demotes and stops
-the service when delivery succeeds, retries, fails, times out, or is cancelled.*
+unbounded or make a delayed WorkManager start timely. Android 12+ may reject a
+background foreground-service start; Android 13+ requires runtime notification
+permission; and Android 14+ location-type promotion requires the matching
+foreground-service declaration plus background location access. The returned
+`NativeGeofenceException` distinguishes a missing permission, invalid service
+configuration, background-start restriction, and promotion timeout. The worker
+always demotes and stops the service when delivery succeeds, retries, fails,
+times out, or is cancelled.*
 
 The host app can override the foreground notification copy by defining any of
 these string resources in `android/app/src/main/res/values/strings.xml`:
@@ -313,8 +451,9 @@ Omitted resources keep the plugin defaults.
 You can see which geofences are currently active using:
 
 ```dart
-final List<ActiveGeofence> myGeofences = await NativeGeofenceManager.instance.getRegisteredGeofences();
-print('There are ${myGeofences.length} active geofences.')
+final List<ActiveGeofence> myGeofences =
+    await NativeGeofenceManager.instance.getRegisteredGeofences();
+print('There are ${myGeofences.length} active geofences.');
 ```
 
 ### Inspect diagnostic status
@@ -344,11 +483,16 @@ Android reports `canEnumerateLivePlatformRegistrations == false`: Play Services
 does not expose its live geofence set, so persisted IDs and PendingIntent state
 are evidence rather than proof of live registration. iOS monitoring counts are
 restricted to circular regions backed by plugin callback metadata and never
-include unrelated app-wide monitored regions.
+include unrelated app-wide monitored regions. Each lifecycle fact is only the
+latest observation at that native boundary; the snapshot is not an audit trail,
+proof that a registration is currently armed, or a guarantee of future delivery.
+Public geofence, synchronization, lifecycle-fact, and status models provide
+`toJson()` for structured app-owned diagnostics. Status JSON retains the same
+privacy-safe field set described above.
 
 ### Remove geofence
 
-You have multiple options to stop listenning for geofence events:
+You have multiple options to stop listening for geofence events:
 
 ```dart
 // Remove a single geofence:
@@ -357,29 +501,37 @@ await NativeGeofenceManager.instance.removeGeofenceById('zone1');
 await NativeGeofenceManager.instance.removeAllGeofences();
 ```
 
+### Supported platforms
+
+The native plugin is implemented for Android and iOS. The Dart package can be
+imported elsewhere, but geofence operations require a native host and fail with
+a channel error outside those platforms. Android log-file helpers are no-ops on
+iOS and unsupported hosts.
+
 ## Error handling
 
 All errors thrown by this plugin are wrapped in `NativeGeofenceException`.
 
-Each exception will contain an error code, please see the API reference a description of each of them.
+Each exception contains an error code; see the API reference for its meaning.
 
-Ensure you catch this exception and take the neccesary action. For example you might:
+Catch the exception and take the necessary action. For example:
 
 ```dart
 try {
   await NativeGeofenceManager.instance.createGeofence(zone1, geofenceTriggered);
 } on NativeGeofenceException catch (e) {
   if (e.code == NativeGeofenceErrorCode.missingLocationPermission) {
-    print('Did the user grant us the location permission yet?')
-    return
+    print('Did the user grant us the location permission yet?');
+    return;
   }
   if (e.code == NativeGeofenceErrorCode.missingBackgroundLocationPermission) {
-    print('Background location permission is required for geofencing.')
-    return
+    print('Background location permission is required for geofencing.');
+    return;
   }
   if (e.code == NativeGeofenceErrorCode.pluginInternal) {
-    print('Some internal error occured: message=${e.message}, detail=${e.details}, stackTrace=${e.stacktrace}')
-    return
+    print('Internal error: message=${e.message}, detail=${e.details}, '
+        'stackTrace=${e.stacktrace}');
+    return;
   }
   // Handle other cases.
 }
@@ -387,7 +539,10 @@ try {
 
 ## Example
 
-The provided example app demonstrates how to request permissions, register geofences, and send notifications when geofence events occur.
+The provided example app gates API access on initialization, requests
+permissions, demonstrates direct registration plus synchronization inspection
+and reconciliation, routes an opaque callback context, and sends notifications
+when geofence events occur.
 
 ## Prior art
 
@@ -401,7 +556,6 @@ Pull requests are welcome.
 
 ### Future work
 
-* **Android:** Allow customizing the notification shown when a geofence callback upgrades to a foreground service.
 * **Android:** Allow customizing the wake lock duration when foreground service is launched.
 * Other ideas?
 
