@@ -13,6 +13,13 @@ class NativeGeofenceLifecycleFact {
     required this.outcome,
     this.geofenceCount,
   });
+
+  Map<String, Object?> toJson() => {
+        'occurredAtMillis': occurredAt.millisecondsSinceEpoch,
+        'succeeded': succeeded,
+        'outcome': outcome,
+        'geofenceCount': geofenceCount,
+      };
 }
 
 /// Read-only evidence about native_geofence prerequisites and lifecycle state.
@@ -21,6 +28,10 @@ class NativeGeofenceLifecycleFact {
 /// evidence has not yet been observed. On Android,
 /// [canEnumerateLivePlatformRegistrations] is false because Play Services does
 /// not expose its live geofence set to the plugin.
+///
+/// Lifecycle facts are the latest observed native boundary for each stage.
+/// They are not a complete audit trail, proof that a registration is currently
+/// armed, or a guarantee of future delivery.
 class NativeGeofenceStatus {
   final NativeGeofencePlatform platform;
   final String? osVersion;
@@ -71,4 +82,32 @@ class NativeGeofenceStatus {
     this.lastRecoveryFact,
     this.lastForegroundFact,
   });
+
+  Map<String, Object?> toJson() => {
+        'platform': platform.name,
+        'osVersion': osVersion,
+        'persistedGeofenceIds': [...persistedGeofenceIds]..sort(),
+        'fineLocationPermissionGranted': fineLocationPermissionGranted,
+        'backgroundLocationPermissionGranted':
+            backgroundLocationPermissionGranted,
+        'notificationPermissionGranted': notificationPermissionGranted,
+        'locationServicesEnabled': locationServicesEnabled,
+        'monitoringAvailable': monitoringAvailable,
+        'playServicesAvailable': playServicesAvailable,
+        'callbackPendingIntentAvailable': callbackPendingIntentAvailable,
+        'callbackReceiverAvailable': callbackReceiverAvailable,
+        'canEnumerateLivePlatformRegistrations':
+            canEnumerateLivePlatformRegistrations,
+        'pluginOwnedMonitoringCount': pluginOwnedMonitoringCount,
+        'callbackDispatcherRegistered': callbackDispatcherRegistered,
+        'callbackRefreshState': callbackRefreshState.name,
+        'registrationHealth': registrationHealth.name,
+        'lastRegistrationFact': lastRegistrationFact?.toJson(),
+        'lastRemovalFact': lastRemovalFact?.toJson(),
+        'lastBroadcastFact': lastBroadcastFact?.toJson(),
+        'lastEnqueueFact': lastEnqueueFact?.toJson(),
+        'lastWorkerFact': lastWorkerFact?.toJson(),
+        'lastRecoveryFact': lastRecoveryFact?.toJson(),
+        'lastForegroundFact': lastForegroundFact?.toJson(),
+      };
 }

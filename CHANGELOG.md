@@ -11,9 +11,13 @@
 * Adds an optional Android native event processor with accept/validated-transform/decline decisions, a hard ownership timeout, exact-once completion, safe Dart fallback, and shared durable payload cleanup
 * Adds an asynchronous, read-only `NativeGeofenceStatus` API with privacy-safe prerequisite evidence, plugin-owned IDs, computed health, callback refresh state, platform-specific monitoring evidence, and structured authoritative lifecycle facts
 * Fails Android initialization when the callback dispatcher handle cannot be durably persisted
-* Serializes iOS background callback delivery and protects callback execution with bounded cleanup
+* Shares one FIFO iOS callback runtime across foreground and headless delivery, with bounded startup/execution and exact cleanup
 * Adds iOS delivery IDs and suppresses same-direction duplicate bursts within 10 seconds
 * Exposes the native event-creation time on geofence callback parameters
+* Adds optional opaque signed 64-bit callback contexts per registration and returns them keyed by triggering geofence ID without unnecessary native restarts
+* Adds read-only point-in-time `inspectSynchronization` and one-call native-authoritative `ensureSynchronized` APIs with live callback/context refresh, deterministic drift reasons, serialization with normal mutations across engine paths, unchanged-registration preservation, and transactional rollback
+* Makes Android synchronization inspection non-migrating and treats corrupt, missing, inactive, or non-durable registration records as repairable drift
+* Exports the public callback typedef, removes the duplicate unrestricted manager export, and restores structured JSON serialization for public geofence, synchronization, and privacy-safe status models
 * Adds opt-in, bounded Android native log-file controls for collecting background diagnostics
 * Includes Android callback-location accuracy and mock-provider metadata for app policy and diagnostics
 * Waits for iOS Core Location to confirm geofence registration, reports region-scoped failures, ignores unscoped nil-region failures that cannot be attributed safely, and clamps oversized regions to the device maximum

@@ -14,4 +14,4 @@ export 'package:native_geofence/src/native_geofence_background_manager.dart'
     show NativeGeofenceBackgroundManager;
 export 'package:native_geofence/src/native_geofence_manager.dart'
     show NativeGeofenceManager;
-export 'package:native_geofence/src/native_geofence_manager.dart';
+export 'package:native_geofence/src/typedefs.dart';

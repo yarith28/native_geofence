@@ -11,11 +11,18 @@ Future<void> geofenceTriggered(GeofenceCallbackParams params) async {
   debugPrint('geofenceTriggered params: $params');
   final SendPort? send =
       IsolateNameServer.lookupPortByName('native_geofence_send_port');
-  send?.send(params.event.name);
+  final contexts = {
+    for (final geofence in params.geofences)
+      geofence.id: params.callbackContextsByGeofenceId[geofence.id],
+  };
+  send?.send(
+    '${params.event.name} at ${params.eventAt} '
+    '(delivery=${params.eventId}, contexts=$contexts)',
+  );
 
   final notificationsRepository = NotificationsRepository();
-  // TODO: Test to see what happens if we do not initialize the Notifications
-  // plugin during callbacks.
+  // Background callbacks run in their own isolate, so callback-safe plugin
+  // dependencies must be initialized in that isolate before use.
   await notificationsRepository.init();
 
   final title =
@@ -23,13 +30,14 @@ Future<void> geofenceTriggered(GeofenceCallbackParams params) async {
   final message = 'Geofences:\n'
       '${params.geofences.map((e) => '• ID: ${e.id}, '
           'Radius=${e.radiusMeters.toStringAsFixed(0)}m, '
+          'Context=${params.callbackContextsByGeofenceId[e.id]}, '
           'Triggers=${e.triggers.map((e) => e.name).join(',')}').join('\n')}\n'
       'Event: ${params.event.name}\n'
+      'Event time: ${params.eventAt}\n'
+      'Delivery ID: ${params.eventId}\n'
       'Location: ${params.location?.latitude.toStringAsFixed(5)}, '
       '${params.location?.longitude.toStringAsFixed(5)}';
   await notificationsRepository.showGeofenceTriggerNotification(title, message);
-
-  await Future.delayed(const Duration(seconds: 1));
 }
 
 String capitalize(String text) {
