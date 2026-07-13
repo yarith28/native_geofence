@@ -164,6 +164,24 @@ final class RegionRegistrationCoordinator {
             )
             return nil
         }
+        let monitoredRegionIds = Set(monitor.monitoredRegions.map(\.identifier))
+        let reservedRegionIds = Set(
+            pendingRegistrations.values.map(\.requestedRegion.identifier)
+                + pendingRestorations.values.map(\.region.identifier)
+        )
+        let reservedRegionCount = reservedRegionIds.subtracting(monitoredRegionIds).count
+        if previousRegion == nil,
+           monitor.monitoredRegions.count + reservedRegionCount >= 20
+        {
+            completion(
+                .failure(
+                    .monitoringFailed(
+                        "iOS allows at most 20 monitored regions per app."
+                    )
+                )
+            )
+            return nil
+        }
 
         if let existingRegion = previousRegion as? CLCircularRegion,
            regionsMatch(existingRegion, region)

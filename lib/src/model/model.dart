@@ -101,6 +101,9 @@ class Geofence {
 
   /// The radius, in meters, around [location] that will be considered part of
   /// the geofence.
+  ///
+  /// Must be finite and strictly positive. On iOS, values above the device's
+  /// maximum region-monitoring distance are clamped to that maximum.
   final double radiusMeters;
 
   /// The types of geofence events to listen for.
