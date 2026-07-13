@@ -18,8 +18,14 @@ import com.chunkytofustudios.native_geofence.generated.NativeGeofenceErrorCode
 import com.chunkytofustudios.native_geofence.util.GeofenceEvents
 import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceBroadcastReceiver
 import com.chunkytofustudios.native_geofence.util.ActiveGeofenceWires
+import com.chunkytofustudios.native_geofence.util.AndroidGeofenceAsyncOperation
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceFailureMapper
+import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationFailureStage
+import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationTransaction
+import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationTransactionException
+import com.chunkytofustudios.native_geofence.util.AndroidGeofenceTransactionStepOutcome
 import com.chunkytofustudios.native_geofence.util.GeofenceWires
+import com.chunkytofustudios.native_geofence.util.GeofencePersistenceSnapshot
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 import com.chunkytofustudios.native_geofence.util.NativeGeofencePersistence
 import com.google.android.gms.location.GeofencingRequest
@@ -165,14 +171,11 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         }
     }
 
-    private fun getGeofencePendingIndent(
-        context: Context,
-        callbackHandle: Long?
-    ): PendingIntent {
+    private fun getGeofencePendingIntent(context: Context): PendingIntent {
         val intent = Intent(context, NativeGeofenceBroadcastReceiver::class.java)
-        if (callbackHandle != null) {
-            intent.putExtra(Constants.CALLBACK_HANDLE_KEY, callbackHandle)
-        }
+        // Keep the historical action-less identity. Extras are deliberately
+        // absent because every callback is resolved by triggered request ID
+        // through durable registration storage.
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             PendingIntent.getBroadcast(
                 context,
@@ -219,6 +222,21 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         cache: Boolean,
         callback: ((Result<Unit>) -> Unit)?
     ) {
+        val geofencingRequest = try {
+            buildGeofencingRequest(geofence, includeInitialTriggers = cache)
+        } catch (e: Exception) {
+            callback?.invoke(
+                Result.failure(
+                    FlutterError(
+                        NativeGeofenceErrorCode.INVALID_ARGUMENTS.raw.toString(),
+                        "Failed to build the Android geofencing request.",
+                        e.toString()
+                    )
+                )
+            )
+            return
+        }
+
         if (!geofenceBroadcastReceiverDeclaredAndEnabled(context)) {
             val message =
                 "NativeGeofenceBroadcastReceiver is missing or disabled in the merged " +
@@ -236,120 +254,189 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
             return
         }
 
-        // We try to create the Geofence without checking for permissions.
-        // Only if creation fails we will alert the Flutter plugin of the permission issue.
-        geofencingClient.addGeofences(
-            GeofencingRequest.Builder().apply {
-                setInitialTrigger(GeofenceEvents.createMask(geofence.androidSettings.initialTriggers))
-                addGeofence(GeofenceWires.toGeofence(geofence))
-            }.build(),
-            getGeofencePendingIndent(context, geofence.callbackHandle)
-        ).run {
-            addOnSuccessListener {
-                if (cache) {
-                    if (!NativeGeofencePersistence.saveGeofence(context, geofence)) {
-                        callback?.invoke(
-                            Result.failure(
-                                FlutterError(
-                                    NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
-                                    "Play services registered the geofence, but its canonical " +
-                                        "configuration could not be durably persisted."
-                                )
-                            )
-                        )
-                        return@addOnSuccessListener
-                    }
-                } else if (
-                    !NativeGeofencePersistence.setLifecycleState(
-                        context,
-                        geofence.id,
-                        recoveryEligible = true,
-                        active = true
-                    )
-                ) {
-                    callback?.invoke(
-                        Result.failure(
-                            FlutterError(
-                                NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
-                                "The recovered geofence became active, but durable plugin " +
-                                    "state could not be updated."
-                            )
-                        )
-                    )
-                    return@addOnSuccessListener
-                }
-                NativeGeofenceLogger.d(
-                    context,
-                    TAG,
-                    "Successfully added Geofence ID=${geofence.id}.",
-                )
-                callback?.invoke(Result.success(Unit))
-            }
-            addOnFailureListener {
-                NativeGeofenceLogger.e(
-                    context,
-                    TAG,
-                    "Failed to add Geofence ID=${geofence.id}: $it",
-                    it,
-                )
+        // Resolve and, if necessary, migrate the previous record before taking
+        // its exact snapshot. Expired registrations become positive cleanup
+        // evidence and are never granted a fresh lifetime by rollback.
+        val previousRecoverable =
+            NativeGeofencePersistence.getRecoverableGeofence(context, geofence.id)
+        val previousStored = NativeGeofencePersistence.getStoredGeofence(context, geofence.id)
+        val previousSnapshot = NativeGeofencePersistence.snapshot(context, geofence.id)
+        val previousRegistrationExists = previousSnapshot.containsEvidenceFor(geofence.id)
+        val previousPlatformGeofence = previousRecoverable?.takeIf {
+            previousStored?.active == true && previousStored.lifecycleMetadataDurable
+        }
 
-                if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
-                    != PackageManager.PERMISSION_GRANTED) {
-                    NativeGeofenceLogger.e(
-                        context,
-                        TAG,
-                        "Lacking permission: ACCESS_FINE_LOCATION",
-                    )
-                    callback?.invoke(
-                        Result.failure(
-                            FlutterError(
-                                NativeGeofenceErrorCode.MISSING_LOCATION_PERMISSION.raw.toString(),
-                                "The ACCESS_FINE_LOCATION needs to be granted in order to setup geofences."
-                            )
-                        )
-                    )
-                    return@addOnFailureListener
-                }
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    if (ContextCompat.checkSelfPermission(
+        AndroidGeofenceRegistrationTransaction(
+            previousRegistrationExists = previousRegistrationExists,
+            previousPlatformRestorationRequired = previousPlatformGeofence != null,
+            saveProvisional = {
+                !cache || NativeGeofencePersistence.saveGeofence(
+                    context,
+                    geofence,
+                    recoveryEligible = true,
+                    active = false,
+                )
+            },
+            markActive = {
+                NativeGeofencePersistence.setLifecycleState(
+                    context,
+                    geofence.id,
+                    recoveryEligible = true,
+                    active = true,
+                )
+            },
+            restoreDurableSnapshot = {
+                NativeGeofencePersistence.restore(context, previousSnapshot)
+            },
+            preserveInactiveEvidence = {
+                NativeGeofencePersistence.setLifecycleState(
+                    context,
+                    geofence.id,
+                    recoveryEligible = previousStored?.recoveryEligible ?: true,
+                    active = false,
+                )
+            },
+            beginCurrentRegistration = {
+                beginGeofenceAdd(geofencingRequest)
+            },
+            beginCompensation = {
+                beginGeofenceRemoval(geofence.id)
+            },
+            beginPreviousPlatformRestoration = {
+                beginGeofenceAdd(
+                    buildGeofencingRequest(
+                        requireNotNull(previousPlatformGeofence),
+                        includeInitialTriggers = false,
+                    ),
+                )
+            },
+            completion = { result ->
+                result.fold(
+                    onSuccess = {
+                        NativeGeofenceLogger.d(
                             context,
-                            Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                            TAG,
+                            "Successfully added Geofence ID=${geofence.id}.",
                         )
-                        != PackageManager.PERMISSION_GRANTED
-                    ) {
+                        callback?.invoke(Result.success(Unit))
+                    },
+                    onFailure = { error ->
+                        val failure = error as AndroidGeofenceRegistrationTransactionException
                         NativeGeofenceLogger.e(
                             context,
                             TAG,
-                            "Running on API ${Build.VERSION.SDK_INT} and lacking permission: " +
-                                "ACCESS_BACKGROUND_LOCATION",
+                            "Failed to add Geofence ID=${geofence.id}: ${failure.message}",
+                            failure.primaryCause ?: failure,
                         )
                         callback?.invoke(
-                            Result.failure(
-                                FlutterError(
-                                    NativeGeofenceErrorCode.MISSING_BACKGROUND_LOCATION_PERMISSION.raw.toString(),
-                                    "The ACCESS_BACKGROUND_LOCATION needs to be granted in order to setup geofences.",
-                                    "Running on Android API ${Build.VERSION.SDK_INT}."
-                                )
-                            )
+                            Result.failure(mapRegistrationTransactionFailure(failure)),
                         )
-                        return@addOnFailureListener
-                    }
-                }
+                    },
+                )
+            },
+        ).start()
+    }
 
-                val failure = AndroidGeofenceFailureMapper.from(it)
-                callback?.invoke(
-                    Result.failure(
-                        FlutterError(
-                            NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
-                            failure.message,
-                            failure.details
-                        )
-                    )
+    private fun buildGeofencingRequest(
+        geofence: GeofenceWire,
+        includeInitialTriggers: Boolean,
+    ): GeofencingRequest = GeofencingRequest.Builder().apply {
+        setInitialTrigger(
+            if (includeInitialTriggers) {
+                GeofenceEvents.createMask(geofence.androidSettings.initialTriggers)
+            } else {
+                0
+            },
+        )
+        addGeofence(GeofenceWires.toGeofence(geofence))
+    }.build()
+
+    @SuppressLint("MissingPermission")
+    private fun beginGeofenceAdd(
+        request: GeofencingRequest,
+    ): AndroidGeofenceAsyncOperation {
+        val task = geofencingClient.addGeofences(request, getGeofencePendingIntent(context))
+        return AndroidGeofenceAsyncOperation { onSuccess, onFailure ->
+            task.addOnSuccessListener { onSuccess() }
+            task.addOnFailureListener(onFailure)
+        }
+    }
+
+    private fun beginGeofenceRemoval(id: String): AndroidGeofenceAsyncOperation {
+        val task = geofencingClient.removeGeofences(listOf(id))
+        return AndroidGeofenceAsyncOperation { onSuccess, onFailure ->
+            task.addOnSuccessListener { onSuccess() }
+            task.addOnFailureListener(onFailure)
+        }
+    }
+
+    private fun mapRegistrationTransactionFailure(
+        failure: AndroidGeofenceRegistrationTransactionException,
+    ): FlutterError {
+        val platformFailureCleanlyRolledBack =
+            failure.stage == AndroidGeofenceRegistrationFailureStage.PLATFORM_REGISTRATION &&
+                failure.compensation == AndroidGeofenceTransactionStepOutcome.NOT_ATTEMPTED &&
+                failure.durableRestoration == AndroidGeofenceTransactionStepOutcome.SUCCEEDED
+        if (platformFailureCleanlyRolledBack) {
+            if (
+                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) !=
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                NativeGeofenceLogger.e(
+                    context,
+                    TAG,
+                    "Lacking permission: ACCESS_FINE_LOCATION",
+                )
+                return FlutterError(
+                    NativeGeofenceErrorCode.MISSING_LOCATION_PERMISSION.raw.toString(),
+                    "The ACCESS_FINE_LOCATION needs to be granted in order to setup geofences.",
+                )
+            }
+
+            if (
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                NativeGeofenceLogger.e(
+                    context,
+                    TAG,
+                    "Running on API ${Build.VERSION.SDK_INT} and lacking permission: " +
+                        "ACCESS_BACKGROUND_LOCATION",
+                )
+                return FlutterError(
+                    NativeGeofenceErrorCode.MISSING_BACKGROUND_LOCATION_PERMISSION.raw.toString(),
+                    "The ACCESS_BACKGROUND_LOCATION needs to be granted in order to setup geofences.",
+                    "Running on Android API ${Build.VERSION.SDK_INT}.",
+                )
+            }
+
+            failure.primaryCause?.let { cause ->
+                val mapped = AndroidGeofenceFailureMapper.from(cause)
+                return FlutterError(
+                    NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                    mapped.message,
+                    mapped.details,
                 )
             }
         }
+
+        return FlutterError(
+            NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+            failure.message,
+            failure.privacySafeDetails(),
+        )
     }
+
+    private fun GeofencePersistenceSnapshot.containsEvidenceFor(id: String): Boolean =
+        recordJson.present ||
+            expirationDeadlineMillis.present ||
+            recoveryEligible.present ||
+            active.present ||
+            rawIds.value.orEmpty().contains(id) ||
+            configuredIds.value.orEmpty().contains(id)
 }
 
 internal fun persistCallbackDispatcherHandle(

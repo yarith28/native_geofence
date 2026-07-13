@@ -44,6 +44,14 @@ class NativeGeofencePersistence {
             }
 
         @JvmStatic
+        internal fun getStoredGeofence(
+            context: Context,
+            id: String,
+        ): StoredGeofenceRegistration? = synchronized(sharedPreferencesLock) {
+            store(context).getConfiguredGeofence(id)
+        }
+
+        @JvmStatic
         fun getRecoverableGeofence(context: Context, id: String): GeofenceWire? =
             synchronized(sharedPreferencesLock) {
                 store(context).getRecoverableGeofence(id)
