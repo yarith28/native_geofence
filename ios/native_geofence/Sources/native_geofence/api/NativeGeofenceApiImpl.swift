@@ -72,21 +72,20 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
     }
     
     func getGeofenceIds() throws -> [String] {
-        var geofenceIds: [String] = []
-        for region in locationManagerDelegate.locationManager.monitoredRegions {
-            geofenceIds.append(region.identifier)
-        }
+        let geofenceIds = ownedMonitoredRegions()
+            .map(\.identifier)
+            .sorted()
         log.debug("getGeofenceIds() found \(geofenceIds.count) geofence(s).")
         return geofenceIds
     }
     
     func getGeofences() throws -> [ActiveGeofenceWire] {
         var geofences: [ActiveGeofenceWire] = []
-        for region in locationManagerDelegate.locationManager.monitoredRegions {
+        for region in ownedMonitoredRegions() {
             if let activeGeofence = ActiveGeofenceWires.fromRegion(region) {
                 geofences.append(activeGeofence)
             } else {
-                log.error("Unknown region type: \(region)")
+                log.error("Unable to convert owned region: \(region)")
             }
         }
         log.debug("getGeofences() found \(geofences.count) geofence(s).")
@@ -94,28 +93,36 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
     }
     
     func removeGeofenceById(id: String, completion: @escaping (Result<Void, any Error>) -> Void) {
+        // Snapshot ownership before cancellation removes callback metadata.
+        let regions = ownedMonitoredRegions().filter { $0.identifier == id }
         locationManagerDelegate.cancelMonitoringStart(id: id)
-        var removedCount = 0
-        for region in locationManagerDelegate.locationManager.monitoredRegions {
-            if region.identifier == id {
-                locationManagerDelegate.locationManager.stopMonitoring(for: region)
-                NativeGeofencePersistence.removeRegionCallbackHandle(id: region.identifier)
-                removedCount += 1
-            }
+        for region in regions {
+            locationManagerDelegate.recordRemoval(of: region)
+            locationManagerDelegate.locationManager.stopMonitoring(for: region)
         }
-        log.debug("Removed \(removedCount) geofence(s) with ID=\(id).")
+        NativeGeofencePersistence.removeRegionCallbackHandle(id: id)
+        log.debug("Removed \(regions.count) geofence(s) with ID=\(id).")
         completion(.success(()))
     }
     
     func removeAllGeofences(completion: @escaping (Result<Void, any Error>) -> Void) {
+        // CLLocationManager.monitoredRegions is app-wide. Snapshot only regions
+        // backed by plugin callback metadata before clearing that metadata.
+        let regions = ownedMonitoredRegions()
         locationManagerDelegate.cancelAllMonitoringStarts()
-        var removedCount = 0
-        for region in locationManagerDelegate.locationManager.monitoredRegions {
+        for region in regions {
+            locationManagerDelegate.recordRemoval(of: region)
             locationManagerDelegate.locationManager.stopMonitoring(for: region)
-            NativeGeofencePersistence.removeRegionCallbackHandle(id: region.identifier)
-            removedCount += 1
         }
-        log.debug("Removed \(removedCount) geofence(s).")
+        NativeGeofencePersistence.removeAllRegionCallbackHandles()
+        log.debug("Removed \(regions.count) geofence(s).")
         completion(.success(()))
+    }
+
+    private func ownedMonitoredRegions() -> [CLCircularRegion] {
+        PluginOwnedRegions.select(
+            from: locationManagerDelegate.locationManager.monitoredRegions,
+            callbackIds: NativeGeofencePersistence.getRegionCallbackIds()
+        )
     }
 }

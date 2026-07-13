@@ -517,6 +517,55 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
         XCTAssertNil(handles.values["office"])
     }
 
+    func testCancellationDoesNotSearchForOrStopAnActiveRegion() {
+        let active = region(id: "office")
+        let monitor = FakeMonitor([active])
+        let handles = HandleStore(["office": 1])
+        let subject = makeSubject(monitor, handles)
+
+        XCTAssertFalse(subject.cancel(id: "office"))
+        XCTAssertTrue(monitor.stopped.isEmpty)
+        XCTAssertEqual(handles.values["office"], 1)
+
+        subject.recordRemoval(of: active)
+        let recreation = CompletionRecorder()
+        _ = subject.start(
+            region: region(id: "office"),
+            callbackHandle: 2,
+            initialTrigger: false,
+            completion: recreation.record
+        )
+        XCTAssertEqual(recreation.failures.count, 1)
+    }
+
+    func testRemovalTombstoneTracksPendingAndActiveReplacementRegions() {
+        let active = region(id: "office", radius: 50)
+        let requested = region(id: "office", radius: 100)
+        let monitor = FakeMonitor([active])
+        let handles = HandleStore(["office": 1])
+        let subject = makeSubject(monitor, handles)
+        _ = subject.start(
+            region: requested,
+            callbackHandle: 2,
+            initialTrigger: false,
+            completion: { _ in }
+        )
+
+        XCTAssertTrue(subject.cancel(id: "office"))
+        subject.recordRemoval(of: active)
+        _ = subject.didStartMonitoring(for: requested)
+        _ = subject.didStartMonitoring(for: active)
+
+        XCTAssertEqual(
+            monitor.stopped.map { ObjectIdentifier($0) },
+            [
+                ObjectIdentifier(requested),
+                ObjectIdentifier(requested),
+                ObjectIdentifier(active),
+            ]
+        )
+    }
+
     func testTinyCoreLocationNormalizationDifferencesStillMatch() {
         let existing = region(id: "office", latitude: 11.56, longitude: 104.93, radius: 100)
         let requested = region(
