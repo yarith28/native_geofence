@@ -107,12 +107,14 @@ class GeofenceCallbackParamsWire {
   final List<ActiveGeofenceWire> geofences;
   final GeofenceEvent event;
   final LocationWire? location;
+  final int? eventAtMillis;
   final int callbackHandle;
 
   const GeofenceCallbackParamsWire({
     required this.geofences,
     required this.event,
     required this.location,
+    this.eventAtMillis,
     required this.callbackHandle,
   });
 }

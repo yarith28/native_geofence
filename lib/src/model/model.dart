@@ -220,10 +220,16 @@ class GeofenceCallbackParams {
   /// https://developer.apple.com/documentation/corelocation/cllocationmanagerdelegate/locationmanager(_:diddeterminestate:for:)
   final Location? location;
 
+  /// Device wall-clock time captured when native code created this event.
+  ///
+  /// This is diagnostic metadata, not a monotonic clock or unique event ID.
+  final DateTime? eventAt;
+
   const GeofenceCallbackParams({
     required this.geofences,
     required this.event,
     required this.location,
+    this.eventAt,
   });
 
   @override
@@ -231,6 +237,7 @@ class GeofenceCallbackParams {
     return 'GeofenceCallbackParams('
         'geofences: [${geofences.map((e) => e.toString()).join(', ')}], '
         'event: ${event.name}, '
-        'location: $location)';
+        'location: $location, '
+        'eventAt: $eventAt)';
   }
 }

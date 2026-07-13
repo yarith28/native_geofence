@@ -478,6 +478,7 @@ class GeofenceCallbackParamsWire {
     required this.geofences,
     required this.event,
     this.location,
+    this.eventAtMillis,
     required this.callbackHandle,
   });
 
@@ -487,6 +488,8 @@ class GeofenceCallbackParamsWire {
 
   LocationWire? location;
 
+  int? eventAtMillis;
+
   int callbackHandle;
 
   List<Object?> _toList() {
@@ -494,6 +497,7 @@ class GeofenceCallbackParamsWire {
       geofences,
       event,
       location,
+      eventAtMillis,
       callbackHandle,
     ];
   }
@@ -508,7 +512,8 @@ class GeofenceCallbackParamsWire {
       geofences: (result[0]! as List<Object?>).cast<ActiveGeofenceWire>(),
       event: result[1]! as GeofenceEvent,
       location: result[2] as LocationWire?,
-      callbackHandle: result[3]! as int,
+      eventAtMillis: result[3] as int?,
+      callbackHandle: result[4]! as int,
     );
   }
 
@@ -525,6 +530,7 @@ class GeofenceCallbackParamsWire {
     return _deepEquals(geofences, other.geofences) &&
         _deepEquals(event, other.event) &&
         _deepEquals(location, other.location) &&
+        _deepEquals(eventAtMillis, other.eventAtMillis) &&
         _deepEquals(callbackHandle, other.callbackHandle);
   }
 

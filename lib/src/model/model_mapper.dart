@@ -122,6 +122,9 @@ extension GeofenceCallbackParamsWireMapper on GeofenceCallbackParamsWire {
       geofences: geofences.map((e) => e.fromWire()).toList(),
       event: event,
       location: location?.fromWire(),
+      eventAt: eventAtMillis == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(eventAtMillis!),
     );
   }
 }

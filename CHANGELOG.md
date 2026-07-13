@@ -1,5 +1,6 @@
 ## Unreleased
 
+* Exposes the native event-creation time on geofence callback parameters
 * Adds opt-in, bounded Android native log-file controls for collecting background diagnostics
 * Includes Android callback-location accuracy and mock-provider metadata for app policy and diagnostics
 * Waits for iOS Core Location to confirm geofence registration, reports region-scoped failures, ignores unscoped nil-region failures that cannot be attributed safely, and clamps oversized regions to the device maximum

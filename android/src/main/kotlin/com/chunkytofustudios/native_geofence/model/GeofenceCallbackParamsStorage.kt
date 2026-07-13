@@ -9,25 +9,28 @@ class GeofenceCallbackParamsStorage(
     private val geofences: List<ActiveGeofenceStorage>,
     private val event: GeofenceEvent,
     private val location: LocationStorage? = null,
+    private val eventAtMillis: Long? = null,
     private val callbackHandle: Long
 ) {
     companion object {
         fun fromWire(e: GeofenceCallbackParamsWire): GeofenceCallbackParamsStorage {
             return GeofenceCallbackParamsStorage(
-                e.geofences.map { ActiveGeofenceStorage.fromWire(it) }.toList(),
-                e.event,
-                e.location?.let { LocationStorage.fromWire(it) },
-                e.callbackHandle,
+                geofences = e.geofences.map { ActiveGeofenceStorage.fromWire(it) }.toList(),
+                event = e.event,
+                location = e.location?.let { LocationStorage.fromWire(it) },
+                eventAtMillis = e.eventAtMillis,
+                callbackHandle = e.callbackHandle,
             )
         }
     }
 
     fun toWire(): GeofenceCallbackParamsWire {
         return GeofenceCallbackParamsWire(
-            geofences.map { it.toWire() }.toList(),
-            event,
-            location?.toWire(),
-            callbackHandle,
+            geofences = geofences.map { it.toWire() }.toList(),
+            event = event,
+            location = location?.toWire(),
+            eventAtMillis = eventAtMillis,
+            callbackHandle = callbackHandle,
         )
     }
 }
