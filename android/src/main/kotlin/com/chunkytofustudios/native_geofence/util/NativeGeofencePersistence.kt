@@ -115,6 +115,12 @@ class NativeGeofencePersistence {
             store(context).setLifecycleState(id, recoveryEligible, active)
         }
 
+        @JvmStatic
+        fun markGeofenceForPlatformCleanup(context: Context, id: String): Boolean =
+            synchronized(sharedPreferencesLock) {
+                store(context).markForPlatformCleanup(id)
+            }
+
         /** Call only after Play services confirms cleanup for [geofenceId]. */
         @JvmStatic
         fun removeGeofence(context: Context, geofenceId: String): Boolean =

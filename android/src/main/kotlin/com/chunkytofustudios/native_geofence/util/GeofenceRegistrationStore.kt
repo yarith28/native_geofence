@@ -168,6 +168,19 @@ internal class GeofenceRegistrationStore(
         putBoolean(activeKey(id), active)
     }
 
+    /**
+     * Retains an orphan ID and any canonical bytes while marking it ineligible
+     * for recovery. Platform cleanup must succeed before the caller removes it.
+     */
+    fun markForPlatformCleanup(id: String): Boolean {
+        val rawIds = rawIndex().toMutableSet().apply { add(id) }
+        return backend.edit {
+            putStringSet(Constants.PERSISTENT_GEOFENCES_IDS_KEY, rawIds)
+            putBoolean(recoveryEligibleKey(id), false)
+            putBoolean(activeKey(id), false)
+        }
+    }
+
     fun snapshot(id: String): GeofencePersistenceSnapshot = GeofencePersistenceSnapshot(
         id = id,
         rawIds = stringSetValue(Constants.PERSISTENT_GEOFENCES_IDS_KEY),
