@@ -6,6 +6,7 @@ import android.os.Looper
 import android.util.Log
 import com.chunkytofustudios.native_geofence.api.NativeGeofenceApiImpl
 import com.chunkytofustudios.native_geofence.generated.NativeGeofenceApi
+import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceRecoveryRuntime
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodChannel
@@ -13,6 +14,7 @@ import io.flutter.plugin.common.MethodChannel
 class NativeGeofencePlugin : FlutterPlugin {
     private var context: Context? = null
     private var logFileChannel: MethodChannel? = null
+    private var ownsLocationModeReceiverReference = false
     private val mainHandler = Handler(Looper.getMainLooper())
 
     companion object {
@@ -23,10 +25,24 @@ class NativeGeofencePlugin : FlutterPlugin {
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         context = binding.applicationContext
         NativeGeofenceLogger.initialize(binding.applicationContext)
+        val api = NativeGeofenceApiImpl(binding.applicationContext)
         NativeGeofenceApi.setUp(
             binding.binaryMessenger,
-            NativeGeofenceApiImpl(binding.applicationContext)
+            api
         )
+        try {
+            ownsLocationModeReceiverReference =
+                NativeGeofenceRecoveryRuntime.acquireLocationModeReceiver(
+                    binding.applicationContext
+                )
+        } catch (error: RuntimeException) {
+            NativeGeofenceLogger.w(
+                binding.applicationContext,
+                TAG,
+                "Could not register the location-mode recovery receiver.",
+                error,
+            )
+        }
         logFileChannel = MethodChannel(
             binding.binaryMessenger,
             Constants.LOG_FILE_CHANNEL_NAME
@@ -64,6 +80,22 @@ class NativeGeofencePlugin : FlutterPlugin {
                 }
             }
         }
+        if (
+            NativeGeofenceRecoveryRuntime.shouldRunInitializationRepair(
+                binding.applicationContext
+            )
+        ) {
+            api.startAutomaticRecovery("plugin_initialization") { result ->
+                result.exceptionOrNull()?.let { error ->
+                    NativeGeofenceLogger.e(
+                        binding.applicationContext,
+                        TAG,
+                        "Initialization-time geofence repair did not complete.",
+                        error
+                    )
+                }
+            }
+        }
         NativeGeofenceLogger.d(
             binding.applicationContext,
             TAG,
@@ -72,6 +104,22 @@ class NativeGeofencePlugin : FlutterPlugin {
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        if (ownsLocationModeReceiverReference) {
+            try {
+                NativeGeofenceRecoveryRuntime.releaseLocationModeReceiver(
+                    binding.applicationContext
+                )
+            } catch (error: RuntimeException) {
+                NativeGeofenceLogger.w(
+                    binding.applicationContext,
+                    TAG,
+                    "Location-mode receiver was already unregistered.",
+                    error,
+                )
+            }
+        }
+        ownsLocationModeReceiverReference = false
+        NativeGeofenceApi.setUp(binding.binaryMessenger, null)
         logFileChannel?.setMethodCallHandler(null)
         logFileChannel = null
         context = null

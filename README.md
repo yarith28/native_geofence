@@ -46,39 +46,40 @@ NOTE: You may also need Gradle 8+ to use this plugin. See this [issue](https://g
 
 See the [example plugin](https://github.com/ChunkyTofuStudios/native_geofence/blob/main/example/android/app/src/main/AndroidManifest.xml) for a full demonstration.
 
-3. Optional: add the reboot receiver right before `</application>` if you want
-persisted geofences re-registered after a device reboot:
-
-```xml
-<receiver android:name="com.chunkytofustudios.native_geofence.receivers.NativeGeofenceRebootBroadcastReceiver"
-          android:exported="true">
-    <intent-filter>
-        <action android:name="android.intent.action.BOOT_COMPLETED"></action>
-    </intent-filter>
-</receiver>
-```
-
-*Explanation: The callback receiver and optional callback foreground service are
-non-exported components owned and merged automatically by native_geofence. The
-plugin verifies that the callback receiver is present and enabled before
-registering a geofence. The reboot receiver remains an application opt-in at
-this stage because it listens for system broadcasts and requires
-`RECEIVE_BOOT_COMPLETED`.*
-
-4. In the same file declare the neccesary permissions before the `<application ...` line:
+3. In the same file declare the necessary location permissions before the
+`<application ...` line:
 
 ```xml
 <!-- Used by plugin: native_geofence -->
 <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
 <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
 <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 <uses-permission android:name="android.permission.WAKE_LOCK"/>
 ```
 
-*Explanation: The coarse and fine locations are required to create a geofence. The background location permission is [also required](https://developer.android.com/develop/sensors-and-location/location/geofencing#RequestGeofences) for geofence creation on Android API level 29+. The boot completed permission is required to re-register geofences after reboot. The wake lock permission is only required if you need to run foreground services to respond to geofence events.*
+*Explanation: The coarse and fine locations are required to create a geofence.
+The background location permission is [also required](https://developer.android.com/develop/sensors-and-location/location/geofencing#RequestGeofences)
+for geofence creation on Android API level 29+. The wake lock permission is
+only required if you need to run foreground services to respond to geofence
+events. The plugin automatically merges its non-exported callback receiver,
+foreground service, reboot/package-replacement receiver, and
+`RECEIVE_BOOT_COMPLETED` permission. It also listens for location services
+becoming available through a live non-exported receiver while the plugin is
+attached and a non-exported manifest receiver where Android delivers the
+location-mode broadcast. Platform background-broadcast restrictions mean the
+manifest path is a fallback, not a guarantee on every Android release or OEM.*
 
-5. Optional: Disable battery optimization
+Android recovery preserves each finite registration's original absolute
+expiration deadline; reboot or repair never grants a new full lifetime.
+Expired and corrupt registrations are cleaned from Play services before their
+durable cleanup IDs are removed. Automatic recovery suppresses initial triggers
+and reserves its first durable retry before immediate recovery work. Transient
+failures retry after 4, 8, 16, and 32 minutes, followed by ten hourly attempts
+(14 delayed attempts over 660 minutes, or about 11 hours). Missing location
+permissions stop that retry generation. The explicit
+`reCreateAfterReboot()` API is asynchronous and reports recovery failures.
+
+4. Optional: Disable battery optimization
 
 If you want to perform any heavy work when a Geofence triggers (within the Geofence callback), such as calling a backend API, you will need to ask the user to disable battery optimization for your app.
 

@@ -614,7 +614,7 @@ class FlutterBindingsPigeonCodec: FlutterStandardMessageCodec, @unchecked Sendab
 protocol NativeGeofenceApi {
   func initialize(callbackDispatcherHandle: Int64) throws
   func createGeofence(geofence: GeofenceWire, completion: @escaping (Result<Void, Error>) -> Void)
-  func reCreateAfterReboot() throws
+  func reCreateAfterReboot(completion: @escaping (Result<Void, Error>) -> Void)
   func getGeofenceIds() throws -> [String]
   func getGeofences() throws -> [ActiveGeofenceWire]
   func removeGeofenceById(id: String, completion: @escaping (Result<Void, Error>) -> Void)
@@ -662,11 +662,13 @@ class NativeGeofenceApiSetup {
     let reCreateAfterRebootChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.native_geofence.NativeGeofenceApi.reCreateAfterReboot\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       reCreateAfterRebootChannel.setMessageHandler { _, reply in
-        do {
-          try api.reCreateAfterReboot()
-          reply(wrapResult(nil))
-        } catch {
-          reply(wrapError(error))
+        api.reCreateAfterReboot { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {

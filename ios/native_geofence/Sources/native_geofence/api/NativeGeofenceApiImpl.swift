@@ -115,8 +115,9 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
         )
     }
     
-    func reCreateAfterReboot() throws {
+    func reCreateAfterReboot(completion: @escaping (Result<Void, Error>) -> Void) {
         log.info("Re-create after reboot called. iOS handles this automatically, nothing for us to do here.")
+        completion(.success(()))
     }
     
     func getGeofenceIds() throws -> [String] {
