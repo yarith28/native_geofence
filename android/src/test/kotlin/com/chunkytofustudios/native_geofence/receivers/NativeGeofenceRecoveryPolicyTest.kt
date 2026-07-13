@@ -135,6 +135,63 @@ class NativeGeofenceRecoverySchedulePolicyTest {
         )
     }
 
+    @Test
+    fun `terminal facts require exact current generation and attempt authority`() {
+        val worker = RecoveryRetryTicket(9, 4)
+
+        assertTrue(
+            NativeGeofenceRecoverySchedulePolicy.mayPublishTerminal(9, worker, worker)
+        )
+        assertFalse(
+            NativeGeofenceRecoverySchedulePolicy.mayPublishTerminal(
+                10,
+                RecoveryRetryTicket(10, 1),
+                worker
+            )
+        )
+        assertFalse(
+            NativeGeofenceRecoverySchedulePolicy.mayPublishTerminal(
+                9,
+                RecoveryRetryTicket(9, 5),
+                worker
+            )
+        )
+        assertFalse(
+            NativeGeofenceRecoverySchedulePolicy.mayPublishTerminal(9, null, worker)
+        )
+    }
+
+    @Test
+    fun `worker terminal outcomes are fixed privacy-safe facts`() {
+        assertEquals(
+            listOf(
+                Triple("completed", true, RecoveryWorkerTerminalOutcome.COMPLETED),
+                Triple(
+                    "non_retryable_failure",
+                    false,
+                    RecoveryWorkerTerminalOutcome.NON_RETRYABLE_FAILURE
+                ),
+                Triple("permission_wait", false, RecoveryWorkerTerminalOutcome.PERMISSION_WAIT),
+                Triple("gave_up", false, RecoveryWorkerTerminalOutcome.GAVE_UP),
+                Triple(
+                    "retry_schedule_failed",
+                    false,
+                    RecoveryWorkerTerminalOutcome.RETRY_SCHEDULE_FAILED
+                ),
+                Triple("stale_generation", false, RecoveryWorkerTerminalOutcome.STALE_GENERATION)
+            ),
+            RecoveryWorkerTerminalOutcome.entries.map {
+                Triple(it.storageName, it.succeeded, it)
+            }
+        )
+        RecoveryWorkerTerminalOutcome.entries.forEach { outcome ->
+            assertFalse(outcome.storageName.contains("reason"))
+            assertFalse(outcome.storageName.contains("callback"))
+            assertFalse(outcome.storageName.contains("latitude"))
+            assertFalse(outcome.storageName.contains("longitude"))
+        }
+    }
+
     private fun shouldSchedule(
         scheduled: RecoveryRetryTicket?,
         requestedAttempt: Int

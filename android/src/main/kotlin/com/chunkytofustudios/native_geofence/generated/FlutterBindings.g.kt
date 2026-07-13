@@ -283,6 +283,44 @@ enum class NativeGeofenceErrorCode(val raw: Int) {
   }
 }
 
+enum class NativeGeofencePlatform(val raw: Int) {
+  ANDROID(0),
+  IOS(1);
+
+  companion object {
+    fun ofRaw(raw: Int): NativeGeofencePlatform? {
+      return values().firstOrNull { it.raw == raw }
+    }
+  }
+}
+
+enum class NativeGeofenceRegistrationHealth(val raw: Int) {
+  NO_REGISTRATIONS(0),
+  HEALTHY(1),
+  DEGRADED(2),
+  UNAVAILABLE(3),
+  UNKNOWN(4);
+
+  companion object {
+    fun ofRaw(raw: Int): NativeGeofenceRegistrationHealth? {
+      return values().firstOrNull { it.raw == raw }
+    }
+  }
+}
+
+enum class NativeGeofenceCallbackRefreshState(val raw: Int) {
+  CURRENT(0),
+  REFRESH_REQUIRED(1),
+  UNKNOWN(2),
+  NOT_APPLICABLE(3);
+
+  companion object {
+    fun ofRaw(raw: Int): NativeGeofenceCallbackRefreshState? {
+      return values().firstOrNull { it.raw == raw }
+    }
+  }
+}
+
 /** Generated class from Pigeon that represents data sent in messages. */
 data class LocationWire (
   val latitude: Double,
@@ -579,6 +617,174 @@ data class GeofenceCallbackParamsWire (
     return result
   }
 }
+
+/** Generated class from Pigeon that represents data sent in messages. */
+data class NativeGeofenceLifecycleFactWire (
+  val occurredAtMillis: Long,
+  val succeeded: Boolean,
+  val outcome: String,
+  val geofenceCount: Long? = null
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): NativeGeofenceLifecycleFactWire {
+      val occurredAtMillis = pigeonVar_list[0] as Long
+      val succeeded = pigeonVar_list[1] as Boolean
+      val outcome = pigeonVar_list[2] as String
+      val geofenceCount = pigeonVar_list[3] as Long?
+      return NativeGeofenceLifecycleFactWire(occurredAtMillis, succeeded, outcome, geofenceCount)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      occurredAtMillis,
+      succeeded,
+      outcome,
+      geofenceCount,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as NativeGeofenceLifecycleFactWire
+    return FlutterBindingsPigeonUtils.deepEquals(this.occurredAtMillis, other.occurredAtMillis) && FlutterBindingsPigeonUtils.deepEquals(this.succeeded, other.succeeded) && FlutterBindingsPigeonUtils.deepEquals(this.outcome, other.outcome) && FlutterBindingsPigeonUtils.deepEquals(this.geofenceCount, other.geofenceCount)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.occurredAtMillis)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.succeeded)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.outcome)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.geofenceCount)
+    return result
+  }
+}
+
+/** Generated class from Pigeon that represents data sent in messages. */
+data class NativeGeofenceStatusWire (
+  val platform: NativeGeofencePlatform,
+  val osVersion: String? = null,
+  val persistedGeofenceIds: List<String>,
+  val fineLocationPermissionGranted: Boolean? = null,
+  val backgroundLocationPermissionGranted: Boolean? = null,
+  val notificationPermissionGranted: Boolean? = null,
+  val locationServicesEnabled: Boolean? = null,
+  val monitoringAvailable: Boolean? = null,
+  val playServicesAvailable: Boolean? = null,
+  val callbackPendingIntentAvailable: Boolean? = null,
+  val callbackReceiverAvailable: Boolean? = null,
+  val canEnumerateLivePlatformRegistrations: Boolean? = null,
+  val pluginOwnedMonitoringCount: Long? = null,
+  val callbackDispatcherRegistered: Boolean? = null,
+  val callbackRefreshState: NativeGeofenceCallbackRefreshState,
+  val registrationHealth: NativeGeofenceRegistrationHealth,
+  val lastRegistrationFact: NativeGeofenceLifecycleFactWire? = null,
+  val lastRemovalFact: NativeGeofenceLifecycleFactWire? = null,
+  val lastBroadcastFact: NativeGeofenceLifecycleFactWire? = null,
+  val lastEnqueueFact: NativeGeofenceLifecycleFactWire? = null,
+  val lastWorkerFact: NativeGeofenceLifecycleFactWire? = null,
+  val lastRecoveryFact: NativeGeofenceLifecycleFactWire? = null,
+  val lastForegroundFact: NativeGeofenceLifecycleFactWire? = null
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): NativeGeofenceStatusWire {
+      val platform = pigeonVar_list[0] as NativeGeofencePlatform
+      val osVersion = pigeonVar_list[1] as String?
+      val persistedGeofenceIds = pigeonVar_list[2] as List<String>
+      val fineLocationPermissionGranted = pigeonVar_list[3] as Boolean?
+      val backgroundLocationPermissionGranted = pigeonVar_list[4] as Boolean?
+      val notificationPermissionGranted = pigeonVar_list[5] as Boolean?
+      val locationServicesEnabled = pigeonVar_list[6] as Boolean?
+      val monitoringAvailable = pigeonVar_list[7] as Boolean?
+      val playServicesAvailable = pigeonVar_list[8] as Boolean?
+      val callbackPendingIntentAvailable = pigeonVar_list[9] as Boolean?
+      val callbackReceiverAvailable = pigeonVar_list[10] as Boolean?
+      val canEnumerateLivePlatformRegistrations = pigeonVar_list[11] as Boolean?
+      val pluginOwnedMonitoringCount = pigeonVar_list[12] as Long?
+      val callbackDispatcherRegistered = pigeonVar_list[13] as Boolean?
+      val callbackRefreshState = pigeonVar_list[14] as NativeGeofenceCallbackRefreshState
+      val registrationHealth = pigeonVar_list[15] as NativeGeofenceRegistrationHealth
+      val lastRegistrationFact = pigeonVar_list[16] as NativeGeofenceLifecycleFactWire?
+      val lastRemovalFact = pigeonVar_list[17] as NativeGeofenceLifecycleFactWire?
+      val lastBroadcastFact = pigeonVar_list[18] as NativeGeofenceLifecycleFactWire?
+      val lastEnqueueFact = pigeonVar_list[19] as NativeGeofenceLifecycleFactWire?
+      val lastWorkerFact = pigeonVar_list[20] as NativeGeofenceLifecycleFactWire?
+      val lastRecoveryFact = pigeonVar_list[21] as NativeGeofenceLifecycleFactWire?
+      val lastForegroundFact = pigeonVar_list[22] as NativeGeofenceLifecycleFactWire?
+      return NativeGeofenceStatusWire(platform, osVersion, persistedGeofenceIds, fineLocationPermissionGranted, backgroundLocationPermissionGranted, notificationPermissionGranted, locationServicesEnabled, monitoringAvailable, playServicesAvailable, callbackPendingIntentAvailable, callbackReceiverAvailable, canEnumerateLivePlatformRegistrations, pluginOwnedMonitoringCount, callbackDispatcherRegistered, callbackRefreshState, registrationHealth, lastRegistrationFact, lastRemovalFact, lastBroadcastFact, lastEnqueueFact, lastWorkerFact, lastRecoveryFact, lastForegroundFact)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      platform,
+      osVersion,
+      persistedGeofenceIds,
+      fineLocationPermissionGranted,
+      backgroundLocationPermissionGranted,
+      notificationPermissionGranted,
+      locationServicesEnabled,
+      monitoringAvailable,
+      playServicesAvailable,
+      callbackPendingIntentAvailable,
+      callbackReceiverAvailable,
+      canEnumerateLivePlatformRegistrations,
+      pluginOwnedMonitoringCount,
+      callbackDispatcherRegistered,
+      callbackRefreshState,
+      registrationHealth,
+      lastRegistrationFact,
+      lastRemovalFact,
+      lastBroadcastFact,
+      lastEnqueueFact,
+      lastWorkerFact,
+      lastRecoveryFact,
+      lastForegroundFact,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as NativeGeofenceStatusWire
+    return FlutterBindingsPigeonUtils.deepEquals(this.platform, other.platform) && FlutterBindingsPigeonUtils.deepEquals(this.osVersion, other.osVersion) && FlutterBindingsPigeonUtils.deepEquals(this.persistedGeofenceIds, other.persistedGeofenceIds) && FlutterBindingsPigeonUtils.deepEquals(this.fineLocationPermissionGranted, other.fineLocationPermissionGranted) && FlutterBindingsPigeonUtils.deepEquals(this.backgroundLocationPermissionGranted, other.backgroundLocationPermissionGranted) && FlutterBindingsPigeonUtils.deepEquals(this.notificationPermissionGranted, other.notificationPermissionGranted) && FlutterBindingsPigeonUtils.deepEquals(this.locationServicesEnabled, other.locationServicesEnabled) && FlutterBindingsPigeonUtils.deepEquals(this.monitoringAvailable, other.monitoringAvailable) && FlutterBindingsPigeonUtils.deepEquals(this.playServicesAvailable, other.playServicesAvailable) && FlutterBindingsPigeonUtils.deepEquals(this.callbackPendingIntentAvailable, other.callbackPendingIntentAvailable) && FlutterBindingsPigeonUtils.deepEquals(this.callbackReceiverAvailable, other.callbackReceiverAvailable) && FlutterBindingsPigeonUtils.deepEquals(this.canEnumerateLivePlatformRegistrations, other.canEnumerateLivePlatformRegistrations) && FlutterBindingsPigeonUtils.deepEquals(this.pluginOwnedMonitoringCount, other.pluginOwnedMonitoringCount) && FlutterBindingsPigeonUtils.deepEquals(this.callbackDispatcherRegistered, other.callbackDispatcherRegistered) && FlutterBindingsPigeonUtils.deepEquals(this.callbackRefreshState, other.callbackRefreshState) && FlutterBindingsPigeonUtils.deepEquals(this.registrationHealth, other.registrationHealth) && FlutterBindingsPigeonUtils.deepEquals(this.lastRegistrationFact, other.lastRegistrationFact) && FlutterBindingsPigeonUtils.deepEquals(this.lastRemovalFact, other.lastRemovalFact) && FlutterBindingsPigeonUtils.deepEquals(this.lastBroadcastFact, other.lastBroadcastFact) && FlutterBindingsPigeonUtils.deepEquals(this.lastEnqueueFact, other.lastEnqueueFact) && FlutterBindingsPigeonUtils.deepEquals(this.lastWorkerFact, other.lastWorkerFact) && FlutterBindingsPigeonUtils.deepEquals(this.lastRecoveryFact, other.lastRecoveryFact) && FlutterBindingsPigeonUtils.deepEquals(this.lastForegroundFact, other.lastForegroundFact)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.platform)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.osVersion)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.persistedGeofenceIds)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.fineLocationPermissionGranted)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.backgroundLocationPermissionGranted)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.notificationPermissionGranted)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.locationServicesEnabled)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.monitoringAvailable)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.playServicesAvailable)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.callbackPendingIntentAvailable)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.callbackReceiverAvailable)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.canEnumerateLivePlatformRegistrations)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.pluginOwnedMonitoringCount)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.callbackDispatcherRegistered)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.callbackRefreshState)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.registrationHealth)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.lastRegistrationFact)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.lastRemovalFact)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.lastBroadcastFact)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.lastEnqueueFact)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.lastWorkerFact)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.lastRecoveryFact)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.lastForegroundFact)
+    return result
+  }
+}
 private open class FlutterBindingsPigeonCodec : StandardMessageCodec() {
   override fun readValueOfType(type: Byte, buffer: ByteBuffer): Any? {
     return when (type) {
@@ -593,33 +799,58 @@ private open class FlutterBindingsPigeonCodec : StandardMessageCodec() {
         }
       }
       131.toByte() -> {
-        return (readValue(buffer) as? List<Any?>)?.let {
-          LocationWire.fromList(it)
+        return (readValue(buffer) as Long?)?.let {
+          NativeGeofencePlatform.ofRaw(it.toInt())
         }
       }
       132.toByte() -> {
-        return (readValue(buffer) as? List<Any?>)?.let {
-          IosGeofenceSettingsWire.fromList(it)
+        return (readValue(buffer) as Long?)?.let {
+          NativeGeofenceRegistrationHealth.ofRaw(it.toInt())
         }
       }
       133.toByte() -> {
-        return (readValue(buffer) as? List<Any?>)?.let {
-          AndroidGeofenceSettingsWire.fromList(it)
+        return (readValue(buffer) as Long?)?.let {
+          NativeGeofenceCallbackRefreshState.ofRaw(it.toInt())
         }
       }
       134.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          GeofenceWire.fromList(it)
+          LocationWire.fromList(it)
         }
       }
       135.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          ActiveGeofenceWire.fromList(it)
+          IosGeofenceSettingsWire.fromList(it)
         }
       }
       136.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
+          AndroidGeofenceSettingsWire.fromList(it)
+        }
+      }
+      137.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          GeofenceWire.fromList(it)
+        }
+      }
+      138.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          ActiveGeofenceWire.fromList(it)
+        }
+      }
+      139.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
           GeofenceCallbackParamsWire.fromList(it)
+        }
+      }
+      140.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          NativeGeofenceLifecycleFactWire.fromList(it)
+        }
+      }
+      141.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          NativeGeofenceStatusWire.fromList(it)
         }
       }
       else -> super.readValueOfType(type, buffer)
@@ -635,28 +866,48 @@ private open class FlutterBindingsPigeonCodec : StandardMessageCodec() {
         stream.write(130)
         writeValue(stream, value.raw.toLong())
       }
-      is LocationWire -> {
+      is NativeGeofencePlatform -> {
         stream.write(131)
-        writeValue(stream, value.toList())
+        writeValue(stream, value.raw.toLong())
       }
-      is IosGeofenceSettingsWire -> {
+      is NativeGeofenceRegistrationHealth -> {
         stream.write(132)
-        writeValue(stream, value.toList())
+        writeValue(stream, value.raw.toLong())
       }
-      is AndroidGeofenceSettingsWire -> {
+      is NativeGeofenceCallbackRefreshState -> {
         stream.write(133)
-        writeValue(stream, value.toList())
+        writeValue(stream, value.raw.toLong())
       }
-      is GeofenceWire -> {
+      is LocationWire -> {
         stream.write(134)
         writeValue(stream, value.toList())
       }
-      is ActiveGeofenceWire -> {
+      is IosGeofenceSettingsWire -> {
         stream.write(135)
         writeValue(stream, value.toList())
       }
-      is GeofenceCallbackParamsWire -> {
+      is AndroidGeofenceSettingsWire -> {
         stream.write(136)
+        writeValue(stream, value.toList())
+      }
+      is GeofenceWire -> {
+        stream.write(137)
+        writeValue(stream, value.toList())
+      }
+      is ActiveGeofenceWire -> {
+        stream.write(138)
+        writeValue(stream, value.toList())
+      }
+      is GeofenceCallbackParamsWire -> {
+        stream.write(139)
+        writeValue(stream, value.toList())
+      }
+      is NativeGeofenceLifecycleFactWire -> {
+        stream.write(140)
+        writeValue(stream, value.toList())
+      }
+      is NativeGeofenceStatusWire -> {
+        stream.write(141)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -670,6 +921,7 @@ interface NativeGeofenceApi {
   fun initialize(callbackDispatcherHandle: Long)
   fun createGeofence(geofence: GeofenceWire, callback: (Result<Unit>) -> Unit)
   fun reCreateAfterReboot(callback: (Result<Unit>) -> Unit)
+  fun getStatus(callback: (Result<NativeGeofenceStatusWire>) -> Unit)
   fun getGeofenceIds(): List<String>
   fun getGeofences(): List<ActiveGeofenceWire>
   fun removeGeofenceById(id: String, callback: (Result<Unit>) -> Unit)
@@ -731,6 +983,24 @@ interface NativeGeofenceApi {
                 reply.reply(FlutterBindingsPigeonUtils.wrapError(error))
               } else {
                 reply.reply(FlutterBindingsPigeonUtils.wrapResult(null))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.native_geofence.NativeGeofenceApi.getStatus$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            api.getStatus{ result: Result<NativeGeofenceStatusWire> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(FlutterBindingsPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(FlutterBindingsPigeonUtils.wrapResult(data))
               }
             }
           }

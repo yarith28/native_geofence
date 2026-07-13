@@ -104,6 +104,7 @@ class CallbackWorkEnqueueCoordinatorTest {
             start = { CallbackEnqueueOperation { observed = it } },
             completion = outcomes::add
         )
+        assertTrue(outcomes.isEmpty())
         observed?.invoke(Result.success(Unit))
         observed?.invoke(Result.failure(IllegalStateException("late")))
 

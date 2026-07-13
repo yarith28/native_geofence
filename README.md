@@ -313,6 +313,35 @@ final List<ActiveGeofence> myGeofences = await NativeGeofenceManager.instance.ge
 print('There are ${myGeofences.length} active geofences.')
 ```
 
+### Inspect diagnostic status
+
+```dart
+final NativeGeofenceStatus status =
+    await NativeGeofenceManager.instance.getStatus();
+print(status.registrationHealth);
+```
+
+Status is asynchronous, read-only, and privacy-safe. It includes persisted
+plugin-owned IDs, relevant permission and service prerequisites, callback
+refresh evidence, computed registration health, and the most recent structured
+registration/removal/broadcast/enqueue/worker/recovery/foreground facts. Facts
+contain only a timestamp, fixed outcome label, success flag, and optional count;
+they do not contain coordinates, callback handles, contexts, or raw registration
+JSON. The plugin does not automatically dump the snapshot into logs.
+
+On Android, registration health is derived from non-mutating lifecycle evidence:
+active, recoverable, pending-cleanup, corrupt/raw-only, and unknown records remain
+distinct, and cleanup IDs never count as healthy active monitoring. Delayed
+recovery workers publish only fixed privacy-safe terminal outcomes while their
+exact recovery generation and attempt still own the durable retry ticket.
+
+Nullable fields mean the platform cannot provide the evidence. In particular,
+Android reports `canEnumerateLivePlatformRegistrations == false`: Play Services
+does not expose its live geofence set, so persisted IDs and PendingIntent state
+are evidence rather than proof of live registration. iOS monitoring counts are
+restricted to circular regions backed by plugin callback metadata and never
+include unrelated app-wide monitored regions.
+
 ### Remove geofence
 
 You have multiple options to stop listenning for geofence events:

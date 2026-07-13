@@ -77,10 +77,22 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
                     return
                 }
                 if case .success = result {
+                    NativeGeofenceDiagnostics.record(
+                        .worker,
+                        succeeded: true,
+                        outcome: "completed",
+                        geofenceCount: params.geofences.count
+                    )
                     self.log.debug(
                         "Dart callback for geofence IDs=[\(Self.geofenceIds(params))] completed."
                     )
                 } else {
+                    NativeGeofenceDiagnostics.record(
+                        .worker,
+                        succeeded: false,
+                        outcome: "dart_delivery_failed",
+                        geofenceCount: params.geofences.count
+                    )
                     self.log.error(
                         "Dart callback for geofence IDs=[\(Self.geofenceIds(params))] failed."
                     )
@@ -91,11 +103,21 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
 
     func promoteToForeground(completion: @escaping (Result<Void, Error>) -> Void) {
         log.info("promoteToForeground called. iOS does not distinguish between foreground and background, nothing to do here.")
+        NativeGeofenceDiagnostics.record(
+            .foreground,
+            succeeded: true,
+            outcome: "ios_noop_promote"
+        )
         completion(.success(()))
     }
 
     func demoteToBackground() throws {
         log.info("demoteToBackground called. iOS does not distinguish between foreground and background, nothing to do here.")
+        NativeGeofenceDiagnostics.record(
+            .foreground,
+            succeeded: true,
+            outcome: "ios_noop_demote"
+        )
     }
 
     func forceCleanup(reason: String) {
@@ -117,14 +139,29 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
         case .idle:
             log.debug("Background callback session is idle; cleaning up.")
         case .startupTimeout(let ids):
+            NativeGeofenceDiagnostics.record(
+                .worker,
+                succeeded: false,
+                outcome: "startup_timeout"
+            )
             log.error(
                 "Timed out waiting for Dart geofence API initialization; IDs=[\(ids)]."
             )
         case .callbackTimeout(let ids):
+            NativeGeofenceDiagnostics.record(
+                .worker,
+                succeeded: false,
+                outcome: "callback_timeout"
+            )
             log.error(
                 "Timed out waiting for Dart geofence callback; IDs=[\(ids)]."
             )
         case .forced(let message):
+            NativeGeofenceDiagnostics.record(
+                .worker,
+                succeeded: false,
+                outcome: "forced_cleanup"
+            )
             log.error("\(message)")
         }
         runCleanupOnMain(cleanupToRun)

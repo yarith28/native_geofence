@@ -8,6 +8,7 @@ import 'package:native_geofence/src/model/log_file_config.dart';
 import 'package:native_geofence/src/model/model.dart';
 import 'package:native_geofence/src/model/model_mapper.dart';
 import 'package:native_geofence/src/model/native_geofence_exception.dart';
+import 'package:native_geofence/src/model/native_geofence_status.dart';
 import 'package:native_geofence/src/platform/module.dart';
 import 'package:native_geofence/src/typedefs.dart';
 
@@ -111,6 +112,14 @@ class NativeGeofenceManager {
   Future<void> reCreateAfterReboot() async => _api
       .reCreateAfterReboot()
       .catchError(NativeGeofenceExceptionMapper.catchError<void>);
+
+  /// Returns a read-only, privacy-safe snapshot of native plugin evidence.
+  ///
+  /// This does not mutate registrations and does not imply Android can
+  /// enumerate the live Play Services geofence set.
+  Future<NativeGeofenceStatus> getStatus() async =>
+      _api.getStatus().then((value) => value.fromWire()).catchError(
+          NativeGeofenceExceptionMapper.catchError<NativeGeofenceStatus>);
 
   /// Get all registered [Geofence] IDs.
   ///

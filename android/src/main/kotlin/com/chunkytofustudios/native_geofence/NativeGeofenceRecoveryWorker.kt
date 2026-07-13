@@ -9,7 +9,11 @@ import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceRecoveryPol
 import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceRecoveryScheduler
 import com.chunkytofustudios.native_geofence.receivers.RecoveryScheduleOutcome
 import com.chunkytofustudios.native_geofence.receivers.RecoveryRetryStep
+import com.chunkytofustudios.native_geofence.receivers.RecoveryRetryTicket
+import com.chunkytofustudios.native_geofence.receivers.RecoveryWorkerTerminalOutcome
 import com.chunkytofustudios.native_geofence.util.LocationState
+import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnosticStage
+import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnostics
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 import com.chunkytofustudios.native_geofence.util.NativeGeofencePersistence
 import com.google.common.util.concurrent.ListenableFuture
@@ -22,13 +26,6 @@ class NativeGeofenceRecoveryWorker(
     private val stopped = AtomicBoolean(false)
 
     override fun startWork(): ListenableFuture<Result> = CallbackToFutureAdapter.getFuture { completer ->
-        val completed = AtomicBoolean(false)
-        fun finish(result: Result) {
-            if (completed.compareAndSet(false, true) && !stopped.get()) {
-                completer.set(result)
-            }
-        }
-
         val generation = workerParameters.inputData.getLong(
             Constants.RECOVERY_RETRY_GENERATION_INPUT_KEY,
             0L
@@ -40,9 +37,33 @@ class NativeGeofenceRecoveryWorker(
         val reason = workerParameters.inputData.getString(
             Constants.RECOVERY_RETRY_REASON_INPUT_KEY
         ) ?: "recovery_retry"
+        val workerTicket = RecoveryRetryTicket(generation, attempt)
+        val completed = AtomicBoolean(false)
+        fun finish(result: Result, terminalOutcome: RecoveryWorkerTerminalOutcome? = null) {
+            if (!completed.compareAndSet(false, true) || stopped.get()) {
+                return
+            }
+            if (terminalOutcome != null) {
+                NativeGeofenceRecoveryScheduler.completeWorkerTicket(
+                    context,
+                    workerTicket
+                ) {
+                    NativeGeofenceDiagnostics.record(
+                        context,
+                        NativeGeofenceDiagnosticStage.RECOVERY,
+                        succeeded = terminalOutcome.succeeded,
+                        outcome = terminalOutcome.storageName,
+                        geofenceCount = NativeGeofencePersistence
+                            .getAllRawGeofenceIds(context)
+                            .size
+                    )
+                }
+            }
+            completer.set(result)
+        }
 
         if (!NativeGeofenceRecoveryScheduler.isCurrentTicket(context, generation, attempt)) {
-            finish(Result.success())
+            finish(Result.success(), RecoveryWorkerTerminalOutcome.STALE_GENERATION)
             return@getFuture TAG
         }
 
@@ -61,16 +82,13 @@ class NativeGeofenceRecoveryWorker(
 
         when (step) {
             RecoveryRetryStep.DONE -> {
-                NativeGeofenceRecoveryScheduler.completeGeneration(context, generation)
-                finish(Result.success())
+                finish(Result.success(), RecoveryWorkerTerminalOutcome.COMPLETED)
             }
             RecoveryRetryStep.GIVE_UP -> {
-                NativeGeofenceRecoveryScheduler.completeGeneration(context, generation)
-                finish(Result.failure())
+                finish(Result.failure(), RecoveryWorkerTerminalOutcome.GAVE_UP)
             }
             RecoveryRetryStep.WAIT_FOR_PERMISSION -> {
-                NativeGeofenceRecoveryScheduler.completeGeneration(context, generation)
-                finish(Result.success())
+                finish(Result.success(), RecoveryWorkerTerminalOutcome.PERMISSION_WAIT)
             }
             RecoveryRetryStep.WAIT_FOR_LOCATION -> {
                 scheduleNext(generation, attempt, reason, ::finish)
@@ -81,17 +99,18 @@ class NativeGeofenceRecoveryWorker(
                     reason = "$reason:attempt=$attempt"
                 ) { recoveryResult ->
                     if (generation != NativeGeofenceRecoveryScheduler.currentGeneration(context)) {
-                        finish(Result.success())
+                        finish(Result.success(), RecoveryWorkerTerminalOutcome.STALE_GENERATION)
                     } else if (recoveryResult.isSuccess) {
-                        NativeGeofenceRecoveryScheduler.completeGeneration(context, generation)
-                        finish(Result.success())
+                        finish(Result.success(), RecoveryWorkerTerminalOutcome.COMPLETED)
                     } else {
                         val error = recoveryResult.exceptionOrNull()
                         if (error != null && NativeGeofenceRecoveryPolicy.isRetryable(error)) {
                             scheduleNext(generation, attempt, reason, ::finish)
                         } else {
-                            NativeGeofenceRecoveryScheduler.completeGeneration(context, generation)
-                            finish(Result.failure())
+                            finish(
+                                Result.failure(),
+                                RecoveryWorkerTerminalOutcome.NON_RETRYABLE_FAILURE
+                            )
                         }
                     }
                 }
@@ -108,12 +127,11 @@ class NativeGeofenceRecoveryWorker(
         generation: Long,
         attempt: Int,
         reason: String,
-        finish: (Result) -> Unit
+        finish: (Result, RecoveryWorkerTerminalOutcome?) -> Unit
     ) {
         val nextAttempt = attempt + 1
         if (nextAttempt > NativeGeofenceRecoveryPolicy.MAX_ATTEMPTS) {
-            NativeGeofenceRecoveryScheduler.completeGeneration(context, generation)
-            finish(Result.failure())
+            finish(Result.failure(), RecoveryWorkerTerminalOutcome.GAVE_UP)
             return
         }
         NativeGeofenceRecoveryScheduler.scheduleRetry(
@@ -123,15 +141,17 @@ class NativeGeofenceRecoveryWorker(
             reason
         ) { outcome ->
             when (outcome) {
-                RecoveryScheduleOutcome.CONFIRMED -> finish(Result.success())
+                RecoveryScheduleOutcome.CONFIRMED -> finish(Result.success(), null)
                 RecoveryScheduleOutcome.UNCONFIRMED -> {
                     // The next request may already belong to WorkManager. The
                     // exact persisted ticket prevents any unrelated worker.
-                    finish(Result.success())
+                    finish(Result.success(), null)
                 }
                 RecoveryScheduleOutcome.REJECTED -> {
-                    NativeGeofenceRecoveryScheduler.completeGeneration(context, generation)
-                    finish(Result.failure())
+                    finish(
+                        Result.failure(),
+                        RecoveryWorkerTerminalOutcome.RETRY_SCHEDULE_FAILED
+                    )
                 }
             }
         }

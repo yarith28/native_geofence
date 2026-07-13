@@ -6,6 +6,7 @@ class Constants {
     static let CALLBACK_DISPATCHER_KEY = "callback_dispatcher_handler"
     static let GEOFENCE_CALLBACK_DICT_KEY = "geofence_callback_dict"
     static let GEOFENCE_LAST_EVENT_DICT_KEY = "geofence_last_event_dict"
+    static let DIAGNOSTIC_FACT_KEY_PREFIX = "native_geofence_diagnostic_fact/"
 
     // Suppress only the immediate same-direction burst. Longer-term business
     // deduplication belongs in the app or backend.
