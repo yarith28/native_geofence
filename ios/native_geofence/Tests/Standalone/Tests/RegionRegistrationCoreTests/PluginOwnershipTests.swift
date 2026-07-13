@@ -6,6 +6,9 @@ import XCTest
 final class PluginOwnershipTests: XCTestCase {
     private var previousMapping: Any?
     private var previousContextMapping: Any?
+    private var previousDedupMapping: Any?
+    private var previousRegistrationFingerprint: Any?
+    private var previousPackageFingerprint: Any?
 
     override func setUp() {
         super.setUp()
@@ -15,11 +18,29 @@ final class PluginOwnershipTests: XCTestCase {
         previousContextMapping = UserDefaults.standard.object(
             forKey: Constants.GEOFENCE_CALLBACK_CONTEXT_DICT_KEY
         )
+        previousDedupMapping = UserDefaults.standard.object(
+            forKey: Constants.GEOFENCE_LAST_EVENT_DICT_KEY
+        )
+        previousRegistrationFingerprint = UserDefaults.standard.object(
+            forKey: Constants.SYNCHRONIZATION_REGISTRATION_FINGERPRINT_KEY
+        )
+        previousPackageFingerprint = UserDefaults.standard.object(
+            forKey: Constants.SYNCHRONIZED_PACKAGE_FINGERPRINT_KEY
+        )
         UserDefaults.standard.removeObject(
             forKey: Constants.GEOFENCE_CALLBACK_DICT_KEY
         )
         UserDefaults.standard.removeObject(
             forKey: Constants.GEOFENCE_CALLBACK_CONTEXT_DICT_KEY
+        )
+        UserDefaults.standard.removeObject(
+            forKey: Constants.GEOFENCE_LAST_EVENT_DICT_KEY
+        )
+        UserDefaults.standard.removeObject(
+            forKey: Constants.SYNCHRONIZATION_REGISTRATION_FINGERPRINT_KEY
+        )
+        UserDefaults.standard.removeObject(
+            forKey: Constants.SYNCHRONIZED_PACKAGE_FINGERPRINT_KEY
         )
     }
 
@@ -44,6 +65,15 @@ final class PluginOwnershipTests: XCTestCase {
                 forKey: Constants.GEOFENCE_CALLBACK_CONTEXT_DICT_KEY
             )
         }
+        restore(previousDedupMapping, key: Constants.GEOFENCE_LAST_EVENT_DICT_KEY)
+        restore(
+            previousRegistrationFingerprint,
+            key: Constants.SYNCHRONIZATION_REGISTRATION_FINGERPRINT_KEY
+        )
+        restore(
+            previousPackageFingerprint,
+            key: Constants.SYNCHRONIZED_PACKAGE_FINGERPRINT_KEY
+        )
         super.tearDown()
     }
 
@@ -96,6 +126,34 @@ final class PluginOwnershipTests: XCTestCase {
         XCTAssertNil(NativeGeofencePersistence.getRegionCallbackContext(id: "home"))
     }
 
+    func testSynchronizationSnapshotRestoresMetadataDedupAndFingerprints() {
+        NativeGeofencePersistence.setRegionCallbackHandle(id: "office", handle: 41)
+        NativeGeofencePersistence.setRegionCallbackContext(id: "office", context: 71)
+        UserDefaults.standard.set(
+            ["office": ["event": "enter", "atMillis": NSNumber(value: 1_000)]],
+            forKey: Constants.GEOFENCE_LAST_EVENT_DICT_KEY
+        )
+        XCTAssertTrue(NativeGeofencePersistence.setSynchronizationFingerprint("old-registration"))
+        XCTAssertTrue(NativeGeofencePersistence.setSynchronizedPackageFingerprint("old-package"))
+        let snapshot = NativeGeofencePersistence.synchronizationSnapshot()
+
+        NativeGeofencePersistence.setRegionCallbackHandle(id: "office", handle: 99)
+        NativeGeofencePersistence.setRegionCallbackContext(id: "office", context: 100)
+        UserDefaults.standard.set([:], forKey: Constants.GEOFENCE_LAST_EVENT_DICT_KEY)
+        XCTAssertTrue(NativeGeofencePersistence.setSynchronizationFingerprint("new-registration"))
+        XCTAssertTrue(NativeGeofencePersistence.setSynchronizedPackageFingerprint("new-package"))
+
+        XCTAssertTrue(NativeGeofencePersistence.restoreSynchronizationSnapshot(snapshot))
+        XCTAssertEqual(NativeGeofencePersistence.getRegionCallbackHandle(id: "office"), 41)
+        XCTAssertEqual(NativeGeofencePersistence.getRegionCallbackContext(id: "office"), 71)
+        XCTAssertEqual(NativeGeofencePersistence.getSynchronizationFingerprint(), "old-registration")
+        XCTAssertEqual(NativeGeofencePersistence.getSynchronizedPackageFingerprint(), "old-package")
+        let restoredDedup = UserDefaults.standard.dictionary(
+            forKey: Constants.GEOFENCE_LAST_EVENT_DICT_KEY
+        )?["office"] as? [String: Any]
+        XCTAssertEqual((restoredDedup?["atMillis"] as? NSNumber)?.int64Value, 1_000)
+    }
+
     func testOwnedRegionsExcludeForeignAndNonCircularRegions() {
         let ownedCircle = circularRegion(id: "owned-circle")
         let foreignCircle = circularRegion(id: "foreign-circle")
@@ -124,5 +182,13 @@ final class PluginOwnershipTests: XCTestCase {
             radius: 100,
             identifier: id
         )
+    }
+
+    private func restore(_ value: Any?, key: String) {
+        if let value {
+            UserDefaults.standard.set(value, forKey: key)
+        } else {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
     }
 }

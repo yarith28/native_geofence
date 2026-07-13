@@ -159,6 +159,47 @@ final class RegionRegistrationCoordinator {
         initialTrigger: Bool,
         completion: @escaping (Result<Void, RegionRegistrationFailure>) -> Void
     ) -> CommittedRegionRegistration? {
+        start(
+            region: region,
+            callbackHandle: callbackHandle,
+            callbackContext: callbackContext,
+            initialTrigger: initialTrigger,
+            enforceRegionLimit: true,
+            forceMonitoring: false,
+            completion: completion
+        )
+    }
+
+    /// Transaction code has already preflighted the final app-wide capacity.
+    /// It may also need to force a rollback start while Core Location still
+    /// exposes a region for which stopMonitoring was just requested.
+    func startForSynchronization(
+        region: CLCircularRegion,
+        callbackHandle: Int64,
+        callbackContext: Int64? = nil,
+        forceMonitoring: Bool = false,
+        completion: @escaping (Result<Void, RegionRegistrationFailure>) -> Void
+    ) -> CommittedRegionRegistration? {
+        start(
+            region: region,
+            callbackHandle: callbackHandle,
+            callbackContext: callbackContext,
+            initialTrigger: false,
+            enforceRegionLimit: false,
+            forceMonitoring: forceMonitoring,
+            completion: completion
+        )
+    }
+
+    private func start(
+        region: CLCircularRegion,
+        callbackHandle: Int64,
+        callbackContext: Int64?,
+        initialTrigger: Bool,
+        enforceRegionLimit: Bool,
+        forceMonitoring: Bool,
+        completion: @escaping (Result<Void, RegionRegistrationFailure>) -> Void
+    ) -> CommittedRegionRegistration? {
         let id = region.identifier
         guard pendingRegistrations[id] == nil, pendingRestorations[id] == nil else {
             completion(
@@ -204,7 +245,8 @@ final class RegionRegistrationCoordinator {
                 + pendingRestorations.values.map(\.region.identifier)
         )
         let reservedRegionCount = reservedRegionIds.subtracting(monitoredRegionIds).count
-        if previousRegion == nil,
+        if enforceRegionLimit,
+           previousRegion == nil,
            monitor.monitoredRegions.count + reservedRegionCount >= 20
         {
             completion(
@@ -217,7 +259,8 @@ final class RegionRegistrationCoordinator {
             return nil
         }
 
-        if let existingRegion = previousRegion as? CLCircularRegion,
+        if !forceMonitoring,
+           let existingRegion = previousRegion as? CLCircularRegion,
            RegionMonitoringSemantics.matches(existingRegion, region)
         {
             setCallbackHandle(id, callbackHandle)
@@ -386,6 +429,13 @@ final class RegionRegistrationCoordinator {
 
     func recordRemoval(of region: CLRegion) {
         addCancellationTombstone(for: region)
+    }
+
+    /// Synchronization rollback is an intentional re-registration of the
+    /// exact pre-transaction region. Clear the removal barrier before that
+    /// restoration; ordinary create calls retain the tombstone protection.
+    func clearRemovalTombstone(id: String) {
+        cancelledRegistrations.removeValue(forKey: id)?.timeoutWorkItem?.cancel()
     }
 
     private func finishRegistrationWithFailure(

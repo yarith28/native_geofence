@@ -290,6 +290,55 @@ class NativeGeofenceStatusWire {
   });
 }
 
+/// Read-only point-in-time plugin-owned state used by synchronization
+/// inspection.
+class NativeGeofenceSynchronizationStateWire {
+  final NativeGeofencePlatform platform;
+  final List<String> pluginOwnedIds;
+  final List<GeofenceWire> registrations;
+  final List<String> inactiveRegistrationIds;
+  final String? registrationFingerprint;
+
+  /// Platform-normalized fingerprint computed natively for the desired state.
+  final String desiredRegistrationFingerprint;
+  final bool callbackFingerprintCurrent;
+  final double? iosMaximumRegionMonitoringDistance;
+
+  const NativeGeofenceSynchronizationStateWire({
+    required this.platform,
+    required this.pluginOwnedIds,
+    required this.registrations,
+    required this.inactiveRegistrationIds,
+    this.registrationFingerprint,
+    required this.desiredRegistrationFingerprint,
+    required this.callbackFingerprintCurrent,
+    this.iosMaximumRegionMonitoringDistance,
+  });
+}
+
+enum NativeGeofenceSynchronizationReasonWire {
+  firstRun,
+  callbackFingerprintChanged,
+  registrationDrift,
+}
+
+/// Authoritative result of one serialized native inspect-and-mutate pass.
+class NativeGeofenceSynchronizationResultWire {
+  final bool didSynchronize;
+  final List<NativeGeofenceSynchronizationReasonWire> reasons;
+  final int desiredCount;
+  final int previousCount;
+  final String registrationFingerprint;
+
+  const NativeGeofenceSynchronizationResultWire({
+    required this.didSynchronize,
+    required this.reasons,
+    required this.desiredCount,
+    required this.previousCount,
+    required this.registrationFingerprint,
+  });
+}
+
 @HostApi()
 abstract class NativeGeofenceApi {
   void initialize({required int callbackDispatcherHandle});
@@ -302,6 +351,17 @@ abstract class NativeGeofenceApi {
 
   @async
   NativeGeofenceStatusWire getStatus();
+
+  @async
+  NativeGeofenceSynchronizationStateWire getSynchronizationState({
+    required List<GeofenceWire> desiredRegistrations,
+  });
+
+  @async
+  NativeGeofenceSynchronizationResultWire synchronizeGeofences({
+    required List<GeofenceWire> desiredRegistrations,
+    required bool removeUnlisted,
+  });
 
   List<String> getGeofenceIds();
 

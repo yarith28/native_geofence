@@ -70,13 +70,13 @@ internal class GeofenceMutationRunner(
     private val queue: GeofenceMutationQueue,
     private val onCallbackError: (Throwable) -> Unit = {}
 ) {
-    fun run(
-        callback: (Result<Unit>) -> Unit,
-        start: ((Result<Unit>) -> Unit) -> Unit
+    fun <T> run(
+        callback: (Result<T>) -> Unit,
+        start: ((Result<T>) -> Unit) -> Unit
     ) {
         queue.enqueue { queueComplete ->
             val completed = AtomicBoolean(false)
-            val complete: (Result<Unit>) -> Unit = { result ->
+            val complete: (Result<T>) -> Unit = { result ->
                 if (completed.compareAndSet(false, true)) {
                     try {
                         callback(result)

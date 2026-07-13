@@ -16,8 +16,13 @@ import com.chunkytofustudios.native_geofence.generated.ActiveGeofenceWire
 import com.chunkytofustudios.native_geofence.generated.FlutterError
 import com.chunkytofustudios.native_geofence.generated.GeofenceWire
 import com.chunkytofustudios.native_geofence.generated.NativeGeofenceApi
+import com.chunkytofustudios.native_geofence.generated.NativeGeofenceCallbackRefreshState
 import com.chunkytofustudios.native_geofence.generated.NativeGeofenceErrorCode
+import com.chunkytofustudios.native_geofence.generated.NativeGeofencePlatform
 import com.chunkytofustudios.native_geofence.generated.NativeGeofenceStatusWire
+import com.chunkytofustudios.native_geofence.generated.NativeGeofenceSynchronizationReasonWire
+import com.chunkytofustudios.native_geofence.generated.NativeGeofenceSynchronizationResultWire
+import com.chunkytofustudios.native_geofence.generated.NativeGeofenceSynchronizationStateWire
 import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceBroadcastReceiver
 import com.chunkytofustudios.native_geofence.receivers.GeofenceRecoveryAggregateException
 import com.chunkytofustudios.native_geofence.receivers.GeofenceRecoveryFailure
@@ -34,19 +39,22 @@ import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationTra
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationTransactionException
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceTransactionStepOutcome
 import com.chunkytofustudios.native_geofence.util.AndroidPackageFingerprint
+import com.chunkytofustudios.native_geofence.util.AndroidGeofenceSynchronizationPlanner
+import com.chunkytofustudios.native_geofence.util.AndroidGeofenceSynchronizationReason
 import com.chunkytofustudios.native_geofence.util.AndroidNativeGeofenceStatusProvider
 import com.chunkytofustudios.native_geofence.util.GeofenceEvents
 import com.chunkytofustudios.native_geofence.util.GeofenceMutationQueue
 import com.chunkytofustudios.native_geofence.util.GeofenceMutationQueues
 import com.chunkytofustudios.native_geofence.util.GeofenceMutationRunner
-import com.chunkytofustudios.native_geofence.util.GeofenceWires
 import com.chunkytofustudios.native_geofence.util.GeofencePersistenceSnapshot
+import com.chunkytofustudios.native_geofence.util.GeofenceWires
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 import com.chunkytofustudios.native_geofence.util.LocationState
 import com.chunkytofustudios.native_geofence.util.NativeGeofencePersistence
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceIo
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnosticStage
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnostics
+import com.chunkytofustudios.native_geofence.util.StoredGeofenceRegistration
 import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.LocationServices
 import java.util.concurrent.atomic.AtomicBoolean
@@ -125,6 +133,47 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         NativeGeofenceIo.execute {
             val result = runCatching { AndroidNativeGeofenceStatusProvider(context).status() }
             Handler(Looper.getMainLooper()).post { callback(result) }
+        }
+    }
+
+    override fun getSynchronizationState(
+        desiredRegistrations: List<GeofenceWire>,
+        callback: (Result<NativeGeofenceSynchronizationStateWire>) -> Unit
+    ) {
+        mutationQueue.enqueue { queueComplete ->
+            NativeGeofenceIo.execute {
+                val result = runCatching {
+                    inspectSynchronizationState(desiredRegistrations).state
+                }
+                Handler(Looper.getMainLooper()).post {
+                    try {
+                        callback(result)
+                    } catch (error: Throwable) {
+                        NativeGeofenceLogger.e(
+                            context,
+                            TAG,
+                            "Synchronization inspection callback threw.",
+                            error,
+                        )
+                    } finally {
+                        queueComplete()
+                    }
+                }
+            }
+        }
+    }
+
+    override fun synchronizeGeofences(
+        desiredRegistrations: List<GeofenceWire>,
+        removeUnlisted: Boolean,
+        callback: (Result<NativeGeofenceSynchronizationResultWire>) -> Unit
+    ) {
+        mutationRunner.run(callback) { complete ->
+            synchronizeGeofencesLocked(
+                desiredRegistrations,
+                removeUnlisted,
+                complete
+            )
         }
     }
 
@@ -341,10 +390,38 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
     }
 
     private fun removeGeofenceByIdLocked(id: String, callback: (Result<Unit>) -> Unit) {
-        geofencingClient.removeGeofences(listOf(id)).run {
-            addOnSuccessListener {
+        val completed = AtomicBoolean(false)
+        fun fail(error: Throwable) {
+            if (!completed.compareAndSet(false, true)) return
+            val failure = AndroidGeofenceFailureMapper.from(error)
+            NativeGeofenceLogger.e(
+                context,
+                TAG,
+                "Failure when removing Geofence ID=$id: $error",
+                error,
+            )
+            callback(
+                Result.failure(
+                    FlutterError(
+                        NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                        failure.message,
+                        failure.details
+                    )
+                )
+            )
+        }
+
+        val task = try {
+            geofencingClient.removeGeofences(listOf(id))
+        } catch (error: Throwable) {
+            fail(error)
+            return
+        }
+        try {
+            task.addOnSuccessListener {
+                if (!completed.compareAndSet(false, true)) return@addOnSuccessListener
                 if (!NativeGeofencePersistence.removeGeofence(context, id)) {
-                    callback.invoke(
+                    callback(
                         Result.failure(
                             FlutterError(
                                 NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
@@ -356,26 +433,11 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                     return@addOnSuccessListener
                 }
                 NativeGeofenceLogger.d(context, TAG, "Removed Geofence ID=$id.")
-                callback.invoke(Result.success(Unit))
+                callback(Result.success(Unit))
             }
-            addOnFailureListener {
-                val failure = AndroidGeofenceFailureMapper.from(it)
-                NativeGeofenceLogger.e(
-                    context,
-                    TAG,
-                    "Failure when removing Geofence ID=$id: $it",
-                    it,
-                )
-                callback.invoke(
-                    Result.failure(
-                        FlutterError(
-                            NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
-                            failure.message,
-                            failure.details
-                        )
-                    )
-                )
-            }
+            task.addOnFailureListener { error -> fail(error) }
+        } catch (error: Throwable) {
+            fail(error)
         }
     }
 
@@ -616,6 +678,363 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         }
 
         cleanOrphan(0)
+    }
+
+    private data class SynchronizationInspectionSnapshot(
+        val storedRegistrations: List<StoredGeofenceRegistration>,
+        val rawIds: List<String>,
+        val state: NativeGeofenceSynchronizationStateWire,
+        val inspectedAtMillis: Long,
+    )
+
+    private data class SynchronizationSnapshot(
+        val persistence: List<GeofencePersistenceSnapshot>,
+        val activePlatformRegistrations: List<StoredGeofenceRegistration>,
+        val registrationFingerprint: String?
+    )
+
+    /** Reads synchronization evidence without migrating or repairing persistence. */
+    private fun inspectSynchronizationState(
+        desired: List<GeofenceWire>,
+    ): SynchronizationInspectionSnapshot {
+        val inspectedAtMillis = System.currentTimeMillis()
+        val stored = NativeGeofencePersistence.inspectAllStoredConfiguredGeofences(context)
+        val rawIds = NativeGeofencePersistence.getAllRawGeofenceIds(context)
+        val refreshState = AndroidNativeGeofenceStatusProvider(context)
+            .status()
+            .callbackRefreshState
+        val state = NativeGeofenceSynchronizationStateWire(
+            platform = NativeGeofencePlatform.ANDROID,
+            pluginOwnedIds = rawIds,
+            registrations = stored.map { it.configuredGeofence },
+            inactiveRegistrationIds = stored
+                .filterNot { it.active }
+                .map { it.configuredGeofence.id }
+                .sorted(),
+            registrationFingerprint = NativeGeofencePersistence
+                .getSynchronizationFingerprint(context),
+            desiredRegistrationFingerprint = AndroidGeofenceSynchronizationPlanner
+                .desiredRegistrationFingerprint(desired),
+            callbackFingerprintCurrent = rawIds.isEmpty() ||
+                refreshState == NativeGeofenceCallbackRefreshState.CURRENT,
+            iosMaximumRegionMonitoringDistance = null,
+        )
+        return SynchronizationInspectionSnapshot(
+            storedRegistrations = stored,
+            rawIds = rawIds,
+            state = state,
+            inspectedAtMillis = inspectedAtMillis,
+        )
+    }
+
+    private fun AndroidGeofenceSynchronizationReason.toWire() = when (this) {
+        AndroidGeofenceSynchronizationReason.FIRST_RUN ->
+            NativeGeofenceSynchronizationReasonWire.FIRST_RUN
+        AndroidGeofenceSynchronizationReason.CALLBACK_FINGERPRINT_CHANGED ->
+            NativeGeofenceSynchronizationReasonWire.CALLBACK_FINGERPRINT_CHANGED
+        AndroidGeofenceSynchronizationReason.REGISTRATION_DRIFT ->
+            NativeGeofenceSynchronizationReasonWire.REGISTRATION_DRIFT
+    }
+
+    private fun synchronizeGeofencesLocked(
+        desired: List<GeofenceWire>,
+        removeUnlisted: Boolean,
+        callback: (Result<NativeGeofenceSynchronizationResultWire>) -> Unit
+    ) {
+        if (desired.map { it.id }.toSet().size != desired.size) {
+            callback(
+                Result.failure(
+                    FlutterError(
+                        NativeGeofenceErrorCode.INVALID_ARGUMENTS.raw.toString(),
+                        "Synchronization registrations contain duplicate geofence IDs."
+                    )
+                )
+            )
+            return
+        }
+        val inspection = inspectSynchronizationState(desired)
+        val current = inspection.storedRegistrations
+        val rawIds = inspection.rawIds
+        val decision = AndroidGeofenceSynchronizationPlanner.decide(
+            current = current,
+            rawIds = rawIds,
+            desired = desired,
+            removeUnlisted = removeUnlisted,
+            currentPackageFingerprint = AndroidPackageFingerprint.current(context),
+            currentRegistrationFingerprint = inspection.state.registrationFingerprint,
+            callbackFingerprintCurrent = inspection.state.callbackFingerprintCurrent,
+            nowMillis = inspection.inspectedAtMillis,
+        )
+        val resultWire = NativeGeofenceSynchronizationResultWire(
+            didSynchronize = decision.requiresSynchronization,
+            reasons = decision.reasons.map { it.toWire() },
+            desiredCount = decision.desiredCount.toLong(),
+            previousCount = decision.previousCount.toLong(),
+            registrationFingerprint = decision.desiredRegistrationFingerprint,
+        )
+        if (!decision.requiresSynchronization) {
+            callback(Result.success(resultWire))
+            return
+        }
+
+        // Capture every durable byte before any migration, metadata refresh, or
+        // platform call performed by this transaction.
+        val snapshotIds = (rawIds + desired.map { it.id }).toSet().sorted()
+        val snapshot = SynchronizationSnapshot(
+            persistence = snapshotIds.map { NativeGeofencePersistence.snapshot(context, it) },
+            activePlatformRegistrations = current.filter { it.active },
+            registrationFingerprint = NativeGeofencePersistence
+                .getSynchronizationFingerprint(context)
+        )
+        val plan = decision.plan
+        val platformTouchedIds = linkedSetOf<String>()
+        val terminalStarted = AtomicBoolean(false)
+
+        fun fail(error: Throwable) {
+            if (!terminalStarted.compareAndSet(false, true)) return
+            rollbackSynchronization(snapshot, platformTouchedIds.toSet()) { rollbackFailures ->
+                val flutterError = error as? FlutterError
+                callback(
+                    Result.failure(
+                        FlutterError(
+                            flutterError?.code
+                                ?: NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                            (flutterError?.message
+                                ?: "Android geofence synchronization failed.") +
+                                if (rollbackFailures.isEmpty()) {
+                                    ""
+                                } else {
+                                    " Rollback failed for ${rollbackFailures.size} operation(s)."
+                                },
+                            buildString {
+                                flutterError?.details?.let { append(it.toString()).append('\n') }
+                                if (rollbackFailures.isEmpty()) {
+                                    append("rollback: succeeded")
+                                } else {
+                                    for (rollbackFailure in rollbackFailures) {
+                                        append("rollback: ")
+                                            .append(rollbackFailure)
+                                            .append('\n')
+                                    }
+                                }
+                            }.trimEnd()
+                        )
+                    )
+                )
+            }
+        }
+
+        fun finishSynchronization() {
+            if (terminalStarted.get()) return
+            if (!NativeGeofencePersistence.commitSynchronization(
+                    context,
+                    decision.desiredRegistrationFingerprint
+                )
+            ) {
+                fail(
+                    FlutterError(
+                        NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                        "Failed to persist the synchronization fingerprint."
+                    )
+                )
+                return
+            }
+            if (terminalStarted.compareAndSet(false, true)) {
+                callback(Result.success(resultWire))
+            }
+        }
+
+        lateinit var upsertAt: (Int) -> Unit
+
+        fun removeAt(index: Int) {
+            if (terminalStarted.get()) return
+            if (index >= plan.removeIds.size) {
+                for (wanted in plan.metadataOnlyUpdates) {
+                    if (terminalStarted.get()) return
+                    if (!NativeGeofencePersistence.updateCallbackMetadata(context, wanted)) {
+                        fail(
+                            FlutterError(
+                                NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                                "Failed to refresh synchronized callback metadata."
+                            )
+                        )
+                        return
+                    }
+                }
+                upsertAt(0)
+                return
+            }
+            val id = plan.removeIds[index]
+            platformTouchedIds.add(id)
+            try {
+                removeGeofenceByIdLocked(id) { result ->
+                    result.fold(
+                        onSuccess = { removeAt(index + 1) },
+                        onFailure = ::fail
+                    )
+                }
+            } catch (error: Throwable) {
+                fail(error)
+            }
+        }
+
+        upsertAt = fun(index: Int) {
+            if (terminalStarted.get()) return
+            if (index >= plan.platformUpserts.size) {
+                finishSynchronization()
+                return
+            }
+            val wanted = plan.platformUpserts[index]
+            val prepared = try {
+                NativeGeofencePersistence.prepareGeofenceForSynchronization(
+                    context,
+                    wanted
+                )
+            } catch (error: Throwable) {
+                fail(error)
+                return
+            }
+            val platformWire = prepared.platformGeofence
+            if (platformWire == null) {
+                fail(
+                    FlutterError(
+                        NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                        "A synchronized geofence had no usable remaining lifetime."
+                    )
+                )
+                return
+            }
+            platformTouchedIds.add(wanted.id)
+            try {
+                createGeofenceHelper(
+                    platformWire,
+                    cache = false,
+                    callback = synchronizationCreate@ { result ->
+                        if (terminalStarted.get()) return@synchronizationCreate
+                        result.fold(
+                            onSuccess = {
+                                if (!NativeGeofencePersistence.commitGeofenceForSynchronization(
+                                        context,
+                                        prepared
+                                    )
+                                ) {
+                                    fail(
+                                        FlutterError(
+                                            NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                                            "The synchronized geofence became active, but its " +
+                                                "durable state could not be committed."
+                                        )
+                                    )
+                                } else {
+                                    upsertAt(index + 1)
+                                }
+                            },
+                            onFailure = ::fail
+                        )
+                    },
+                )
+            } catch (error: Throwable) {
+                fail(error)
+            }
+        }
+
+        // Remove first so replacing a full 100-registration set never exceeds
+        // Play services' capacity during the transaction.
+        removeAt(0)
+    }
+
+    private fun rollbackSynchronization(
+        snapshot: SynchronizationSnapshot,
+        platformTouchedIds: Set<String>,
+        completion: (List<String>) -> Unit
+    ) {
+        val failures = mutableListOf<String>()
+        val rollbackPlan = AndroidGeofenceSynchronizationPlanner.rollbackPlan(
+            platformTouchedIds = platformTouchedIds,
+            previouslyActive = snapshot.activePlatformRegistrations,
+        )
+        val cleanupIds = rollbackPlan.cleanupIds
+        val platformRegistrationsToRestore = rollbackPlan.platformRegistrationsToRestore
+
+        fun restorePersistence() {
+            for (persisted in snapshot.persistence) {
+                if (!NativeGeofencePersistence.restore(context, persisted)) {
+                    failures.add("failed to restore durable registration state")
+                }
+            }
+            if (!NativeGeofencePersistence.restoreSynchronizationFingerprint(
+                    context,
+                    snapshot.registrationFingerprint
+                )
+            ) {
+                failures.add("failed to restore the synchronization fingerprint")
+            }
+        }
+
+        fun finish() {
+            // Rearm temporarily marks registrations active. Reapply the exact
+            // snapshot so deadlines, active flags, contexts, and fingerprints
+            // match the pre-transaction bytes.
+            restorePersistence()
+            completion(failures)
+        }
+
+        fun rearmAt(index: Int) {
+            if (index >= platformRegistrationsToRestore.size) {
+                finish()
+                return
+            }
+            val snapshotRegistration = platformRegistrationsToRestore[index]
+            val platformRegistration = AndroidGeofenceSynchronizationPlanner
+                .platformRegistrationForRollback(
+                    configuredGeofence = snapshotRegistration.configuredGeofence,
+                    expirationDeadlineMillis = snapshotRegistration.expirationDeadlineMillis,
+                    nowMillis = System.currentTimeMillis(),
+                )
+            if (platformRegistration == null) {
+                // Its original absolute deadline elapsed while the transaction
+                // or rollback was in flight; never grant it a fresh duration.
+                rearmAt(index + 1)
+                return
+            }
+            try {
+                createGeofenceHelper(platformRegistration, cache = false) { result ->
+                    result.exceptionOrNull()?.let {
+                        failures.add("failed to rearm a previous native registration")
+                    }
+                    rearmAt(index + 1)
+                }
+            } catch (_: Throwable) {
+                failures.add("failed to rearm a previous native registration")
+                rearmAt(index + 1)
+            }
+        }
+
+        fun restoreAndRearm() {
+            restorePersistence()
+            rearmAt(0)
+        }
+
+        if (cleanupIds.isEmpty()) {
+            restoreAndRearm()
+            return
+        }
+        val cleanupCompleted = AtomicBoolean(false)
+        fun completeCleanup(failed: Boolean) {
+            if (!cleanupCompleted.compareAndSet(false, true)) return
+            if (failed) {
+                failures.add("failed to clear transaction-owned native registrations")
+            }
+            restoreAndRearm()
+        }
+        try {
+            geofencingClient.removeGeofences(cleanupIds).run {
+                addOnSuccessListener { completeCleanup(failed = false) }
+                addOnFailureListener { completeCleanup(failed = true) }
+            }
+        } catch (_: Throwable) {
+            completeCleanup(failed = true)
+        }
     }
 
     private fun getGeofencePendingIntent(context: Context): PendingIntent {
