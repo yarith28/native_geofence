@@ -172,16 +172,26 @@ class LocationWire {
   LocationWire({
     required this.latitude,
     required this.longitude,
+    this.accuracyMeters,
+    required this.isMock,
   });
 
   double latitude;
 
   double longitude;
 
+  /// Horizontal accuracy in meters, when known.
+  double? accuracyMeters;
+
+  /// Whether this fix came from a mock location provider.
+  bool isMock;
+
   List<Object?> _toList() {
     return <Object?>[
       latitude,
       longitude,
+      accuracyMeters,
+      isMock,
     ];
   }
 
@@ -194,6 +204,8 @@ class LocationWire {
     return LocationWire(
       latitude: result[0]! as double,
       longitude: result[1]! as double,
+      accuracyMeters: result[2] as double?,
+      isMock: result[3]! as bool,
     );
   }
 
@@ -207,7 +219,9 @@ class LocationWire {
       return true;
     }
     return _deepEquals(latitude, other.latitude) &&
-        _deepEquals(longitude, other.longitude);
+        _deepEquals(longitude, other.longitude) &&
+        _deepEquals(accuracyMeters, other.accuracyMeters) &&
+        _deepEquals(isMock, other.isMock);
   }
 
   @override
