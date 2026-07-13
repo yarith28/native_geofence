@@ -4,7 +4,7 @@ PODS:
     - Flutter
   - native_geofence (1.0.0):
     - Flutter
-  - permission_handler_apple (9.3.0):
+  - permission_handler_apple (9.4.8):
     - Flutter
 
 DEPENDENCIES:
@@ -25,9 +25,9 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
-  flutter_local_notifications: ff50f8405aaa0ccdc7dcfb9022ca192e8ad9688f
-  native_geofence: 79dbe31eef8e1b6fd798c035b239a355027f20ae
-  permission_handler_apple: 9878588469a2b0d0fc1e048d9f43605f92e6cec2
+  flutter_local_notifications: 643a3eda1ce1c0599413ca31672536d423dee214
+  native_geofence: 653ba9ea1aa7ff9b9a62a883b00d8df14d2945f6
+  permission_handler_apple: 92d754bbaa7361d436db2d6c3c1c2a0fdcec462e
 
 PODFILE CHECKSUM: ad2fb2aca9d5ff2ea71f690a2526bbfac1436064
 
