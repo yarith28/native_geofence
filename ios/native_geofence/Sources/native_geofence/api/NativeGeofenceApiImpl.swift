@@ -30,9 +30,21 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
         }
 
         let maximumRadius = locationManagerDelegate.locationManager.maximumRegionMonitoringDistance
-        let radius = maximumRadius > 0
-            ? min(geofence.radiusMeters, maximumRadius)
-            : geofence.radiusMeters
+        guard let radius = IosRegionRadius.normalized(
+            requestedRadius: geofence.radiusMeters,
+            maximumRadius: maximumRadius
+        ) else {
+            completion(
+                .failure(
+                    nativeGeofenceError(
+                        .invalidArguments,
+                        message: "Geofence radius must be finite and strictly positive."
+                    )
+                )
+            )
+            return
+        }
+
         let region = CLCircularRegion(
             center: CLLocationCoordinate2DMake(geofence.location.latitude, geofence.location.longitude),
             radius: radius,

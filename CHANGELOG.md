@@ -1,6 +1,7 @@
 ## Unreleased
 
 * Waits for iOS Core Location to confirm geofence registration, reports region-scoped failures, ignores unscoped nil-region failures that cannot be attributed safely, and clamps oversized regions to the device maximum
+* Rejects non-finite geofence radii and new iOS registrations beyond the app-wide region limit
 * Registers Flutter plugins in the background callback isolate and throws a typed `NativeGeofenceException` when its manager is accessed before callback initialization, including in release builds
 * Reports Android geofence registration and removal failures with actionable Play Services status evidence instead of inferring `geofenceNotFound` from the local cache
 * Supports foreground callbacks on Android 6.0–7.1 by guarding newer service and notification APIs, providing a valid fallback notification icon, and declaring the AndroidX Core APIs used by the plugin directly

@@ -309,6 +309,189 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
         XCTAssertTrue(handles.events.isEmpty)
     }
 
+    func testNewRegistrationIsRejectedAtTheAppWideRegionLimit() {
+        let existingRegions: Set<CLRegion> = Set(
+            (0 ..< 20).map { region(id: "existing-\($0)") as CLRegion }
+        )
+        let monitor = FakeMonitor(existingRegions)
+        let handles = HandleStore()
+        let subject = makeSubject(monitor, handles)
+        let completion = CompletionRecorder()
+
+        XCTAssertNil(
+            subject.start(
+                region: region(id: "new"),
+                callbackHandle: 2,
+                initialTrigger: false,
+                completion: completion.record
+            )
+        )
+
+        guard case .monitoringFailed(let message)? = completion.failures.first else {
+            return XCTFail("Expected region-limit failure")
+        }
+        XCTAssertTrue(message.contains("at most 20"))
+        XCTAssertTrue(monitor.started.isEmpty)
+        XCTAssertTrue(handles.events.isEmpty)
+    }
+
+    func testOwnedReplacementIsAllowedAtTheAppWideRegionLimit() {
+        let previous = region(id: "office", radius: 50)
+        let existingRegions: Set<CLRegion> = Set(
+            [previous as CLRegion]
+                + (0 ..< 19).map { region(id: "existing-\($0)") as CLRegion }
+        )
+        let monitor = FakeMonitor(existingRegions)
+        let handles = HandleStore(["office": 1])
+        let subject = makeSubject(monitor, handles)
+        let completion = CompletionRecorder()
+        let requested = region(id: "office", radius: 100)
+
+        XCTAssertNil(
+            subject.start(
+                region: requested,
+                callbackHandle: 2,
+                initialTrigger: false,
+                completion: completion.record
+            )
+        )
+
+        XCTAssertEqual(completion.count, 0)
+        XCTAssertEqual(monitor.started.count, 1)
+        XCTAssertTrue(monitor.started[0] === requested)
+        XCTAssertEqual(handles.values["office"], 1)
+        XCTAssertTrue(handles.events.isEmpty)
+    }
+
+    func testPendingNewRegistrationsCountTowardTheAppWideRegionLimit() {
+        let existingRegions: Set<CLRegion> = Set(
+            (0 ..< 19).map { region(id: "existing-\($0)") as CLRegion }
+        )
+        let monitor = FakeMonitor(existingRegions)
+        let handles = HandleStore()
+        let subject = makeSubject(monitor, handles)
+        let first = CompletionRecorder()
+        let second = CompletionRecorder()
+
+        _ = subject.start(
+            region: region(id: "first-new"),
+            callbackHandle: 1,
+            initialTrigger: false,
+            completion: first.record
+        )
+        _ = subject.start(
+            region: region(id: "second-new"),
+            callbackHandle: 2,
+            initialTrigger: false,
+            completion: second.record
+        )
+
+        XCTAssertEqual(first.count, 0)
+        XCTAssertEqual(second.failures.count, 1)
+        XCTAssertEqual(monitor.started.map(\.identifier), ["first-new"])
+        XCTAssertTrue(handles.events.isEmpty)
+    }
+
+    func testPendingRegionAlreadyExposedByCoreLocationIsNotDoubleCounted() {
+        let existingRegions: Set<CLRegion> = Set(
+            (0 ..< 18).map { region(id: "existing-\($0)") as CLRegion }
+        )
+        let monitor = FakeMonitor(existingRegions)
+        let handles = HandleStore()
+        let subject = makeSubject(monitor, handles)
+        let firstRegion = region(id: "first-new")
+
+        _ = subject.start(
+            region: firstRegion,
+            callbackHandle: 1,
+            initialTrigger: false,
+            completion: { _ in }
+        )
+        monitor.monitoredRegions.insert(firstRegion)
+
+        let second = CompletionRecorder()
+        _ = subject.start(
+            region: region(id: "second-new"),
+            callbackHandle: 2,
+            initialTrigger: false,
+            completion: second.record
+        )
+
+        XCTAssertEqual(second.count, 0)
+        XCTAssertEqual(
+            monitor.started.map(\.identifier),
+            ["first-new", "second-new"]
+        )
+    }
+
+    func testPendingReplacementReservesCapacityWhenOldRegionDisappears() {
+        let previous = region(id: "office", radius: 50)
+        let existingRegions: Set<CLRegion> = Set(
+            [previous as CLRegion]
+                + (0 ..< 19).map { region(id: "existing-\($0)") as CLRegion }
+        )
+        let monitor = FakeMonitor(existingRegions)
+        let handles = HandleStore(["office": 1])
+        let subject = makeSubject(monitor, handles)
+
+        _ = subject.start(
+            region: region(id: "office", radius: 100),
+            callbackHandle: 2,
+            initialTrigger: false,
+            completion: { _ in }
+        )
+        monitor.monitoredRegions.remove(previous)
+
+        let newRegistration = CompletionRecorder()
+        _ = subject.start(
+            region: region(id: "new"),
+            callbackHandle: 3,
+            initialTrigger: false,
+            completion: newRegistration.record
+        )
+
+        XCTAssertEqual(newRegistration.failures.count, 1)
+        XCTAssertEqual(monitor.started.map(\.identifier), ["office"])
+    }
+
+    func testPendingRestorationReservesCapacityWhenOldRegionDisappears() {
+        let previous = region(id: "office", radius: 50)
+        let requested = region(id: "office", radius: 100)
+        let existingRegions: Set<CLRegion> = Set(
+            [previous as CLRegion]
+                + (0 ..< 19).map { region(id: "existing-\($0)") as CLRegion }
+        )
+        let monitor = FakeMonitor(existingRegions)
+        let handles = HandleStore(["office": 1])
+        let subject = makeSubject(monitor, handles)
+        let replacement = CompletionRecorder()
+
+        _ = subject.start(
+            region: requested,
+            callbackHandle: 2,
+            initialTrigger: false,
+            completion: replacement.record
+        )
+        monitor.monitoredRegions.remove(previous)
+        subject.didFailMonitoring(
+            for: requested,
+            error: NSError(domain: "test", code: 1)
+        )
+
+        let newRegistration = CompletionRecorder()
+        _ = subject.start(
+            region: region(id: "new"),
+            callbackHandle: 3,
+            initialTrigger: false,
+            completion: newRegistration.record
+        )
+
+        XCTAssertEqual(replacement.count, 0)
+        XCTAssertEqual(newRegistration.failures.count, 1)
+        XCTAssertEqual(monitor.started.map(\.identifier), ["office", "office"])
+        XCTAssertEqual(handles.values["office"], 1)
+    }
+
     func testCancellationTombstoneBlocksImmediateIdenticalRecreation() {
         let requested = region(id: "office")
         let monitor = FakeMonitor()

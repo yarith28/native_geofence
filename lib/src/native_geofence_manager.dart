@@ -71,9 +71,9 @@ class NativeGeofenceManager {
       throw NativeGeofenceException.invalidArgument(
           message: 'Geofence location is invalid.');
     }
-    if (geofence.radiusMeters <= 0) {
+    if (!geofence.radiusMeters.isFinite || geofence.radiusMeters <= 0) {
       throw NativeGeofenceException.invalidArgument(
-          message: 'Geofence radius must be strictly positive.');
+          message: 'Geofence radius must be finite and strictly positive.');
     }
     if (isIos &&
         geofence.triggers.length == 1 &&
