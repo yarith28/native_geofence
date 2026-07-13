@@ -16,6 +16,14 @@ class Constants {
         const val WORKER_PAYLOAD_KEY = "$PACKAGE_NAME.worker_payload"
         const val GEOFENCE_CALLBACK_WORK_GROUP = "geofence_callback_work_group"
 
+        const val LOG_FILE_CHANNEL_NAME = "native_geofence/log_file"
+        const val LOG_FILE_NAME = "native_geofence.log"
+        const val LOG_FILE_ENABLED_KEY = "$PACKAGE_NAME.log_file_enabled"
+        const val LOG_FILE_MAX_BYTES_KEY = "$PACKAGE_NAME.log_file_max_bytes"
+        const val DEFAULT_LOG_FILE_MAX_BYTES = 256 * 1024
+        const val MIN_LOG_FILE_MAX_BYTES = 16 * 1024
+        const val MAX_LOG_FILE_MAX_BYTES = 50 * 1024 * 1024
+
         const val ISOLATE_HOLDER_WAKE_LOCK_TAG = "$PACKAGE_NAME:wake_lock"
     }
 }
