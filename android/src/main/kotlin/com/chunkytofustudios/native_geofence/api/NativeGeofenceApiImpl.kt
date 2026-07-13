@@ -7,7 +7,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import android.util.Log
 import androidx.core.content.ContextCompat
 import com.chunkytofustudios.native_geofence.Constants
 import com.chunkytofustudios.native_geofence.generated.ActiveGeofenceWire
@@ -20,6 +19,7 @@ import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceBroadcastRe
 import com.chunkytofustudios.native_geofence.util.ActiveGeofenceWires
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceFailureMapper
 import com.chunkytofustudios.native_geofence.util.GeofenceWires
+import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 import com.chunkytofustudios.native_geofence.util.NativeGeofencePersistence
 import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.LocationServices
@@ -37,7 +37,7 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
             .edit()
             .putLong(Constants.CALLBACK_DISPATCHER_HANDLE_KEY, callbackDispatcherHandle)
             .apply()
-        Log.d(TAG, "Initialized NativeGeofenceApi.")
+        NativeGeofenceLogger.d(context, TAG, "Initialized NativeGeofenceApi.")
     }
 
     override fun createGeofence(
@@ -52,7 +52,7 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         for (geofence in geofences) {
             createGeofenceHelper(geofence, false, null)
         }
-        Log.d(TAG, "${geofences.size} geofences re-created.")
+        NativeGeofenceLogger.d(context, TAG, "${geofences.size} geofences re-created.")
     }
 
     override fun getGeofenceIds(): List<String> {
@@ -68,12 +68,17 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         geofencingClient.removeGeofences(listOf(id)).run {
             addOnSuccessListener {
                 NativeGeofencePersistence.removeGeofence(context, id)
-                Log.d(TAG, "Removed Geofence ID=$id.")
+                NativeGeofenceLogger.d(context, TAG, "Removed Geofence ID=$id.")
                 callback.invoke(Result.success(Unit))
             }
             addOnFailureListener {
                 val failure = AndroidGeofenceFailureMapper.from(it)
-                Log.e(TAG, "Failure when removing Geofence ID=$id: $it")
+                NativeGeofenceLogger.e(
+                    context,
+                    TAG,
+                    "Failure when removing Geofence ID=$id: $it",
+                    it,
+                )
                 callback.invoke(
                     Result.failure(
                         FlutterError(
@@ -91,12 +96,17 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         geofencingClient.removeGeofences(getGeofencePendingIndent(context, null)).run {
             addOnSuccessListener {
                 NativeGeofencePersistence.removeAllGeofences(context)
-                Log.d(TAG, "Removed all geofences (if any).")
+                NativeGeofenceLogger.d(context, TAG, "Removed all geofences (if any).")
                 callback.invoke(Result.success(Unit))
             }
             addOnFailureListener {
                 val failure = AndroidGeofenceFailureMapper.from(it)
-                Log.e(TAG, "Failed to remove all geofences: $it")
+                NativeGeofenceLogger.e(
+                    context,
+                    TAG,
+                    "Failed to remove all geofences: $it",
+                    it,
+                )
                 callback.invoke(
                     Result.failure(
                         FlutterError(
@@ -154,15 +164,28 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                 if (cache) {
                     NativeGeofencePersistence.saveGeofence(context, geofence)
                 }
-                Log.d(TAG, "Successfully added Geofence ID=${geofence.id}.")
+                NativeGeofenceLogger.d(
+                    context,
+                    TAG,
+                    "Successfully added Geofence ID=${geofence.id}.",
+                )
                 callback?.invoke(Result.success(Unit))
             }
             addOnFailureListener {
-                Log.e(TAG, "Failed to add Geofence ID=${geofence.id}: $it")
+                NativeGeofenceLogger.e(
+                    context,
+                    TAG,
+                    "Failed to add Geofence ID=${geofence.id}: $it",
+                    it,
+                )
 
                 if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
                     != PackageManager.PERMISSION_GRANTED) {
-                    Log.e(TAG, "Lacking permission: ACCESS_FINE_LOCATION")
+                    NativeGeofenceLogger.e(
+                        context,
+                        TAG,
+                        "Lacking permission: ACCESS_FINE_LOCATION",
+                    )
                     callback?.invoke(
                         Result.failure(
                             FlutterError(
@@ -181,7 +204,12 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                         )
                         != PackageManager.PERMISSION_GRANTED
                     ) {
-                        Log.e(TAG, "Running on API ${Build.VERSION.SDK_INT} and lacking permission: ACCESS_BACKGROUND_LOCATION")
+                        NativeGeofenceLogger.e(
+                            context,
+                            TAG,
+                            "Running on API ${Build.VERSION.SDK_INT} and lacking permission: " +
+                                "ACCESS_BACKGROUND_LOCATION",
+                        )
                         callback?.invoke(
                             Result.failure(
                                 FlutterError(
