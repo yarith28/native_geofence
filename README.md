@@ -177,6 +177,10 @@ Before accesing any methods ensure you initialize the plugin:
 await NativeGeofenceManager.instance.initialize();
 ```
 
+On iOS, initialization first persists the dispatcher handle, then prepares the
+shared foreground/headless callback runtime and its background-manager singleton
+before native delivery is marked ready.
+
 ### Obtain permissions
 
 This plugin does not deal with obtaining permissions from the user. Please use a 3rd party plugin, such as [permission_handler](https://pub.dev/packages/permission_handler) for that.

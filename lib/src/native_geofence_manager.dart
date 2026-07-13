@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/services.dart';
+import 'package:native_geofence/src/api/native_geofence_trigger_impl.dart';
 import 'package:native_geofence/src/callback_dispatcher.dart';
 import 'package:native_geofence/src/generated/platform_bindings.g.dart';
 import 'package:native_geofence/src/model/log_file_config.dart';
@@ -9,6 +10,7 @@ import 'package:native_geofence/src/model/model.dart';
 import 'package:native_geofence/src/model/model_mapper.dart';
 import 'package:native_geofence/src/model/native_geofence_exception.dart';
 import 'package:native_geofence/src/model/native_geofence_status.dart';
+import 'package:native_geofence/src/native_geofence_background_manager.dart';
 import 'package:native_geofence/src/platform/module.dart';
 import 'package:native_geofence/src/typedefs.dart';
 
@@ -51,9 +53,15 @@ class NativeGeofenceManager {
       throw NativeGeofenceException.internal(
           message: 'Callback dispatcher is invalid.');
     }
-    return _api
-        .initialize(callbackDispatcherHandle: callback.toRawHandle())
-        .catchError(NativeGeofenceExceptionMapper.catchError<void>);
+    final callbackDispatcherHandle = callback.toRawHandle();
+    await initializeNativeGeofenceRuntime(
+      initializeDispatcher: () => _api.initialize(
+        callbackDispatcherHandle: callbackDispatcherHandle,
+      ),
+      initializeIosRuntime: isIos,
+      initializeTriggerApi: NativeGeofenceTriggerImpl.ensureInitialized,
+      ensureBackgroundManager: ensureNativeGeofenceBackgroundManagerInstance,
+    ).catchError(NativeGeofenceExceptionMapper.catchError<void>);
   }
 
   /// Register for geofence events for a [Geofence].
@@ -209,4 +217,20 @@ class NativeGeofenceManager {
   Future<void> removeAllGeofences() async => _api
       .removeAllGeofences()
       .catchError(NativeGeofenceExceptionMapper.catchError<void>);
+}
+
+/// Internal sequencing seam kept outside the singleton so initialization order
+/// and failure short-circuiting remain directly testable.
+Future<void> initializeNativeGeofenceRuntime({
+  required Future<void> Function() initializeDispatcher,
+  required bool initializeIosRuntime,
+  required void Function() initializeTriggerApi,
+  required NativeGeofenceBackgroundApi Function() ensureBackgroundManager,
+}) async {
+  await initializeDispatcher();
+  if (!initializeIosRuntime) return;
+
+  initializeTriggerApi();
+  final backgroundApi = ensureBackgroundManager();
+  await backgroundApi.triggerApiInitialized();
 }
