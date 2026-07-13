@@ -228,20 +228,58 @@ void main() {
     expect(report.previousCount, 1);
     expect(report.registrationFingerprint, 'already-current');
   });
+
+  test('incomplete plugin-owned state remains drift after fingerprint match',
+      () async {
+    String? committedFingerprint;
+    messenger.setMockDecodedMessageHandler<Object?>(stateChannel, (_) async {
+      return <Object?>[
+        _state(
+          platform: NativeGeofencePlatform.android,
+          pluginOwnedIds: const ['office'],
+          inactiveRegistrationIds: const ['office'],
+          registrationFingerprint: committedFingerprint,
+        ),
+      ];
+    });
+    final desired = [
+      GeofenceRegistration(
+        geofence: _geofence(),
+        callback: synchronizationCallback,
+      ),
+    ];
+
+    final first =
+        await NativeGeofenceManager.instance.inspectSynchronization(desired);
+    committedFingerprint = first.desiredRegistrationFingerprint;
+    final current =
+        await NativeGeofenceManager.instance.inspectSynchronization(desired);
+
+    expect(current.missingIds, isEmpty);
+    expect(current.inactiveIds, ['office']);
+    expect(current.matchesDesired, isFalse);
+    expect(
+      current.reasons,
+      contains(NativeGeofenceSynchronizationReason.registrationDrift),
+    );
+  });
 }
 
 NativeGeofenceSynchronizationStateWire _state({
   required NativeGeofencePlatform platform,
   List<GeofenceWire> registrations = const [],
+  List<String>? pluginOwnedIds,
+  List<String> inactiveRegistrationIds = const [],
   String? registrationFingerprint,
   String desiredRegistrationFingerprint = 'desired-v1',
   double? iosMaximumDistance,
 }) =>
     NativeGeofenceSynchronizationStateWire(
       platform: platform,
-      pluginOwnedIds: registrations.map((value) => value.id).toList(),
+      pluginOwnedIds:
+          pluginOwnedIds ?? registrations.map((value) => value.id).toList(),
       registrations: registrations,
-      inactiveRegistrationIds: const [],
+      inactiveRegistrationIds: inactiveRegistrationIds,
       registrationFingerprint: registrationFingerprint,
       desiredRegistrationFingerprint: desiredRegistrationFingerprint,
       callbackFingerprintCurrent: true,
