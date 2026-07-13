@@ -83,11 +83,16 @@ private final class CancelledRegionRegistration {
     }
 }
 
+struct CommittedRegionRegistration {
+    let region: CLCircularRegion
+    let initialTrigger: Bool
+}
+
 final class RegionRegistrationCoordinator {
     typealias TimeoutScheduler = (TimeInterval, DispatchWorkItem) -> Void
-
-    private static let coordinateTolerance = 0.0000001
-    private static let radiusToleranceMeters = 0.01
+    typealias CommittedRegionRestorer = (CLCircularRegion) -> Void
+    typealias CommittedRegionInvalidator = (String) -> Void
+    typealias MatchingCommittedRegionInvalidator = (CLRegion) -> Bool
 
     private let monitor: any RegionMonitoring
     private let timeoutSeconds: TimeInterval
@@ -95,6 +100,9 @@ final class RegionRegistrationCoordinator {
     private let getCallbackHandle: (String) -> Int64?
     private let setCallbackHandle: (String, Int64) -> Void
     private let removeCallbackHandle: (String) -> Void
+    private let restoreCommittedRegion: CommittedRegionRestorer
+    private let invalidateCommittedRegion: CommittedRegionInvalidator
+    private let invalidateMatchingCommittedRegion: MatchingCommittedRegionInvalidator
     private var pendingRegistrations: [String: PendingRegionRegistration] = [:]
     private var pendingRestorations: [String: PendingRegionRestoration] = [:]
     private var cancelledRegistrations: [String: CancelledRegionRegistration] = [:]
@@ -107,7 +115,10 @@ final class RegionRegistrationCoordinator {
         },
         getCallbackHandle: @escaping (String) -> Int64?,
         setCallbackHandle: @escaping (String, Int64) -> Void,
-        removeCallbackHandle: @escaping (String) -> Void
+        removeCallbackHandle: @escaping (String) -> Void,
+        restoreCommittedRegion: @escaping CommittedRegionRestorer = { _ in },
+        invalidateCommittedRegion: @escaping CommittedRegionInvalidator = { _ in },
+        invalidateMatchingCommittedRegion: @escaping MatchingCommittedRegionInvalidator = { _ in false }
     ) {
         self.monitor = monitor
         self.timeoutSeconds = timeoutSeconds
@@ -115,16 +126,19 @@ final class RegionRegistrationCoordinator {
         self.getCallbackHandle = getCallbackHandle
         self.setCallbackHandle = setCallbackHandle
         self.removeCallbackHandle = removeCallbackHandle
+        self.restoreCommittedRegion = restoreCommittedRegion
+        self.invalidateCommittedRegion = invalidateCommittedRegion
+        self.invalidateMatchingCommittedRegion = invalidateMatchingCommittedRegion
     }
 
-    /// Starts monitoring and returns a region whose state should be requested
-    /// immediately when an identical registration is already active.
+    /// Starts monitoring and returns a committed registration immediately when
+    /// an identical registration is already active.
     func start(
         region: CLCircularRegion,
         callbackHandle: Int64,
         initialTrigger: Bool,
         completion: @escaping (Result<Void, RegionRegistrationFailure>) -> Void
-    ) -> CLCircularRegion? {
+    ) -> CommittedRegionRegistration? {
         let id = region.identifier
         guard pendingRegistrations[id] == nil, pendingRestorations[id] == nil else {
             completion(
@@ -184,11 +198,14 @@ final class RegionRegistrationCoordinator {
         }
 
         if let existingRegion = previousRegion as? CLCircularRegion,
-           regionsMatch(existingRegion, region)
+           RegionMonitoringSemantics.matches(existingRegion, region)
         {
             setCallbackHandle(id, callbackHandle)
             completion(.success(()))
-            return initialTrigger ? existingRegion : nil
+            return CommittedRegionRegistration(
+                region: existingRegion,
+                initialTrigger: initialTrigger
+            )
         }
 
         let pending = PendingRegionRegistration(
@@ -222,36 +239,45 @@ final class RegionRegistrationCoordinator {
         // while a genuinely new registration is awaiting confirmation.
         if previousRegion == nil, storedCallbackHandle != nil {
             removeCallbackHandle(id)
+            invalidateCommittedRegion(id)
         }
         monitor.startMonitoring(for: region)
         return nil
     }
 
-    /// Completes a matching pending registration and returns the region whose
-    /// initial state should be requested.
-    func didStartMonitoring(for region: CLRegion) -> CLCircularRegion? {
+    /// Completes a matching pending registration and returns its committed
+    /// initial-trigger contract.
+    func didStartMonitoring(for region: CLRegion) -> CommittedRegionRegistration? {
         let id = region.identifier
         if let pending = pendingRegistrations[id],
-           regionsMatch(region, pending.requestedRegion)
+           RegionMonitoringSemantics.matches(region, pending.requestedRegion)
         {
             pendingRegistrations.removeValue(forKey: id)
             pending.timeoutWorkItem?.cancel()
             setCallbackHandle(id, pending.requestedCallbackHandle)
             pending.completion(.success(()))
-            return pending.initialTrigger ? pending.requestedRegion : nil
+            return CommittedRegionRegistration(
+                region: pending.requestedRegion,
+                initialTrigger: pending.initialTrigger
+            )
         }
 
         if let restoration = pendingRestorations[id],
-           regionsMatch(region, restoration.region)
+           RegionMonitoringSemantics.matches(region, restoration.region)
         {
             pendingRestorations.removeValue(forKey: id)
             restoration.timeoutWorkItem?.cancel()
+            if let restoredRegion = restoration.region as? CLCircularRegion {
+                restoreCommittedRegion(restoredRegion)
+            }
             restoration.completion(.failure(restoration.originalFailure))
             return nil
         }
 
         if let cancelled = cancelledRegistrations[id],
-           cancelled.regions.contains(where: { regionsMatch(region, $0) })
+           cancelled.regions.contains(where: {
+               RegionMonitoringSemantics.matches(region, $0)
+           })
         {
             monitor.stopMonitoring(for: region)
         }
@@ -264,27 +290,32 @@ final class RegionRegistrationCoordinator {
         // its matching callback or timeout instead of cancelling unrelated work.
         guard let region else { return }
         let failure = registrationFailure(from: error, regionId: region.identifier)
-        if let pending = pendingRegistrations[region.identifier],
-           regionsMatch(region, pending.requestedRegion)
-        {
-            finishRegistrationWithFailure(
-                id: region.identifier,
-                matching: region,
-                failure: failure
-            )
+        if let pending = pendingRegistrations[region.identifier] {
+            if RegionMonitoringSemantics.matches(region, pending.requestedRegion) {
+                finishRegistrationWithFailure(
+                    id: region.identifier,
+                    matching: region,
+                    failure: failure
+                )
+            }
             return
         }
-        if let restoration = pendingRestorations[region.identifier],
-           regionsMatch(region, restoration.region)
-        {
-            finishRestorationWithFailure(
-                id: region.identifier,
-                matching: region,
-                failure: restoration.originalFailure.appending(
-                    "Restoring the previous registration also failed: \(failure.message)"
+        if let restoration = pendingRestorations[region.identifier] {
+            if RegionMonitoringSemantics.matches(region, restoration.region) {
+                finishRestorationWithFailure(
+                    id: region.identifier,
+                    matching: region,
+                    failure: restoration.originalFailure.appending(
+                        "Restoring the previous registration also failed: \(failure.message)"
+                    )
                 )
-            )
+            }
             return
+        }
+
+        if invalidateMatchingCommittedRegion(region) {
+            monitor.stopMonitoring(for: region)
+            removeCallbackHandle(region.identifier)
         }
     }
 
@@ -331,7 +362,9 @@ final class RegionRegistrationCoordinator {
         failure: RegionRegistrationFailure
     ) {
         guard let pending = pendingRegistrations[id],
-              region.map({ regionsMatch($0, pending.requestedRegion) }) ?? true
+              region.map({
+                  RegionMonitoringSemantics.matches($0, pending.requestedRegion)
+              }) ?? true
         else {
             return
         }
@@ -350,6 +383,7 @@ final class RegionRegistrationCoordinator {
             )
         } else {
             removeCallbackHandle(id)
+            invalidateCommittedRegion(id)
             pending.completion(.failure(failure))
         }
     }
@@ -389,7 +423,9 @@ final class RegionRegistrationCoordinator {
         failure: RegionRegistrationFailure
     ) {
         guard let restoration = pendingRestorations[id],
-              region.map({ regionsMatch($0, restoration.region) }) ?? true
+              region.map({
+                  RegionMonitoringSemantics.matches($0, restoration.region)
+              }) ?? true
         else {
             return
         }
@@ -398,6 +434,7 @@ final class RegionRegistrationCoordinator {
         restoration.timeoutWorkItem?.cancel()
         monitor.stopMonitoring(for: restoration.region)
         removeCallbackHandle(id)
+        invalidateCommittedRegion(id)
         restoration.completion(.failure(failure))
     }
 
@@ -406,7 +443,9 @@ final class RegionRegistrationCoordinator {
         let existing = cancelledRegistrations[id]
         existing?.timeoutWorkItem?.cancel()
         var regions = existing?.regions ?? []
-        if !regions.contains(where: { regionsMatch(region, $0) }) {
+        if !regions.contains(where: {
+            RegionMonitoringSemantics.matches(region, $0)
+        }) {
             regions.append(region)
         }
         let cancelled = CancelledRegionRegistration(regions: regions)
@@ -446,17 +485,4 @@ final class RegionRegistrationCoordinator {
         return .monitoringFailed(message)
     }
 
-    private func regionsMatch(_ lhs: CLRegion, _ rhs: CLRegion) -> Bool {
-        guard lhs.identifier == rhs.identifier else { return false }
-        guard let lhs = lhs as? CLCircularRegion,
-              let rhs = rhs as? CLCircularRegion
-        else {
-            return type(of: lhs) == type(of: rhs)
-        }
-        return abs(lhs.center.latitude - rhs.center.latitude) <= Self.coordinateTolerance
-            && abs(lhs.center.longitude - rhs.center.longitude) <= Self.coordinateTolerance
-            && abs(lhs.radius - rhs.radius) <= Self.radiusToleranceMeters
-            && lhs.notifyOnEntry == rhs.notifyOnEntry
-            && lhs.notifyOnExit == rhs.notifyOnExit
-    }
 }
