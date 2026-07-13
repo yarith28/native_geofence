@@ -10,7 +10,9 @@ import androidx.work.ListenableWorker
 import androidx.work.WorkerParameters
 import com.chunkytofustudios.native_geofence.api.NativeGeofenceBackgroundApiImpl
 import com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWire
+import com.chunkytofustudios.native_geofence.generated.FlutterError
 import com.chunkytofustudios.native_geofence.generated.NativeGeofenceBackgroundApi
+import com.chunkytofustudios.native_geofence.generated.NativeGeofenceErrorCode
 import com.chunkytofustudios.native_geofence.generated.NativeGeofenceTriggerApi
 import com.chunkytofustudios.native_geofence.util.AndroidPackageFingerprint
 import com.chunkytofustudios.native_geofence.util.CallbackDeliveryCoordinator
@@ -25,6 +27,8 @@ import com.chunkytofustudios.native_geofence.util.CallbackPayloadReadResult
 import com.chunkytofustudios.native_geofence.util.CallbackPayloadSettlement
 import com.chunkytofustudios.native_geofence.util.CallbackWorkerResult
 import com.chunkytofustudios.native_geofence.util.GeofenceCallbackPayloadStore
+import com.chunkytofustudios.native_geofence.util.ForegroundPromotionRegistry
+import com.chunkytofustudios.native_geofence.util.ForegroundServiceCompatibility
 import com.chunkytofustudios.native_geofence.util.LegacyCallbackPayloadReadResult
 import com.chunkytofustudios.native_geofence.util.LegacyGeofenceCallbackPayloadStore
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceIo
@@ -37,6 +41,7 @@ import io.flutter.FlutterInjector
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.dart.DartExecutor.DartCallback
 import io.flutter.view.FlutterCallbackInformation
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 class NativeGeofenceBackgroundWorker(
@@ -47,6 +52,7 @@ class NativeGeofenceBackgroundWorker(
     private val completed = AtomicBoolean(false)
     private val stopped = AtomicBoolean(false)
     private val destroyRequested = AtomicBoolean(false)
+    private val foregroundLock = Object()
 
     @Volatile
     private var flutterEngine: FlutterEngine? = null
@@ -65,6 +71,9 @@ class NativeGeofenceBackgroundWorker(
 
     @Volatile
     private var coordinator: CallbackDeliveryCoordinator? = null
+
+    @Volatile
+    private var foregroundPromotionToken: String? = null
 
     private var startTime: Long = 0L
 
@@ -150,6 +159,105 @@ class NativeGeofenceBackgroundWorker(
                 finishFailure(CallbackDeliveryFailure.DART_DELIVERY)
             }
         }
+    }
+
+    fun requestForegroundPromotion(callback: (kotlin.Result<Unit>) -> Unit) {
+        if (completed.get() || stopped.get()) {
+            callback(
+                kotlin.Result.failure(
+                    FlutterError(
+                        NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                        "The callback worker is no longer active."
+                    )
+                )
+            )
+            return
+        }
+        if (foregroundPromotionToken != null) {
+            callback(
+                kotlin.Result.failure(
+                    FlutterError(
+                        NativeGeofenceErrorCode.INVALID_ARGUMENTS.raw.toString(),
+                        "Foreground promotion is already active or pending."
+                    )
+                )
+            )
+            return
+        }
+
+        val prerequisiteError = ForegroundServiceCompatibility.validatePrerequisites(context)
+        if (prerequisiteError != null) {
+            callback(kotlin.Result.failure(prerequisiteError))
+            return
+        }
+
+        val token = UUID.randomUUID().toString()
+        val registered = synchronized(foregroundLock) {
+            if (completed.get() || stopped.get() || foregroundPromotionToken != null) {
+                false
+            } else {
+                foregroundPromotionToken = token
+                ForegroundPromotionRegistry.request(token) { result ->
+                    val current = synchronized(foregroundLock) {
+                        if (foregroundPromotionToken != token) {
+                            false
+                        } else {
+                            if (result.isFailure) {
+                                foregroundPromotionToken = null
+                            }
+                            true
+                        }
+                    }
+                    if (!current) {
+                        return@request
+                    }
+                    if (result.isFailure) {
+                        ForegroundServiceCompatibility.stop(context)
+                    }
+                    callback(result)
+                }
+            }
+        }
+        if (!registered) {
+            synchronized(foregroundLock) {
+                if (foregroundPromotionToken == token) {
+                    foregroundPromotionToken = null
+                }
+            }
+            callback(
+                kotlin.Result.failure(
+                    FlutterError(
+                        NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                        "Failed to reserve a foreground-promotion token."
+                    )
+                )
+            )
+            return
+        }
+
+        val intent = android.content.Intent(
+            context,
+            NativeGeofenceForegroundService::class.java
+        ).apply {
+            action = Constants.ACTION_PROMOTE_FOREGROUND
+            putExtra(Constants.FOREGROUND_PROMOTION_TOKEN_KEY, token)
+        }
+        val startResult = ForegroundServiceCompatibility.start(context, intent)
+        startResult.exceptionOrNull()?.let { error ->
+            ForegroundPromotionRegistry.complete(token, kotlin.Result.failure(error))
+        }
+    }
+
+    fun demoteForegroundService() {
+        val token = synchronized(foregroundLock) {
+            val current = foregroundPromotionToken
+            foregroundPromotionToken = null
+            current
+        }
+        if (token != null) {
+            ForegroundPromotionRegistry.abandon(token)
+        }
+        ForegroundServiceCompatibility.stop(context)
     }
 
     private fun loadPayload() {
@@ -284,7 +392,7 @@ class NativeGeofenceBackgroundWorker(
                 try {
                     val engine = FlutterEngine(applicationContext)
                     flutterEngine = engine
-                    val backgroundApi = NativeGeofenceBackgroundApiImpl(context, this)
+                    val backgroundApi = NativeGeofenceBackgroundApiImpl(this)
                     backgroundApiImpl = backgroundApi
                     NativeGeofenceBackgroundApi.setUp(
                         engine.dartExecutor.binaryMessenger,
@@ -379,6 +487,7 @@ class NativeGeofenceBackgroundWorker(
     }
 
     private fun destroyEngine(afterDestroy: () -> Unit = {}) {
+        demoteForegroundService()
         if (!destroyRequested.compareAndSet(false, true)) {
             mainHandler.post(afterDestroy)
             return

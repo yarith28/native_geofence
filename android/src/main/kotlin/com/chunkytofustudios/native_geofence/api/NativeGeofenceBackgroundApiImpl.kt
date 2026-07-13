@@ -1,16 +1,10 @@
 package com.chunkytofustudios.native_geofence.api
 
-import android.content.Context
-import android.content.Intent
-import android.os.Build
-import android.util.Log
-import com.chunkytofustudios.native_geofence.Constants
-import com.chunkytofustudios.native_geofence.NativeGeofenceForegroundService
 import com.chunkytofustudios.native_geofence.NativeGeofenceBackgroundWorker
 import com.chunkytofustudios.native_geofence.generated.NativeGeofenceBackgroundApi
+import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 
 class NativeGeofenceBackgroundApiImpl(
-    private val context: Context,
     private val worker: NativeGeofenceBackgroundWorker
 ) : NativeGeofenceBackgroundApi {
     companion object {
@@ -22,25 +16,25 @@ class NativeGeofenceBackgroundApiImpl(
         worker.triggerApiReady()
     }
 
-    override fun promoteToForeground() {
-        startForegroundServiceCompat(
-            Intent(context, NativeGeofenceForegroundService::class.java)
-        )
-        Log.d(TAG, "Promoted background service to foreground service.")
+    override fun promoteToForeground(callback: (kotlin.Result<Unit>) -> Unit) {
+        worker.requestForegroundPromotion { result ->
+            if (result.isSuccess) {
+                NativeGeofenceLogger.d(
+                    worker.applicationContext,
+                    TAG,
+                    "Promoted callback worker to a foreground service."
+                )
+            }
+            callback(result)
+        }
     }
 
     override fun demoteToBackground() {
-        val intent = Intent(context, NativeGeofenceForegroundService::class.java)
-        intent.setAction(Constants.ACTION_SHUTDOWN)
-        startForegroundServiceCompat(intent)
-        Log.d(TAG, "Demoted foreground service back to background service.")
-    }
-
-    private fun startForegroundServiceCompat(intent: Intent) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(intent)
-        } else {
-            context.startService(intent)
-        }
+        worker.demoteForegroundService()
+        NativeGeofenceLogger.d(
+            worker.applicationContext,
+            TAG,
+            "Demoted foreground service back to background service."
+        )
     }
 }
