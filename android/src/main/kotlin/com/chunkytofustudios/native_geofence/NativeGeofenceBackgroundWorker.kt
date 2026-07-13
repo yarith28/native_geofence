@@ -9,6 +9,8 @@ import androidx.work.ForegroundInfo
 import androidx.work.ListenableWorker
 import androidx.work.WorkerParameters
 import com.chunkytofustudios.native_geofence.api.NativeGeofenceBackgroundApiImpl
+import com.chunkytofustudios.native_geofence.bridge.NativeGeofenceBridgeDispatcher
+import com.chunkytofustudios.native_geofence.bridge.NativeGeofenceBridgeOutcome
 import com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWire
 import com.chunkytofustudios.native_geofence.generated.FlutterError
 import com.chunkytofustudios.native_geofence.generated.NativeGeofenceBackgroundApi
@@ -300,8 +302,7 @@ class NativeGeofenceBackgroundWorker(
                     finishFailure(CallbackDeliveryFailure.EVENT_ID_MISSING)
                     return
                 }
-                callbackParams = params
-                mainHandler.post(::startFlutterEngine)
+                mainHandler.post { processNativeBridge(params) }
             }
         }
     }
@@ -341,11 +342,28 @@ class NativeGeofenceBackgroundWorker(
     private fun processLegacyPayload(params: GeofenceCallbackParamsWire) {
         // A pre-upgrade WorkRequest has no delivery ID. Its WorkRequest ID is
         // stable across retries and is never used as the unique-work key.
-        callbackParams = CallbackPayloadMigration.withStableEventId(
+        val deliveryParams = CallbackPayloadMigration.withStableEventId(
             params,
             workerParams.id.toString()
         )
-        mainHandler.post(::startFlutterEngine)
+        mainHandler.post { processNativeBridge(deliveryParams) }
+    }
+
+    private fun processNativeBridge(params: GeofenceCallbackParamsWire) {
+        if (completed.get() || stopped.get()) return
+        NativeGeofenceBridgeDispatcher.process(context, params) { outcome ->
+            mainHandler.post {
+                if (completed.get() || stopped.get()) return@post
+                when (outcome) {
+                    NativeGeofenceBridgeOutcome.Accepted ->
+                        finish(CallbackDeliveryPolicy.success())
+                    is NativeGeofenceBridgeOutcome.Continue -> {
+                        callbackParams = outcome.params
+                        startFlutterEngine()
+                    }
+                }
+            }
+        }
     }
 
     private fun startFlutterEngine() {

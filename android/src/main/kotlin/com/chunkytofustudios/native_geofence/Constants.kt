@@ -31,6 +31,8 @@ class Constants {
         const val CALLBACK_PAYLOAD_DIRECTORY = "native_geofence_callback_payloads"
         const val LEGACY_CALLBACK_PAYLOAD_DIRECTORY = "geofence_callback_payloads"
         const val GEOFENCE_CALLBACK_WORK_GROUP = "geofence_callback_work_group"
+        const val NATIVE_EVENT_PROCESSOR_METADATA_KEY =
+            "$PACKAGE_NAME.native_event_processor"
 
         const val RECOVERY_GENERATION_KEY = "$PACKAGE_NAME.recovery_generation"
         const val RECOVERY_SCHEDULED_GENERATION_KEY =
