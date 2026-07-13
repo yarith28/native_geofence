@@ -33,10 +33,15 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
     private val geofencingClient = LocationServices.getGeofencingClient(context)
 
     override fun initialize(callbackDispatcherHandle: Long) {
-        context.getSharedPreferences(Constants.SHARED_PREFERENCES_KEY, Context.MODE_PRIVATE)
-            .edit()
-            .putLong(Constants.CALLBACK_DISPATCHER_HANDLE_KEY, callbackDispatcherHandle)
-            .apply()
+        persistCallbackDispatcherHandle(callbackDispatcherHandle) { handle ->
+            context.getSharedPreferences(
+                Constants.SHARED_PREFERENCES_KEY,
+                Context.MODE_PRIVATE
+            )
+                .edit()
+                .putLong(Constants.CALLBACK_DISPATCHER_HANDLE_KEY, handle)
+                .commit()
+        }
         NativeGeofenceLogger.d(context, TAG, "Initialized NativeGeofenceApi.")
     }
 
@@ -235,5 +240,17 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                 )
             }
         }
+    }
+}
+
+internal fun persistCallbackDispatcherHandle(
+    callbackDispatcherHandle: Long,
+    persist: (Long) -> Boolean
+) {
+    if (!persist(callbackDispatcherHandle)) {
+        throw FlutterError(
+            NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+            "Failed to durably persist the callback dispatcher handle."
+        )
     }
 }
