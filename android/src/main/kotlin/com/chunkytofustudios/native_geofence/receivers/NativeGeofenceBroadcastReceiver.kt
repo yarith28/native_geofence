@@ -11,11 +11,12 @@ import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import com.chunkytofustudios.native_geofence.Constants
 import com.chunkytofustudios.native_geofence.NativeGeofenceBackgroundWorker
-import com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWire
 import com.chunkytofustudios.native_geofence.model.GeofenceCallbackParamsStorage
-import com.chunkytofustudios.native_geofence.util.ActiveGeofenceWires
+import com.chunkytofustudios.native_geofence.util.GeofenceCallbackRouting
+import com.chunkytofustudios.native_geofence.util.GeofenceCallbackRoutingResult
 import com.chunkytofustudios.native_geofence.util.GeofenceEvents
 import com.chunkytofustudios.native_geofence.util.LocationWires
+import com.chunkytofustudios.native_geofence.util.NativeGeofencePersistence
 import com.google.android.gms.location.GeofencingEvent
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -28,32 +29,41 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         Log.d(TAG, "Geofence broadcast received.")
 
-        val geofenceCallbackParams = getGeofenceCallbackParams(intent) ?: return
-
-        val jsonData =
-            Json.encodeToString(GeofenceCallbackParamsStorage.fromWire(geofenceCallbackParams))
-        val workRequest = OneTimeWorkRequestBuilder<NativeGeofenceBackgroundWorker>()
-            .setInputData(Data.Builder().putString(Constants.WORKER_PAYLOAD_KEY, jsonData).build())
-            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-            .build()
-
-        val workManager = WorkManager.getInstance(context)
-        val work = workManager.beginUniqueWork(
-            Constants.GEOFENCE_CALLBACK_WORK_GROUP,
-            // Process geofence callbacks sequentially.
-            ExistingWorkPolicy.APPEND,
-            workRequest
-        )
-        work.enqueue()
-    }
-
-    private fun getGeofenceCallbackParams(intent: Intent): GeofenceCallbackParamsWire? {
-        val callbackHandle = intent.getLongExtra(Constants.CALLBACK_HANDLE_KEY, 0)
-        if (callbackHandle == 0L) {
-            Log.e(TAG, "GeofencingEvent callback handle is missing.")
-            return null
+        val routing = getGeofenceCallbackParams(context, intent) ?: return
+        if (routing.orphanIds.isNotEmpty()) {
+            Log.w(
+                TAG,
+                "Triggered geofences without usable durable registrations were classified as orphans."
+            )
+        }
+        if (routing.callbackGroups.isEmpty()) {
+            Log.e(TAG, "No triggered geofences could be resolved through durable storage.")
+            return
         }
 
+        routing.callbackGroups.forEach { geofenceCallbackParams ->
+            val jsonData =
+                Json.encodeToString(GeofenceCallbackParamsStorage.fromWire(geofenceCallbackParams))
+            val workRequest = OneTimeWorkRequestBuilder<NativeGeofenceBackgroundWorker>()
+                .setInputData(Data.Builder().putString(Constants.WORKER_PAYLOAD_KEY, jsonData).build())
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .build()
+
+            val workManager = WorkManager.getInstance(context)
+            val work = workManager.beginUniqueWork(
+                Constants.GEOFENCE_CALLBACK_WORK_GROUP,
+                // Process every callback-handle group sequentially.
+                ExistingWorkPolicy.APPEND,
+                workRequest
+            )
+            work.enqueue()
+        }
+    }
+
+    private fun getGeofenceCallbackParams(
+        context: Context,
+        intent: Intent
+    ): GeofenceCallbackRoutingResult? {
         val geofencingEvent = GeofencingEvent.fromIntent(intent)
         if (geofencingEvent == null) {
             Log.e(TAG, "GeofencingEvent is null.")
@@ -76,12 +86,8 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
 
         val eventAtMillis = System.currentTimeMillis()
 
-        // Get the geofences that were triggered. A single event can trigger
-        // multiple geofences.
-        val triggeringGeofences = geofencingEvent.triggeringGeofences?.map {
-            ActiveGeofenceWires.fromGeofence(it)
-        }
-        if (triggeringGeofences.isNullOrEmpty()) {
+        val triggeringIds = geofencingEvent.triggeringGeofences?.map { it.requestId }
+        if (triggeringIds.isNullOrEmpty()) {
             Log.e(TAG, "No triggering geofences found.")
             return null
         }
@@ -91,12 +97,12 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
             Log.w(TAG, "No triggering location found.")
         }
 
-        return GeofenceCallbackParamsWire(
-            geofences = triggeringGeofences,
+        return GeofenceCallbackRouting.route(
+            triggeredIds = triggeringIds,
             event = geofenceEvent,
             location = location?.let { LocationWires.fromLocation(it) },
             eventAtMillis = eventAtMillis,
-            callbackHandle = callbackHandle,
+            lookup = { id -> NativeGeofencePersistence.getGeofence(context, id) }
         )
     }
 }
