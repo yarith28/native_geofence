@@ -64,6 +64,10 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
     func cancelAllMonitoringStarts() {
         regionRegistrationCoordinator.cancelAll()
     }
+
+    func recordRemoval(of region: CLRegion) {
+        regionRegistrationCoordinator.recordRemoval(of: region)
+    }
     
     func locationManager(_ manager: CLLocationManager, didDetermineState state: CLRegionState, for region: CLRegion) {
         log.debug("didDetermineState: \(String(describing: state)) for geofence ID: \(region.identifier)")

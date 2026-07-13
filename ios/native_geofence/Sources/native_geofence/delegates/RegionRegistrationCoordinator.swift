@@ -75,11 +75,11 @@ private final class PendingRegionRestoration {
 }
 
 private final class CancelledRegionRegistration {
-    let region: CLRegion
+    let regions: [CLRegion]
     var timeoutWorkItem: DispatchWorkItem?
 
-    init(region: CLRegion) {
-        self.region = region
+    init(regions: [CLRegion]) {
+        self.regions = regions
     }
 }
 
@@ -251,10 +251,8 @@ final class RegionRegistrationCoordinator {
         }
 
         if let cancelled = cancelledRegistrations[id],
-           regionsMatch(region, cancelled.region)
+           cancelled.regions.contains(where: { regionsMatch(region, $0) })
         {
-            cancelledRegistrations.removeValue(forKey: id)
-            cancelled.timeoutWorkItem?.cancel()
             monitor.stopMonitoring(for: region)
         }
         return nil
@@ -288,12 +286,6 @@ final class RegionRegistrationCoordinator {
             )
             return
         }
-        if let cancelled = cancelledRegistrations[region.identifier],
-           regionsMatch(region, cancelled.region)
-        {
-            cancelledRegistrations.removeValue(forKey: region.identifier)
-            cancelled.timeoutWorkItem?.cancel()
-        }
     }
 
     @discardableResult
@@ -316,24 +308,21 @@ final class RegionRegistrationCoordinator {
             return true
         }
 
-        guard let activeRegion = monitor.monitoredRegions.first(where: { $0.identifier == id }) else {
-            return false
-        }
-        monitor.stopMonitoring(for: activeRegion)
-        removeCallbackHandle(id)
-        addCancellationTombstone(for: activeRegion)
-        return true
+        return false
     }
 
     func cancelAll() {
         let ids = Set(
             Array(pendingRegistrations.keys)
                 + Array(pendingRestorations.keys)
-                + monitor.monitoredRegions.map(\.identifier)
         )
         for id in ids {
             cancel(id: id)
         }
+    }
+
+    func recordRemoval(of region: CLRegion) {
+        addCancellationTombstone(for: region)
     }
 
     private func finishRegistrationWithFailure(
@@ -414,8 +403,13 @@ final class RegionRegistrationCoordinator {
 
     private func addCancellationTombstone(for region: CLRegion) {
         let id = region.identifier
-        cancelledRegistrations[id]?.timeoutWorkItem?.cancel()
-        let cancelled = CancelledRegionRegistration(region: region)
+        let existing = cancelledRegistrations[id]
+        existing?.timeoutWorkItem?.cancel()
+        var regions = existing?.regions ?? []
+        if !regions.contains(where: { regionsMatch(region, $0) }) {
+            regions.append(region)
+        }
+        let cancelled = CancelledRegionRegistration(regions: regions)
         cancelledRegistrations[id] = cancelled
 
         let timeoutWorkItem = DispatchWorkItem { [weak self, weak cancelled] in

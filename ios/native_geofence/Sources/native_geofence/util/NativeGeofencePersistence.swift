@@ -18,21 +18,37 @@ class NativeGeofencePersistence {
     static func setRegionCallbackHandle(id: String, handle: Int64) {
         var mapping = getRegionCallbackMapping()
         mapping[id] = NSNumber(value: handle)
-        setRegionCallbackMapping(&mapping)
+        setRegionCallbackMapping(mapping)
     }
     
     static func getRegionCallbackHandle(id: String) -> Int64? {
         guard let handle = getRegionCallbackMapping()[id] else { return nil }
         return (handle as? NSNumber)?.int64Value
     }
+
+    static func hasRegionCallbackHandle(id: String) -> Bool {
+        getRegionCallbackHandle(id: id) != nil
+    }
+
+    static func getRegionCallbackIds() -> Set<String> {
+        Set(
+            getRegionCallbackMapping().compactMap { id, handle in
+                handle is NSNumber ? id : nil
+            }
+        )
+    }
     
     static func removeRegionCallbackHandle(id: String) {
         var mapping = getRegionCallbackMapping()
         mapping.removeValue(forKey: id)
-        setRegionCallbackMapping(&mapping)
+        setRegionCallbackMapping(mapping)
+    }
+
+    static func removeAllRegionCallbackHandles() {
+        setRegionCallbackMapping([:])
     }
     
-    private static func getRegionCallbackMapping() -> [AnyHashable: Any] {
+    private static func getRegionCallbackMapping() -> [String: Any] {
         var callbackDict = persistentState.dictionary(forKey: Constants.GEOFENCE_CALLBACK_DICT_KEY)
         if callbackDict == nil {
             callbackDict = [:]
@@ -41,7 +57,7 @@ class NativeGeofencePersistence {
         return callbackDict!
     }
     
-    private static func setRegionCallbackMapping(_ mapping: inout [AnyHashable: Any]) {
+    private static func setRegionCallbackMapping(_ mapping: [String: Any]) {
         persistentState.set(mapping, forKey: Constants.GEOFENCE_CALLBACK_DICT_KEY)
     }
 }
