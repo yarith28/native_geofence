@@ -376,6 +376,7 @@ class GeofenceWire {
     required this.iosSettings,
     required this.androidSettings,
     required this.callbackHandle,
+    this.callbackContext,
   });
 
   String id;
@@ -392,6 +393,12 @@ class GeofenceWire {
 
   int callbackHandle;
 
+  /// Opaque caller-owned value persisted with this registration and returned
+  /// with callbacks. The plugin never interprets this value.
+  ///
+  /// This nullable trailing field preserves older wire construction sites.
+  int? callbackContext;
+
   List<Object?> _toList() {
     return <Object?>[
       id,
@@ -401,6 +408,7 @@ class GeofenceWire {
       iosSettings,
       androidSettings,
       callbackHandle,
+      callbackContext,
     ];
   }
 
@@ -418,6 +426,7 @@ class GeofenceWire {
       iosSettings: result[4]! as IosGeofenceSettingsWire,
       androidSettings: result[5]! as AndroidGeofenceSettingsWire,
       callbackHandle: result[6]! as int,
+      callbackContext: result[7] as int?,
     );
   }
 
@@ -436,7 +445,8 @@ class GeofenceWire {
         _deepEquals(triggers, other.triggers) &&
         _deepEquals(iosSettings, other.iosSettings) &&
         _deepEquals(androidSettings, other.androidSettings) &&
-        _deepEquals(callbackHandle, other.callbackHandle);
+        _deepEquals(callbackHandle, other.callbackHandle) &&
+        _deepEquals(callbackContext, other.callbackContext);
   }
 
   @override
@@ -517,6 +527,7 @@ class GeofenceCallbackParamsWire {
     this.eventAtMillis,
     required this.callbackHandle,
     this.eventId,
+    this.callbackContextsByGeofenceId,
   });
 
   List<ActiveGeofenceWire> geofences;
@@ -529,12 +540,16 @@ class GeofenceCallbackParamsWire {
 
   int callbackHandle;
 
-  /// Unique ID for this native delivery attempt. Currently only set on iOS.
+  /// Unique ID for this native delivery attempt. Set on Android and iOS.
   ///
   /// This is not a durable business or physical-transition idempotency key.
-  /// It remains the last field for source compatibility with positional native
-  /// call sites generated before delivery IDs were added.
+  /// This nullable field retains its established wire position for compatibility;
+  /// newer nullable fields may follow it and fields must not be reordered.
   String? eventId;
+
+  /// Opaque callback contexts keyed by triggering geofence ID.
+  /// Registrations without a context are absent from this map.
+  Map<String, int>? callbackContextsByGeofenceId;
 
   List<Object?> _toList() {
     return <Object?>[
@@ -544,6 +559,7 @@ class GeofenceCallbackParamsWire {
       eventAtMillis,
       callbackHandle,
       eventId,
+      callbackContextsByGeofenceId,
     ];
   }
 
@@ -560,6 +576,8 @@ class GeofenceCallbackParamsWire {
       eventAtMillis: result[3] as int?,
       callbackHandle: result[4]! as int,
       eventId: result[5] as String?,
+      callbackContextsByGeofenceId:
+          (result[6] as Map<Object?, Object?>?)?.cast<String, int>(),
     );
   }
 
@@ -578,7 +596,9 @@ class GeofenceCallbackParamsWire {
         _deepEquals(location, other.location) &&
         _deepEquals(eventAtMillis, other.eventAtMillis) &&
         _deepEquals(callbackHandle, other.callbackHandle) &&
-        _deepEquals(eventId, other.eventId);
+        _deepEquals(eventId, other.eventId) &&
+        _deepEquals(
+            callbackContextsByGeofenceId, other.callbackContextsByGeofenceId);
   }
 
   @override

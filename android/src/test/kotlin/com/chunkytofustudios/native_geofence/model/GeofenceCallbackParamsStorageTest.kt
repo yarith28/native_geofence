@@ -39,9 +39,23 @@ class GeofenceCallbackParamsStorageTest {
         assertEquals(null, restored.eventId)
     }
 
+    @Test
+    fun `preserves callback contexts through queued payload round trip`() {
+        val params = callbackParams(
+            eventAtMillis = 1_720_000_000_123L,
+            callbackContextsByGeofenceId = mapOf("office" to 71L),
+        )
+        val encoded = Json.encodeToString(GeofenceCallbackParamsStorage.fromWire(params))
+
+        val restored = Json.decodeFromString<GeofenceCallbackParamsStorage>(encoded).toWire()
+
+        assertEquals(mapOf("office" to 71L), restored.callbackContextsByGeofenceId)
+    }
+
     private fun callbackParams(
         eventAtMillis: Long?,
         eventId: String? = null,
+        callbackContextsByGeofenceId: Map<String, Long>? = null,
     ): GeofenceCallbackParamsWire =
         GeofenceCallbackParamsWire(
             geofences = listOf(
@@ -60,5 +74,6 @@ class GeofenceCallbackParamsStorageTest {
             eventAtMillis = eventAtMillis,
             callbackHandle = 42L,
             eventId = eventId,
+            callbackContextsByGeofenceId = callbackContextsByGeofenceId,
         )
 }

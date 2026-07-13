@@ -130,6 +130,7 @@ class GeofenceCallbackPayloadStoreTest {
             "existing",
             CallbackPayloadMigration.withStableEventId(found.params, "worker").eventId
         )
+        assertEquals(mapOf("office" to 9L), found.params.callbackContextsByGeofenceId)
     }
 
     @Test

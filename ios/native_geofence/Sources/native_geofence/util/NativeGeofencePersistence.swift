@@ -47,6 +47,31 @@ class NativeGeofencePersistence {
     static func removeAllRegionCallbackHandles() {
         setRegionCallbackMapping([:])
     }
+
+    static func setRegionCallbackContext(id: String, context: Int64?) {
+        var mapping = getRegionCallbackContextMapping()
+        if let context {
+            mapping[id] = NSNumber(value: context)
+        } else {
+            mapping.removeValue(forKey: id)
+        }
+        persistentState.set(
+            mapping,
+            forKey: Constants.GEOFENCE_CALLBACK_CONTEXT_DICT_KEY
+        )
+    }
+
+    static func getRegionCallbackContext(id: String) -> Int64? {
+        guard let context = getRegionCallbackContextMapping()[id] else { return nil }
+        return (context as? NSNumber)?.int64Value
+    }
+
+    static func removeAllRegionCallbackContexts() {
+        persistentState.set(
+            [:],
+            forKey: Constants.GEOFENCE_CALLBACK_CONTEXT_DICT_KEY
+        )
+    }
     
     private static func getRegionCallbackMapping() -> [String: Any] {
         var callbackDict = persistentState.dictionary(forKey: Constants.GEOFENCE_CALLBACK_DICT_KEY)
@@ -59,5 +84,11 @@ class NativeGeofencePersistence {
     
     private static func setRegionCallbackMapping(_ mapping: [String: Any]) {
         persistentState.set(mapping, forKey: Constants.GEOFENCE_CALLBACK_DICT_KEY)
+    }
+
+    private static func getRegionCallbackContextMapping() -> [String: Any] {
+        persistentState.dictionary(
+            forKey: Constants.GEOFENCE_CALLBACK_CONTEXT_DICT_KEY
+        ) ?? [:]
     }
 }

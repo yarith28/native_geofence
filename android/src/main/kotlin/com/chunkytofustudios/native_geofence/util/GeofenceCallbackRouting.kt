@@ -46,13 +46,17 @@ internal object GeofenceCallbackRouting {
 
         return GeofenceCallbackRoutingResult(
             callbackGroups = grouped.map { (callbackHandle, geofences) ->
+                val callbackContexts = geofences.mapNotNull { geofence ->
+                    geofence.callbackContext?.let { geofence.id to it }
+                }.toMap()
                 GeofenceCallbackParamsWire(
                     geofences = geofences.map(ActiveGeofenceWires::fromGeofenceWire),
                     event = event,
                     location = location,
                     eventAtMillis = eventAtMillis,
                     callbackHandle = callbackHandle,
-                    eventId = null
+                    eventId = null,
+                    callbackContextsByGeofenceId = callbackContexts.ifEmpty { null }
                 )
             },
             orphanIds = orphanIds,

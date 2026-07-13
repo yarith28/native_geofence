@@ -96,7 +96,10 @@ internal object NativeGeofenceBridgeMapper {
                         accuracyMeters = it.accuracyMeters,
                         isMock = it.isMock
                     )
-                }
+                },
+                callbackContextsByGeofenceId = original.callbackContextsByGeofenceId
+                    ?.filterKeys(requestedIds::contains)
+                    ?.ifEmpty { null }
             )
         )
     }
