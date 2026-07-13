@@ -184,7 +184,10 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                 event = geofenceEvent,
                 location = location?.let { LocationWires.fromLocation(it) },
                 eventAtMillis = eventAtMillis,
-                lookup = { id -> NativeGeofencePersistence.getGeofence(context, id) }
+                lookup = { id -> NativeGeofencePersistence.getGeofence(context, id) },
+                isCallbackFresh = { id ->
+                    NativeGeofencePersistence.isCallbackPackageCurrent(context, id)
+                }
             )
         )
     }

@@ -5,6 +5,7 @@
 * Routes Android shared-`PendingIntent` broadcasts by persisted geofence ID, splits mixed callbacks by handle, and restores exact prior storage when native registration fails
 * Serializes Android create, remove, remove-all, explicit recreation, and orphan cleanup through an exact-once FIFO boundary while retaining durable evidence until platform removal succeeds
 * Owns Android reboot, package-replacement, location-restoration, and `GEOFENCE_NOT_AVAILABLE` recovery; preserves finite lifetime, suppresses recovery initial triggers, and retries 14 times over a 660-minute horizon
+* Records privacy-safe Android package fingerprints with callback registrations so handles created by an older app package can be detected before delivery
 * Fails Android initialization when the callback dispatcher handle cannot be durably persisted
 * Serializes iOS background callback delivery and protects callback execution with bounded cleanup
 * Adds iOS delivery IDs and suppresses same-direction duplicate bursts within 10 seconds

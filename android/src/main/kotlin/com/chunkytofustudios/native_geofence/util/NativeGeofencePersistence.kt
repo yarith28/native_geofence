@@ -23,7 +23,8 @@ class NativeGeofencePersistence {
             val saved = store(context).saveConfiguredGeofence(
                 geofence,
                 recoveryEligible = recoveryEligible,
-                active = active
+                active = active,
+                callbackPackageFingerprint = AndroidPackageFingerprint.current(context)
             )
             if (saved) {
                 NativeGeofenceLogger.d(context, TAG, "Saved Geofence ID=${geofence.id}.")
@@ -86,6 +87,20 @@ class NativeGeofencePersistence {
         fun getAllConfiguredGeofences(context: Context): List<GeofenceWire> =
             synchronized(sharedPreferencesLock) {
                 store(context).getConfiguredGeofences().map { it.configuredGeofence }
+            }
+
+        @JvmStatic
+        fun getCallbackPackageFingerprint(context: Context, id: String): String? =
+            synchronized(sharedPreferencesLock) {
+                store(context).callbackPackageFingerprint(id)
+            }
+
+        @JvmStatic
+        fun isCallbackPackageCurrent(context: Context, id: String): Boolean =
+            synchronized(sharedPreferencesLock) {
+                val recorded = store(context).callbackPackageFingerprint(id)
+                    ?: return@synchronized true
+                recorded == AndroidPackageFingerprint.current(context)
             }
 
         @JvmStatic

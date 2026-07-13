@@ -76,6 +76,32 @@ class GeofenceCallbackRoutingTest {
         assertTrue(routed.orphanIds.isEmpty())
     }
 
+    @Test
+    fun `lookup classifies orphans before freshness and keeps stale ids separate`() {
+        val registrations = mapOf(
+            "zero" to geofence("zero", 0),
+            "old" to geofence("old", 17),
+            "current" to geofence("current", 17)
+        )
+        val freshnessChecks = mutableListOf<String>()
+        val routed = GeofenceCallbackRouting.route(
+            triggeredIds = listOf("missing", "zero", "old", "current", "old"),
+            event = GeofenceEvent.ENTER,
+            location = null,
+            eventAtMillis = 99L,
+            lookup = registrations::get,
+            isCallbackFresh = { id ->
+                freshnessChecks += id
+                id == "current"
+            }
+        )
+
+        assertEquals(listOf("current"), ids(routed.callbackGroups.single()))
+        assertEquals(listOf("missing", "zero"), routed.orphanIds)
+        assertEquals(listOf("old"), routed.staleIds)
+        assertEquals(listOf("old", "current"), freshnessChecks)
+    }
+
     private fun route(
         ids: List<String>,
         registrations: Map<String, GeofenceWire>
