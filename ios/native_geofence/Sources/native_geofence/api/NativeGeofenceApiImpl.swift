@@ -17,24 +17,42 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
     }
     
     func createGeofence(geofence: GeofenceWire, completion: @escaping (Result<Void, any Error>) -> Void) {
+        guard CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self) else {
+            completion(
+                .failure(
+                    nativeGeofenceError(
+                        .iosRegionMonitoringFailed,
+                        message: "iOS region monitoring is not available on this device."
+                    )
+                )
+            )
+            return
+        }
+
+        let maximumRadius = locationManagerDelegate.locationManager.maximumRegionMonitoringDistance
+        let radius = maximumRadius > 0
+            ? min(geofence.radiusMeters, maximumRadius)
+            : geofence.radiusMeters
         let region = CLCircularRegion(
             center: CLLocationCoordinate2DMake(geofence.location.latitude, geofence.location.longitude),
-            radius: geofence.radiusMeters,
+            radius: radius,
             identifier: geofence.id
         )
         region.notifyOnEntry = geofence.triggers.contains(.enter)
         region.notifyOnExit = geofence.triggers.contains(.exit)
-        
-        NativeGeofencePersistence.setRegionCallbackHandle(id: geofence.id, handle: geofence.callbackHandle)
-        
-        locationManagerDelegate.locationManager.startMonitoring(for: region)
-        if geofence.iosSettings.initialTrigger {
-            locationManagerDelegate.locationManager.requestState(for: region)
+
+        if radius != geofence.radiusMeters {
+            log.info(
+                "Clamped geofence ID=\(geofence.id) radius from \(geofence.radiusMeters) to \(radius)."
+            )
         }
-        
-        log.debug("Created geofence ID=\(geofence.id).")
-        
-        completion(.success(()))
+
+        locationManagerDelegate.startMonitoring(
+            region: region,
+            callbackHandle: geofence.callbackHandle,
+            initialTrigger: geofence.iosSettings.initialTrigger,
+            completion: completion
+        )
     }
     
     func reCreateAfterReboot() throws {
@@ -64,6 +82,7 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
     }
     
     func removeGeofenceById(id: String, completion: @escaping (Result<Void, any Error>) -> Void) {
+        locationManagerDelegate.cancelMonitoringStart(id: id)
         var removedCount = 0
         for region in locationManagerDelegate.locationManager.monitoredRegions {
             if region.identifier == id {
@@ -77,6 +96,7 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
     }
     
     func removeAllGeofences(completion: @escaping (Result<Void, any Error>) -> Void) {
+        locationManagerDelegate.cancelAllMonitoringStarts()
         var removedCount = 0
         for region in locationManagerDelegate.locationManager.monitoredRegions {
             locationManagerDelegate.locationManager.stopMonitoring(for: region)

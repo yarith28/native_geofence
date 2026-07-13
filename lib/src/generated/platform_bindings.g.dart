@@ -163,6 +163,9 @@ enum NativeGeofenceErrorCode {
   /// This can happen if the callback function signature has changed or due to
   /// plugin contract changes.
   callbackInvalid,
+
+  /// iOS Core Location rejected or did not confirm region monitoring.
+  iosRegionMonitoringFailed,
 }
 
 class LocationWire {

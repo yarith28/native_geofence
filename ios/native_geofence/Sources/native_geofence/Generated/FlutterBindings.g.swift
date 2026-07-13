@@ -225,6 +225,8 @@ enum NativeGeofenceErrorCode: Int {
   /// This can happen if the callback function signature has changed or due to
   /// plugin contract changes.
   case callbackInvalid = 8
+  /// iOS Core Location rejected or did not confirm region monitoring.
+  case iosRegionMonitoringFailed = 9
 }
 
 /// Generated class from Pigeon that represents data sent in messages.

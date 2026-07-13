@@ -259,7 +259,9 @@ enum class NativeGeofenceErrorCode(val raw: Int) {
    * This can happen if the callback function signature has changed or due to
    * plugin contract changes.
    */
-  CALLBACK_INVALID(8);
+  CALLBACK_INVALID(8),
+  /** iOS Core Location rejected or did not confirm region monitoring. */
+  IOS_REGION_MONITORING_FAILED(9);
 
   companion object {
     fun ofRaw(raw: Int): NativeGeofenceErrorCode? {
