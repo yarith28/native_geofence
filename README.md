@@ -230,6 +230,11 @@ Finally, create the geofence:
 await NativeGeofenceManager.instance.createGeofence(zone1, geofenceTriggered);
 ```
 
+On Android, a finite `expiration` is persisted as an absolute deadline. Reboot,
+repair, and explicit recreation use only the remaining lifetime; they never
+grant the geofence a fresh full duration. Lifecycle-critical registration state
+is written synchronously, and a failed durable write is reported as an error.
+
 #### [Android only] Foreground work
 
 If you need to access certain APIs or run a long job in your geofence callback you can promote the runner to a foreground service. You have access to the following functions when running within a geofence callback:
