@@ -222,6 +222,40 @@ class AndroidGeofenceSynchronizationPlannerTest {
     }
 
     @Test
+    fun `incomplete inspection state is repairable and deterministic`() {
+        val legacy = stored(
+            geofence("legacy", handle = 1, context = null),
+            lifecycleMetadataDurable = false
+        )
+
+        assertEquals(
+            listOf("corrupt", "legacy"),
+            AndroidGeofenceSynchronizationPlanner.incompleteRegistrationIds(
+                current = listOf(legacy),
+                rawIds = listOf("legacy", "corrupt"),
+                nowMillis = 1_000
+            )
+        )
+
+        val plan = AndroidGeofenceSynchronizationPlanner.plan(
+            current = listOf(legacy),
+            rawIds = listOf("legacy", "corrupt"),
+            desired = listOf(
+                geofence("legacy", handle = 1, context = null),
+                geofence("corrupt", handle = 2, context = null)
+            ),
+            removeUnlisted = true,
+            currentPackageFingerprint = "current",
+            nowMillis = 1_000
+        )
+
+        assertEquals(
+            listOf("corrupt", "legacy"),
+            plan.platformUpserts.map { it.id }
+        )
+    }
+
+    @Test
     fun `rollback lifetime is derived from the original absolute deadline`() {
         val configured = geofence("office", handle = 1, context = null).copy(
             androidSettings = geofence(
