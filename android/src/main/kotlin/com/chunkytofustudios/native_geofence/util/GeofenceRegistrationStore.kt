@@ -36,7 +36,8 @@ internal data class GeofencePersistenceSnapshot(
     val recordJson: PersistedValue<String>,
     val expirationDeadlineMillis: PersistedValue<Long>,
     val recoveryEligible: PersistedValue<Boolean>,
-    val active: PersistedValue<Boolean>
+    val active: PersistedValue<Boolean>,
+    val callbackPackageFingerprint: PersistedValue<String>
 )
 
 internal data class StoredGeofenceRegistration(
@@ -44,6 +45,7 @@ internal data class StoredGeofenceRegistration(
     val expirationDeadlineMillis: Long?,
     val recoveryEligible: Boolean,
     val active: Boolean,
+    val callbackPackageFingerprint: String?,
     val lifecycleMetadataDurable: Boolean
 )
 
@@ -72,7 +74,8 @@ internal class GeofenceRegistrationStore(
     fun saveConfiguredGeofence(
         geofence: GeofenceWire,
         recoveryEligible: Boolean = true,
-        active: Boolean = true
+        active: Boolean = true,
+        callbackPackageFingerprint: String? = null
     ): Boolean {
         val rawIds = rawIndex().toMutableSet().apply { add(geofence.id) }
         val configuredIds = configuredIndex().toMutableSet().apply { add(geofence.id) }
@@ -91,6 +94,11 @@ internal class GeofenceRegistrationStore(
             }
             putBoolean(recoveryEligibleKey(geofence.id), recoveryEligible)
             putBoolean(activeKey(geofence.id), active)
+            if (callbackPackageFingerprint == null) {
+                remove(callbackPackageFingerprintKey(geofence.id))
+            } else {
+                putString(callbackPackageFingerprintKey(geofence.id), callbackPackageFingerprint)
+            }
         }
     }
 
@@ -145,6 +153,9 @@ internal class GeofenceRegistrationStore(
     fun getConfiguredGeofences(): List<StoredGeofenceRegistration> =
         configuredIds().mapNotNull(::getConfiguredGeofence)
 
+    fun callbackPackageFingerprint(id: String): String? =
+        getConfiguredGeofence(id)?.callbackPackageFingerprint
+
     fun getRecoverableGeofences(): List<GeofenceWire> =
         recoveryInventory().mapNotNull(GeofenceRecoveryInventoryEntry::geofenceToRecover)
 
@@ -188,7 +199,8 @@ internal class GeofenceRegistrationStore(
         recordJson = stringValue(recordKey(id)),
         expirationDeadlineMillis = longValue(expirationKey(id)),
         recoveryEligible = booleanValue(recoveryEligibleKey(id)),
-        active = booleanValue(activeKey(id))
+        active = booleanValue(activeKey(id)),
+        callbackPackageFingerprint = stringValue(callbackPackageFingerprintKey(id))
     )
 
     fun restore(snapshot: GeofencePersistenceSnapshot): Boolean = backend.edit {
@@ -201,6 +213,10 @@ internal class GeofenceRegistrationStore(
         restoreLong(expirationKey(snapshot.id), snapshot.expirationDeadlineMillis)
         restoreBoolean(recoveryEligibleKey(snapshot.id), snapshot.recoveryEligible)
         restoreBoolean(activeKey(snapshot.id), snapshot.active)
+        restoreString(
+            callbackPackageFingerprintKey(snapshot.id),
+            snapshot.callbackPackageFingerprint
+        )
     }
 
     /** Call only after platform cleanup for [id] has succeeded. */
@@ -214,6 +230,7 @@ internal class GeofenceRegistrationStore(
             remove(expirationKey(id))
             remove(recoveryEligibleKey(id))
             remove(activeKey(id))
+            remove(callbackPackageFingerprintKey(id))
         }
     }
 
@@ -228,6 +245,7 @@ internal class GeofenceRegistrationStore(
                 remove(expirationKey(id))
                 remove(recoveryEligibleKey(id))
                 remove(activeKey(id))
+                remove(callbackPackageFingerprintKey(id))
             }
         }
     }
@@ -258,6 +276,8 @@ internal class GeofenceRegistrationStore(
             }
         val active =
             if (hasActive) safeRead { backend.getBoolean(activeKey(id), true) } ?: true else true
+        val callbackPackageFingerprint =
+            safeRead { backend.getString(callbackPackageFingerprintKey(id)) }
 
         var metadataDurable = true
         val needsDeadlineMigration = durationMillis != null && !hasDeadline
@@ -307,6 +327,7 @@ internal class GeofenceRegistrationStore(
             expirationDeadlineMillis = deadlineMillis,
             recoveryEligible = recoveryEligible,
             active = active,
+            callbackPackageFingerprint = callbackPackageFingerprint,
             lifecycleMetadataDurable = metadataDurable
         )
     }
@@ -432,6 +453,9 @@ internal class GeofenceRegistrationStore(
 
         private fun activeKey(id: String) = Constants.PERSISTENT_GEOFENCE_ACTIVE_KEY_PREFIX + id
 
+        private fun callbackPackageFingerprintKey(id: String) =
+            Constants.PERSISTENT_GEOFENCE_CALLBACK_PACKAGE_FINGERPRINT_KEY_PREFIX + id
+
         private fun ownedIdFromKey(key: String): String? = when {
             key.startsWith(Constants.PERSISTENT_GEOFENCE_KEY_PREFIX) ->
                 key.removePrefix(Constants.PERSISTENT_GEOFENCE_KEY_PREFIX)
@@ -441,6 +465,11 @@ internal class GeofenceRegistrationStore(
                 key.removePrefix(Constants.PERSISTENT_GEOFENCE_RECOVERY_ELIGIBLE_KEY_PREFIX)
             key.startsWith(Constants.PERSISTENT_GEOFENCE_ACTIVE_KEY_PREFIX) ->
                 key.removePrefix(Constants.PERSISTENT_GEOFENCE_ACTIVE_KEY_PREFIX)
+            key.startsWith(
+                Constants.PERSISTENT_GEOFENCE_CALLBACK_PACKAGE_FINGERPRINT_KEY_PREFIX
+            ) -> key.removePrefix(
+                Constants.PERSISTENT_GEOFENCE_CALLBACK_PACKAGE_FINGERPRINT_KEY_PREFIX
+            )
             else -> null
         }?.takeIf(String::isNotEmpty)
     }
