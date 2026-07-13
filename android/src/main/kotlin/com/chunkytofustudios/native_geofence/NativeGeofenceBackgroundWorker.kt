@@ -34,6 +34,8 @@ import com.chunkytofustudios.native_geofence.util.ForegroundServiceCompatibility
 import com.chunkytofustudios.native_geofence.util.LegacyCallbackPayloadReadResult
 import com.chunkytofustudios.native_geofence.util.LegacyGeofenceCallbackPayloadStore
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceIo
+import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnosticStage
+import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnostics
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 import com.chunkytofustudios.native_geofence.util.NativeGeofencePersistence
 import com.chunkytofustudios.native_geofence.util.Notifications
@@ -76,6 +78,9 @@ class NativeGeofenceBackgroundWorker(
 
     @Volatile
     private var foregroundPromotionToken: String? = null
+
+    @Volatile
+    private var workerDiagnosticFailure: CallbackDeliveryFailure? = null
 
     private var startTime: Long = 0L
 
@@ -165,6 +170,7 @@ class NativeGeofenceBackgroundWorker(
 
     fun requestForegroundPromotion(callback: (kotlin.Result<Unit>) -> Unit) {
         if (completed.get() || stopped.get()) {
+            recordForegroundFact(false, "worker_inactive")
             callback(
                 kotlin.Result.failure(
                     FlutterError(
@@ -176,6 +182,7 @@ class NativeGeofenceBackgroundWorker(
             return
         }
         if (foregroundPromotionToken != null) {
+            recordForegroundFact(false, "already_active")
             callback(
                 kotlin.Result.failure(
                     FlutterError(
@@ -189,6 +196,7 @@ class NativeGeofenceBackgroundWorker(
 
         val prerequisiteError = ForegroundServiceCompatibility.validatePrerequisites(context)
         if (prerequisiteError != null) {
+            recordForegroundFact(false, "prerequisite_failed")
             callback(kotlin.Result.failure(prerequisiteError))
             return
         }
@@ -216,6 +224,10 @@ class NativeGeofenceBackgroundWorker(
                     if (result.isFailure) {
                         ForegroundServiceCompatibility.stop(context)
                     }
+                    recordForegroundFact(
+                        result.isSuccess,
+                        if (result.isSuccess) "promotion_confirmed" else "promotion_failed"
+                    )
                     callback(result)
                 }
             }
@@ -226,6 +238,7 @@ class NativeGeofenceBackgroundWorker(
                     foregroundPromotionToken = null
                 }
             }
+            recordForegroundFact(false, "token_reservation_failed")
             callback(
                 kotlin.Result.failure(
                     FlutterError(
@@ -258,8 +271,19 @@ class NativeGeofenceBackgroundWorker(
         }
         if (token != null) {
             ForegroundPromotionRegistry.abandon(token)
+            recordForegroundFact(true, "stopped")
         }
         ForegroundServiceCompatibility.stop(context)
+    }
+
+    private fun recordForegroundFact(succeeded: Boolean, outcome: String) {
+        NativeGeofenceDiagnostics.record(
+            context,
+            NativeGeofenceDiagnosticStage.FOREGROUND,
+            succeeded = succeeded,
+            outcome = outcome,
+            geofenceCount = callbackParams?.geofences?.size
+        )
     }
 
     private fun loadPayload() {
@@ -449,6 +473,7 @@ class NativeGeofenceBackgroundWorker(
     }
 
     private fun finishFailure(failure: CallbackDeliveryFailure) {
+        workerDiagnosticFailure = failure
         if (
             CallbackDeliveryPolicy.requiresCallbackRefresh(failure) &&
             !NativeGeofencePersistence.markCallbackRefreshRequired(context)
@@ -472,6 +497,17 @@ class NativeGeofenceBackgroundWorker(
     private fun finish(decision: CallbackDeliveryDecision) {
         if (!completed.compareAndSet(false, true)) return
         coordinator?.cancel()
+        NativeGeofenceDiagnostics.record(
+            context,
+            NativeGeofenceDiagnosticStage.WORKER,
+            succeeded = workerDiagnosticFailure == null,
+            outcome = workerDiagnosticFailure?.name?.lowercase()
+                ?: when (decision.workerResult) {
+                    CallbackWorkerResult.SUCCESS -> "completed"
+                    CallbackWorkerResult.RETRY -> "retry_scheduled"
+                },
+            geofenceCount = callbackParams?.geofences?.size
+        )
 
         val workResult = when (decision.workerResult) {
             CallbackWorkerResult.SUCCESS -> Result.success()

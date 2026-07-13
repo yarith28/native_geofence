@@ -8,6 +8,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import androidx.core.content.ContextCompat
 import com.chunkytofustudios.native_geofence.Constants
 import com.chunkytofustudios.native_geofence.generated.ActiveGeofenceWire
@@ -15,6 +17,7 @@ import com.chunkytofustudios.native_geofence.generated.FlutterError
 import com.chunkytofustudios.native_geofence.generated.GeofenceWire
 import com.chunkytofustudios.native_geofence.generated.NativeGeofenceApi
 import com.chunkytofustudios.native_geofence.generated.NativeGeofenceErrorCode
+import com.chunkytofustudios.native_geofence.generated.NativeGeofenceStatusWire
 import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceBroadcastReceiver
 import com.chunkytofustudios.native_geofence.receivers.GeofenceRecoveryAggregateException
 import com.chunkytofustudios.native_geofence.receivers.GeofenceRecoveryFailure
@@ -31,6 +34,7 @@ import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationTra
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationTransactionException
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceTransactionStepOutcome
 import com.chunkytofustudios.native_geofence.util.AndroidPackageFingerprint
+import com.chunkytofustudios.native_geofence.util.AndroidNativeGeofenceStatusProvider
 import com.chunkytofustudios.native_geofence.util.GeofenceEvents
 import com.chunkytofustudios.native_geofence.util.GeofenceMutationQueue
 import com.chunkytofustudios.native_geofence.util.GeofenceMutationQueues
@@ -40,6 +44,9 @@ import com.chunkytofustudios.native_geofence.util.GeofencePersistenceSnapshot
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 import com.chunkytofustudios.native_geofence.util.LocationState
 import com.chunkytofustudios.native_geofence.util.NativeGeofencePersistence
+import com.chunkytofustudios.native_geofence.util.NativeGeofenceIo
+import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnosticStage
+import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnostics
 import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.LocationServices
 import java.util.concurrent.atomic.AtomicBoolean
@@ -92,7 +99,16 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         geofence: GeofenceWire,
         callback: (Result<Unit>) -> Unit
     ) {
-        mutationRunner.run(callback) { complete ->
+        mutationRunner.run({ result ->
+            NativeGeofenceDiagnostics.record(
+                context,
+                NativeGeofenceDiagnosticStage.REGISTRATION,
+                succeeded = result.isSuccess,
+                outcome = if (result.isSuccess) "registered" else "registration_failed",
+                geofenceCount = 1
+            )
+            callback(result)
+        }) { complete ->
             createGeofenceHelper(geofence, true, complete)
         }
     }
@@ -103,6 +119,13 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
             automatic = false,
             callback = callback
         )
+    }
+
+    override fun getStatus(callback: (Result<NativeGeofenceStatusWire>) -> Unit) {
+        NativeGeofenceIo.execute {
+            val result = runCatching { AndroidNativeGeofenceStatusProvider(context).status() }
+            Handler(Looper.getMainLooper()).post { callback(result) }
+        }
     }
 
     internal fun startAutomaticRecovery(
@@ -120,6 +143,15 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         val completed = AtomicBoolean(false)
         fun finish(result: Result<Unit>) {
             if (completed.compareAndSet(false, true)) {
+                NativeGeofenceDiagnostics.record(
+                    context,
+                    NativeGeofenceDiagnosticStage.RECOVERY,
+                    succeeded = result.isSuccess,
+                    outcome = if (result.isSuccess) "completed" else "failed",
+                    geofenceCount = NativeGeofencePersistence
+                        .getAllRawGeofenceIds(context)
+                        .size
+                )
                 callback(result)
             }
         }
@@ -294,7 +326,16 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
     }
 
     override fun removeGeofenceById(id: String, callback: (Result<Unit>) -> Unit) {
-        mutationRunner.run(callback) { complete ->
+        mutationRunner.run({ result ->
+            NativeGeofenceDiagnostics.record(
+                context,
+                NativeGeofenceDiagnosticStage.REMOVAL,
+                succeeded = result.isSuccess,
+                outcome = if (result.isSuccess) "removed_by_id" else "removal_failed",
+                geofenceCount = 1
+            )
+            callback(result)
+        }) { complete ->
             removeGeofenceByIdLocked(id, complete)
         }
     }
@@ -339,7 +380,17 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
     }
 
     override fun removeAllGeofences(callback: (Result<Unit>) -> Unit) {
-        mutationRunner.run(callback) { complete ->
+        val requestedCount = NativeGeofencePersistence.getAllRawGeofenceIds(context).size
+        mutationRunner.run({ result ->
+            NativeGeofenceDiagnostics.record(
+                context,
+                NativeGeofenceDiagnosticStage.REMOVAL,
+                succeeded = result.isSuccess,
+                outcome = if (result.isSuccess) "removed_all" else "remove_all_failed",
+                geofenceCount = requestedCount
+            )
+            callback(result)
+        }) { complete ->
             removeAllGeofencesLocked(complete)
         }
     }

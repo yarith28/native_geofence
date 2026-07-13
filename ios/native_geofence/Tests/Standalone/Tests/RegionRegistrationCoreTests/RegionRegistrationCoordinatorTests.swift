@@ -1058,6 +1058,109 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
         }
     }
 
+    func testMonitoringFailureOutcomeRecordsOnlyMatchingCommittedInvalidation() {
+        let committed = region(id: "committed")
+        let committedMonitor = FakeMonitor([committed])
+        let committedHandles = HandleStore(["committed": 1])
+        let committedSubject = makeSubject(
+            committedMonitor,
+            committedHandles,
+            invalidateMatchingCommittedRegion: {
+                RegionMonitoringSemantics.matches($0, committed)
+            }
+        )
+
+        let committedOutcome = committedSubject.didFailMonitoring(
+            for: committed,
+            error: NSError(domain: "test", code: 1)
+        )
+
+        XCTAssertEqual(committedOutcome, .committedRegistrationInvalidated)
+        XCTAssertTrue(committedOutcome.shouldRecordRegistrationFailureFact)
+        XCTAssertNil(committedHandles.values["committed"])
+        XCTAssertEqual(committedMonitor.stopped.map(\.identifier), ["committed"])
+
+        let pendingMonitor = FakeMonitor()
+        let pendingHandles = HandleStore()
+        let pendingSubject = makeSubject(pendingMonitor, pendingHandles)
+        let pendingCompletion = CompletionRecorder()
+        let pending = region(id: "pending")
+        _ = pendingSubject.start(
+            region: pending,
+            callbackHandle: 2,
+            initialTrigger: false,
+            completion: pendingCompletion.record
+        )
+        let pendingOutcome = pendingSubject.didFailMonitoring(
+            for: pending,
+            error: NSError(domain: "test", code: 2)
+        )
+        XCTAssertEqual(pendingOutcome, .pendingRegistrationHandled)
+        XCTAssertFalse(pendingOutcome.shouldRecordRegistrationFailureFact)
+        XCTAssertEqual(pendingCompletion.count, 1)
+
+        let previous = region(id: "replacement", radius: 50)
+        let requested = region(id: "replacement", radius: 100)
+        let restorationMonitor = FakeMonitor([previous])
+        let restorationHandles = HandleStore(["replacement": 3])
+        let restorationSubject = makeSubject(restorationMonitor, restorationHandles)
+        let restorationCompletion = CompletionRecorder()
+        _ = restorationSubject.start(
+            region: requested,
+            callbackHandle: 4,
+            initialTrigger: false,
+            completion: restorationCompletion.record
+        )
+        XCTAssertEqual(
+            restorationSubject.didFailMonitoring(
+                for: requested,
+                error: NSError(domain: "test", code: 3)
+            ),
+            .pendingRegistrationHandled
+        )
+        let restorationOutcome = restorationSubject.didFailMonitoring(
+            for: previous,
+            error: NSError(domain: "test", code: 4)
+        )
+        XCTAssertEqual(restorationOutcome, .pendingRestorationHandled)
+        XCTAssertFalse(restorationOutcome.shouldRecordRegistrationFailureFact)
+        XCTAssertEqual(restorationCompletion.count, 1)
+
+        let staleMonitor = FakeMonitor()
+        let staleHandles = HandleStore()
+        let staleSubject = makeSubject(staleMonitor, staleHandles)
+        let staleCompletion = CompletionRecorder()
+        let current = region(id: "stale", radius: 100)
+        _ = staleSubject.start(
+            region: current,
+            callbackHandle: 5,
+            initialTrigger: false,
+            completion: staleCompletion.record
+        )
+        let staleOutcome = staleSubject.didFailMonitoring(
+            for: region(id: "stale", radius: 200),
+            error: NSError(domain: "test", code: 5)
+        )
+        XCTAssertEqual(staleOutcome, .ignoredStaleOrUnowned)
+        XCTAssertFalse(staleOutcome.shouldRecordRegistrationFailureFact)
+        XCTAssertEqual(staleCompletion.count, 0)
+
+        let ignoredSubject = makeSubject(FakeMonitor(), HandleStore())
+        let foreignOutcome = ignoredSubject.didFailMonitoring(
+            for: region(id: "foreign"),
+            error: NSError(domain: "test", code: 6)
+        )
+        XCTAssertEqual(foreignOutcome, .ignoredStaleOrUnowned)
+        XCTAssertFalse(foreignOutcome.shouldRecordRegistrationFailureFact)
+
+        let nilOutcome = ignoredSubject.didFailMonitoring(
+            for: nil,
+            error: NSError(domain: "test", code: 7)
+        )
+        XCTAssertEqual(nilOutcome, .ignoredUnattributed)
+        XCTAssertFalse(nilOutcome.shouldRecordRegistrationFailureFact)
+    }
+
     private func makeSubject(
         _ monitor: FakeMonitor,
         _ handles: HandleStore,

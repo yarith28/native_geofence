@@ -176,8 +176,20 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         if !activeGeofence.triggers.contains(event) {
             return
         }
+        NativeGeofenceDiagnostics.record(
+            .broadcast,
+            succeeded: true,
+            outcome: "resolved",
+            geofenceCount: 1
+        )
         
         guard let callbackHandle = NativeGeofencePersistence.getRegionCallbackHandle(id: activeGeofence.id) else {
+            NativeGeofenceDiagnostics.record(
+                .broadcast,
+                succeeded: false,
+                outcome: "callback_missing",
+                geofenceCount: 1
+            )
             log.error("Callback handle for region \(activeGeofence.id) not found.")
             return
         }
@@ -196,6 +208,12 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         }
 
         guard let backgroundApi = nativeGeofenceBackgroundApi ?? createFlutterEngine() else {
+            NativeGeofenceDiagnostics.record(
+                .enqueue,
+                succeeded: false,
+                outcome: "runtime_unavailable",
+                geofenceCount: 1
+            )
             return
         }
         guard headlessSessionId != nil else {
@@ -214,12 +232,24 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         )
 
         guard backgroundApi.geofenceTriggered(params: params) else {
+            NativeGeofenceDiagnostics.record(
+                .enqueue,
+                succeeded: false,
+                outcome: "session_rejected",
+                geofenceCount: 1
+            )
             log.error("Background callback queue rejected geofence ID=\(activeGeofence.id).")
             backgroundApi.forceCleanup(
                 reason: "Rejected geofence callback from an inactive session."
             )
             return
         }
+        NativeGeofenceDiagnostics.record(
+            .enqueue,
+            succeeded: true,
+            outcome: "session_enqueued",
+            geofenceCount: 1
+        )
         eventDeduplicator.recordAccepted(
             id: activeGeofence.id,
             transition: transition,
@@ -238,7 +268,18 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
     
     func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: any Error) {
         log.error("monitoringDidFailFor: \(region?.identifier ?? "nil") withError: \(error)")
-        regionRegistrationCoordinator.didFailMonitoring(for: region, error: error)
+        let outcome = regionRegistrationCoordinator.didFailMonitoring(
+            for: region,
+            error: error
+        )
+        if outcome.shouldRecordRegistrationFailureFact {
+            NativeGeofenceDiagnostics.record(
+                .registration,
+                succeeded: false,
+                outcome: "monitoring_failed",
+                geofenceCount: 1
+            )
+        }
     }
 
     private func applyInitialStateContract(

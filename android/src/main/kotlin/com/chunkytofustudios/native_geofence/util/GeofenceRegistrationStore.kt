@@ -63,6 +63,20 @@ internal data class GeofenceRecoveryInventoryEntry(
     val geofenceToRecover: GeofenceWire?
 )
 
+internal enum class GeofenceStatusDisposition {
+    ACTIVE,
+    RECOVERABLE,
+    PENDING_CLEANUP,
+    CORRUPT_OR_RAW_ONLY,
+    UNKNOWN_LIFECYCLE
+}
+
+internal data class GeofenceStatusInventoryEntry(
+    val id: String,
+    val disposition: GeofenceStatusDisposition,
+    val callbackPackageFingerprint: String?
+)
+
 /**
  * Durable Android registration state with a deliberately small backend seam so
  * lifecycle and rollback behavior can be tested without Android framework IO.
@@ -110,6 +124,35 @@ internal class GeofenceRegistrationStore(
     fun recoveryInventory(): List<GeofenceRecoveryInventoryEntry> =
         rawIds().map(::recoveryEntry)
 
+    /**
+     * Inspects lifecycle evidence without repairing legacy metadata, expiring a
+     * record, or otherwise changing durable state.
+     */
+    fun statusInventory(): List<GeofenceStatusInventoryEntry> {
+        val configured = configuredIds().toSet()
+        return rawIds().map { id ->
+            val stored = load(id, migrateLegacyMetadata = false)
+            val disposition = when {
+                stored == null -> GeofenceStatusDisposition.CORRUPT_OR_RAW_ONLY
+                !stored.lifecycleMetadataDurable || id !in configured ->
+                    GeofenceStatusDisposition.UNKNOWN_LIFECYCLE
+                stored.expirationDeadlineMillis?.let { it <= nowMillis() } == true ->
+                    GeofenceStatusDisposition.PENDING_CLEANUP
+                stored.active && stored.recoveryEligible -> GeofenceStatusDisposition.ACTIVE
+                !stored.active && stored.recoveryEligible ->
+                    GeofenceStatusDisposition.RECOVERABLE
+                !stored.active && !stored.recoveryEligible ->
+                    GeofenceStatusDisposition.PENDING_CLEANUP
+                else -> GeofenceStatusDisposition.UNKNOWN_LIFECYCLE
+            }
+            GeofenceStatusInventoryEntry(
+                id = id,
+                disposition = disposition,
+                callbackPackageFingerprint = callbackPackageFingerprint(id)
+            )
+        }
+    }
+
     private fun recoveryEntry(id: String): GeofenceRecoveryInventoryEntry {
         val stored = load(id) ?: return GeofenceRecoveryInventoryEntry(
             id = id,
@@ -153,8 +196,12 @@ internal class GeofenceRegistrationStore(
     fun getConfiguredGeofences(): List<StoredGeofenceRegistration> =
         configuredIds().mapNotNull(::getConfiguredGeofence)
 
+    /** Reads configured state without performing legacy metadata migrations. */
+    fun inspectConfiguredGeofences(): List<StoredGeofenceRegistration> =
+        configuredIds().mapNotNull { id -> load(id, migrateLegacyMetadata = false) }
+
     fun callbackPackageFingerprint(id: String): String? =
-        getConfiguredGeofence(id)?.callbackPackageFingerprint
+        safeRead { backend.getString(callbackPackageFingerprintKey(id)) }
 
     fun isCallbackRefreshRequired(): Boolean =
         safeRead { backend.getBoolean(Constants.CALLBACK_REFRESH_REQUIRED_KEY, false) } ?: false
@@ -257,7 +304,10 @@ internal class GeofenceRegistrationStore(
         }
     }
 
-    private fun load(id: String): StoredGeofenceRegistration? {
+    private fun load(
+        id: String,
+        migrateLegacyMetadata: Boolean = true
+    ): StoredGeofenceRegistration? {
         val rawRecord = safeRead { backend.getString(recordKey(id)) } ?: return null
         val geofence = try {
             Json.decodeFromString<GeofenceStorage>(rawRecord).toWire()
@@ -286,7 +336,6 @@ internal class GeofenceRegistrationStore(
         val callbackPackageFingerprint =
             safeRead { backend.getString(callbackPackageFingerprintKey(id)) }
 
-        var metadataDurable = true
         val needsDeadlineMigration = durationMillis != null && !hasDeadline
         val staleDeadline = durationMillis == null && hasDeadline
         val needsStateMigration = !hasRecoveryEligible || !hasActive
@@ -299,10 +348,11 @@ internal class GeofenceRegistrationStore(
             deadlineMillis = safeDeadline(nowMillis(), durationMillis!!)
         }
 
-        if (
+        val needsMigration =
             needsDeadlineMigration || staleDeadline || needsStateMigration ||
-            needsConfiguredIndexMigration
-        ) {
+                needsConfiguredIndexMigration
+        var metadataDurable = !needsMigration
+        if (needsMigration && migrateLegacyMetadata) {
             val rawIds = rawIndex().toMutableSet().apply { add(id) }
             val configuredIds = configuredIndex().toMutableSet().apply { add(id) }
             metadataDurable = safeEdit {
@@ -324,9 +374,9 @@ internal class GeofenceRegistrationStore(
                     putLong(expirationKey(id), requireNotNull(deadlineMillis))
                 }
             }
-            if (staleDeadline) {
-                deadlineMillis = null
-            }
+        }
+        if (staleDeadline) {
+            deadlineMillis = null
         }
 
         return StoredGeofenceRegistration(

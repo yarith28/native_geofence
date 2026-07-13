@@ -89,6 +89,18 @@ struct CommittedRegionRegistration {
     let isNewMonitoringRegistration: Bool
 }
 
+enum RegionMonitoringFailureOutcome: Equatable {
+    case pendingRegistrationHandled
+    case pendingRestorationHandled
+    case committedRegistrationInvalidated
+    case ignoredUnattributed
+    case ignoredStaleOrUnowned
+
+    var shouldRecordRegistrationFailureFact: Bool {
+        self == .committedRegistrationInvalidated
+    }
+}
+
 final class RegionRegistrationCoordinator {
     typealias TimeoutScheduler = (TimeInterval, DispatchWorkItem) -> Void
     typealias CommittedRegionRestorer = (CLCircularRegion) -> Void
@@ -287,11 +299,14 @@ final class RegionRegistrationCoordinator {
         return nil
     }
 
-    func didFailMonitoring(for region: CLRegion?, error: any Error) {
+    func didFailMonitoring(
+        for region: CLRegion?,
+        error: any Error
+    ) -> RegionMonitoringFailureOutcome {
         // Core Location occasionally reports a nil region. That error cannot be
         // attributed safely, so let each token-owned operation resolve through
         // its matching callback or timeout instead of cancelling unrelated work.
-        guard let region else { return }
+        guard let region else { return .ignoredUnattributed }
         let failure = registrationFailure(from: error, regionId: region.identifier)
         if let pending = pendingRegistrations[region.identifier] {
             if RegionMonitoringSemantics.matches(region, pending.requestedRegion) {
@@ -300,8 +315,9 @@ final class RegionRegistrationCoordinator {
                     matching: region,
                     failure: failure
                 )
+                return .pendingRegistrationHandled
             }
-            return
+            return .ignoredStaleOrUnowned
         }
         if let restoration = pendingRestorations[region.identifier] {
             if RegionMonitoringSemantics.matches(region, restoration.region) {
@@ -312,14 +328,17 @@ final class RegionRegistrationCoordinator {
                         "Restoring the previous registration also failed: \(failure.message)"
                     )
                 )
+                return .pendingRestorationHandled
             }
-            return
+            return .ignoredStaleOrUnowned
         }
 
         if invalidateMatchingCommittedRegion(region) {
             monitor.stopMonitoring(for: region)
             removeCallbackHandle(region.identifier)
+            return .committedRegistrationInvalidated
         }
+        return .ignoredStaleOrUnowned
     }
 
     @discardableResult

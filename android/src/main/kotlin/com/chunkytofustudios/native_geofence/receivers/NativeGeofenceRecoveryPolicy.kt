@@ -17,6 +17,18 @@ internal data class RecoveryRetryTicket(
     val attempt: Int
 )
 
+internal enum class RecoveryWorkerTerminalOutcome(
+    val succeeded: Boolean,
+    val storageName: String
+) {
+    COMPLETED(true, "completed"),
+    NON_RETRYABLE_FAILURE(false, "non_retryable_failure"),
+    PERMISSION_WAIT(false, "permission_wait"),
+    GAVE_UP(false, "gave_up"),
+    RETRY_SCHEDULE_FAILED(false, "retry_schedule_failed"),
+    STALE_GENERATION(false, "stale_generation")
+}
+
 internal object NativeGeofenceRecoveryPolicy {
     const val MAX_ATTEMPTS = 14
 
@@ -83,4 +95,10 @@ internal object NativeGeofenceRecoverySchedulePolicy {
         scheduled: RecoveryRetryTicket?,
         worker: RecoveryRetryTicket
     ): Boolean = scheduled == worker
+
+    fun mayPublishTerminal(
+        currentGeneration: Long,
+        scheduled: RecoveryRetryTicket?,
+        worker: RecoveryRetryTicket
+    ): Boolean = currentGeneration == worker.generation && scheduled == worker
 }

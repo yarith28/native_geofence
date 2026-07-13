@@ -9,6 +9,7 @@
 * Moves Android callback payloads out of WorkManager `Data`, continues already-enqueued legacy file payloads across plugin upgrades, confirms enqueue acceptance before releasing one callback-and-orphan broadcast lease, adds non-null delivery IDs, bounded retries, proven-stale callback evidence, and exact-once startup/API/callback watchdog cleanup
 * Makes Android foreground promotion token-confirmed and time-bounded, owns the wake lock, stops on every worker outcome, maps start restrictions to typed errors, and supports host string-resource overrides for its notification
 * Adds an optional Android native event processor with accept/validated-transform/decline decisions, a hard ownership timeout, exact-once completion, safe Dart fallback, and shared durable payload cleanup
+* Adds an asynchronous, read-only `NativeGeofenceStatus` API with privacy-safe prerequisite evidence, plugin-owned IDs, computed health, callback refresh state, platform-specific monitoring evidence, and structured authoritative lifecycle facts
 * Fails Android initialization when the callback dispatcher handle cannot be durably persisted
 * Serializes iOS background callback delivery and protects callback execution with bounded cleanup
 * Adds iOS delivery IDs and suppresses same-direction duplicate bursts within 10 seconds

@@ -33,6 +33,7 @@ class Constants {
         const val GEOFENCE_CALLBACK_WORK_GROUP = "geofence_callback_work_group"
         const val NATIVE_EVENT_PROCESSOR_METADATA_KEY =
             "$PACKAGE_NAME.native_event_processor"
+        const val DIAGNOSTIC_FACT_KEY_PREFIX = "$PACKAGE_NAME.diagnostic_fact/"
 
         const val RECOVERY_GENERATION_KEY = "$PACKAGE_NAME.recovery_generation"
         const val RECOVERY_SCHEDULED_GENERATION_KEY =
