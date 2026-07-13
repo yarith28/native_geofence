@@ -12,6 +12,7 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
     private let callbackBackgroundTaskName = "native_geofence.geofence_callback"
     
     private let flutterPluginRegistrantCallback: FlutterPluginRegistrantCallback?
+    private let eventDeduplicator: IosGeofenceEventDeduplicator
     let locationManager: CLLocationManager
     private lazy var regionRegistrationCoordinator = RegionRegistrationCoordinator(
         monitor: locationManager,
@@ -23,9 +24,16 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         },
         invalidateCommittedRegion: { [weak self] id in
             self?.initialStateRequestGate.remove(id)
+            self?.eventDeduplicator.remove(id: id)
         },
         invalidateMatchingCommittedRegion: { [weak self] region in
-            self?.initialStateRequestGate.remove(matching: region) ?? false
+            guard let self,
+                  self.initialStateRequestGate.remove(matching: region)
+            else {
+                return false
+            }
+            self.eventDeduplicator.remove(id: region.identifier)
+            return true
         }
     )
     private let initialStateRequestGate = InitialStateRequestGate()
@@ -35,8 +43,12 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
     private var headlessSessionId: UUID? = nil
     private var callbackBackgroundTaskIdentifier: UIBackgroundTaskIdentifier = .invalid
     
-    init(flutterPluginRegistrantCallback: FlutterPluginRegistrantCallback?) {
+    init(
+        flutterPluginRegistrantCallback: FlutterPluginRegistrantCallback?,
+        eventDeduplicator: IosGeofenceEventDeduplicator = IosGeofenceEventDeduplicator()
+    ) {
         self.flutterPluginRegistrantCallback = flutterPluginRegistrantCallback
+        self.eventDeduplicator = eventDeduplicator
         locationManager = LocationManagerDelegate.sharedLocationManager ?? CLLocationManager()
         LocationManagerDelegate.sharedLocationManager = locationManager
         
@@ -78,11 +90,13 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
     func cancelMonitoringStart(id: String) {
         initialStateRequestGate.remove(id)
         regionRegistrationCoordinator.cancel(id: id)
+        eventDeduplicator.remove(id: id)
     }
 
     func cancelAllMonitoringStarts() {
         initialStateRequestGate.removeAll()
         regionRegistrationCoordinator.cancelAll()
+        eventDeduplicator.removeAll()
     }
 
     func recordRemoval(of region: CLRegion) {
@@ -149,13 +163,19 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
             return
         }
         
-        let params = GeofenceCallbackParamsWire(
-            geofences: [activeGeofence],
-            event: event,
-            eventAtMillis: Int64(Date().timeIntervalSince1970 * 1000),
-            callbackHandle: callbackHandle
-        )
-        
+        let transition = IosGeofenceTransition(event)
+        let eventAtMillis = Int64(Date().timeIntervalSince1970 * 1000)
+        if let ageMillis = eventDeduplicator.suppressedAgeMillis(
+            id: activeGeofence.id,
+            transition: transition,
+            eventAtMillis: eventAtMillis
+        ) {
+            log.info(
+                "Suppressed repeat \(String(describing: event)) for geofence ID=\(activeGeofence.id); same direction accepted \(ageMillis)ms ago."
+            )
+            return
+        }
+
         guard let backgroundApi = nativeGeofenceBackgroundApi ?? createFlutterEngine() else {
             return
         }
@@ -165,7 +185,15 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
             )
             return
         }
-        
+
+        let params = GeofenceCallbackParamsWire(
+            geofences: [activeGeofence],
+            event: event,
+            eventAtMillis: eventAtMillis,
+            callbackHandle: callbackHandle,
+            eventId: UUID().uuidString
+        )
+
         guard backgroundApi.geofenceTriggered(params: params) else {
             log.error("Background callback queue rejected geofence ID=\(activeGeofence.id).")
             backgroundApi.forceCleanup(
@@ -173,6 +201,11 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
             )
             return
         }
+        eventDeduplicator.recordAccepted(
+            id: activeGeofence.id,
+            transition: transition,
+            eventAtMillis: eventAtMillis
+        )
         log.debug("Geofence trigger event sent.")
     }
 
@@ -194,6 +227,9 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         using manager: CLLocationManager
     ) {
         guard let committedRegistration else { return }
+        if committedRegistration.isNewMonitoringRegistration {
+            eventDeduplicator.remove(id: committedRegistration.region.identifier)
+        }
         guard let probe = initialStateRequestGate.commit(
             region: committedRegistration.region,
             initialTrigger: committedRegistration.initialTrigger
@@ -303,5 +339,15 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         log.debug("A new headless Flutter callback session has been created.")
 
         return backgroundApi
+    }
+}
+
+private extension IosGeofenceTransition {
+    init(_ event: GeofenceEvent) {
+        switch event {
+        case .enter: self = .enter
+        case .exit: self = .exit
+        case .dwell: self = .dwell
+        }
     }
 }

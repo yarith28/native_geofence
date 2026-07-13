@@ -110,12 +110,20 @@ class GeofenceCallbackParamsWire {
   final int? eventAtMillis;
   final int callbackHandle;
 
+  /// Unique ID for this native delivery attempt. Currently only set on iOS.
+  ///
+  /// This is not a durable business or physical-transition idempotency key.
+  /// It remains the last field for source compatibility with positional native
+  /// call sites generated before delivery IDs were added.
+  final String? eventId;
+
   const GeofenceCallbackParamsWire({
     required this.geofences,
     required this.event,
     required this.location,
     this.eventAtMillis,
     required this.callbackHandle,
+    this.eventId,
   });
 }
 

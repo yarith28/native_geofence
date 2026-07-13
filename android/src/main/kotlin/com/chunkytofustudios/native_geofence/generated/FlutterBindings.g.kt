@@ -512,7 +512,15 @@ data class GeofenceCallbackParamsWire (
   val event: GeofenceEvent,
   val location: LocationWire? = null,
   val eventAtMillis: Long? = null,
-  val callbackHandle: Long
+  val callbackHandle: Long,
+  /**
+   * Unique ID for this native delivery attempt. Currently only set on iOS.
+   *
+   * This is not a durable business or physical-transition idempotency key.
+   * It remains the last field for source compatibility with positional native
+   * call sites generated before delivery IDs were added.
+   */
+  val eventId: String? = null
 )
  {
   companion object {
@@ -522,7 +530,8 @@ data class GeofenceCallbackParamsWire (
       val location = pigeonVar_list[2] as LocationWire?
       val eventAtMillis = pigeonVar_list[3] as Long?
       val callbackHandle = pigeonVar_list[4] as Long
-      return GeofenceCallbackParamsWire(geofences, event, location, eventAtMillis, callbackHandle)
+      val eventId = pigeonVar_list[5] as String?
+      return GeofenceCallbackParamsWire(geofences, event, location, eventAtMillis, callbackHandle, eventId)
     }
   }
   fun toList(): List<Any?> {
@@ -532,6 +541,7 @@ data class GeofenceCallbackParamsWire (
       location,
       eventAtMillis,
       callbackHandle,
+      eventId,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -542,7 +552,7 @@ data class GeofenceCallbackParamsWire (
       return true
     }
     val other = other as GeofenceCallbackParamsWire
-    return FlutterBindingsPigeonUtils.deepEquals(this.geofences, other.geofences) && FlutterBindingsPigeonUtils.deepEquals(this.event, other.event) && FlutterBindingsPigeonUtils.deepEquals(this.location, other.location) && FlutterBindingsPigeonUtils.deepEquals(this.eventAtMillis, other.eventAtMillis) && FlutterBindingsPigeonUtils.deepEquals(this.callbackHandle, other.callbackHandle)
+    return FlutterBindingsPigeonUtils.deepEquals(this.geofences, other.geofences) && FlutterBindingsPigeonUtils.deepEquals(this.event, other.event) && FlutterBindingsPigeonUtils.deepEquals(this.location, other.location) && FlutterBindingsPigeonUtils.deepEquals(this.eventAtMillis, other.eventAtMillis) && FlutterBindingsPigeonUtils.deepEquals(this.callbackHandle, other.callbackHandle) && FlutterBindingsPigeonUtils.deepEquals(this.eventId, other.eventId)
   }
 
   override fun hashCode(): Int {
@@ -552,6 +562,7 @@ data class GeofenceCallbackParamsWire (
     result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.location)
     result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.eventAtMillis)
     result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.callbackHandle)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.eventId)
     return result
   }
 }

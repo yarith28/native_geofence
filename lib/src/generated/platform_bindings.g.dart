@@ -480,6 +480,7 @@ class GeofenceCallbackParamsWire {
     this.location,
     this.eventAtMillis,
     required this.callbackHandle,
+    this.eventId,
   });
 
   List<ActiveGeofenceWire> geofences;
@@ -492,6 +493,13 @@ class GeofenceCallbackParamsWire {
 
   int callbackHandle;
 
+  /// Unique ID for this native delivery attempt. Currently only set on iOS.
+  ///
+  /// This is not a durable business or physical-transition idempotency key.
+  /// It remains the last field for source compatibility with positional native
+  /// call sites generated before delivery IDs were added.
+  String? eventId;
+
   List<Object?> _toList() {
     return <Object?>[
       geofences,
@@ -499,6 +507,7 @@ class GeofenceCallbackParamsWire {
       location,
       eventAtMillis,
       callbackHandle,
+      eventId,
     ];
   }
 
@@ -514,6 +523,7 @@ class GeofenceCallbackParamsWire {
       location: result[2] as LocationWire?,
       eventAtMillis: result[3] as int?,
       callbackHandle: result[4]! as int,
+      eventId: result[5] as String?,
     );
   }
 
@@ -531,7 +541,8 @@ class GeofenceCallbackParamsWire {
         _deepEquals(event, other.event) &&
         _deepEquals(location, other.location) &&
         _deepEquals(eventAtMillis, other.eventAtMillis) &&
-        _deepEquals(callbackHandle, other.callbackHandle);
+        _deepEquals(callbackHandle, other.callbackHandle) &&
+        _deepEquals(eventId, other.eventId);
   }
 
   @override
