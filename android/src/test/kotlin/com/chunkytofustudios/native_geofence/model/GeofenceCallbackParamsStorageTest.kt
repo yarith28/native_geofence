@@ -14,12 +14,16 @@ import kotlin.test.assertFalse
 class GeofenceCallbackParamsStorageTest {
     @Test
     fun `preserves event timestamp through queued payload round trip`() {
-        val params = callbackParams(eventAtMillis = 1_720_000_000_123L)
+        val params = callbackParams(
+            eventAtMillis = 1_720_000_000_123L,
+            eventId = "delivery-123",
+        )
         val encoded = Json.encodeToString(GeofenceCallbackParamsStorage.fromWire(params))
 
         val restored = Json.decodeFromString<GeofenceCallbackParamsStorage>(encoded).toWire()
 
         assertEquals(1_720_000_000_123L, restored.eventAtMillis)
+        assertEquals("delivery-123", restored.eventId)
     }
 
     @Test
@@ -32,9 +36,13 @@ class GeofenceCallbackParamsStorageTest {
         val restored = Json.decodeFromString<GeofenceCallbackParamsStorage>(encoded).toWire()
 
         assertEquals(null, restored.eventAtMillis)
+        assertEquals(null, restored.eventId)
     }
 
-    private fun callbackParams(eventAtMillis: Long?): GeofenceCallbackParamsWire =
+    private fun callbackParams(
+        eventAtMillis: Long?,
+        eventId: String? = null,
+    ): GeofenceCallbackParamsWire =
         GeofenceCallbackParamsWire(
             geofences = listOf(
                 ActiveGeofenceWire(
@@ -51,5 +59,6 @@ class GeofenceCallbackParamsStorageTest {
             event = GeofenceEvent.ENTER,
             eventAtMillis = eventAtMillis,
             callbackHandle = 42L,
+            eventId = eventId,
         )
 }

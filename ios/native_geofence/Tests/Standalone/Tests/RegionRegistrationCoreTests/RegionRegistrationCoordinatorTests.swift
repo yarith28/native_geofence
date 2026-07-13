@@ -68,6 +68,7 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
         XCTAssertFalse(subject.hasPendingMutation(id: "office"))
         XCTAssertTrue(committed?.region === requested)
         XCTAssertEqual(committed?.initialTrigger, false)
+        XCTAssertEqual(committed?.isNewMonitoringRegistration, true)
         XCTAssertNil(subject.didStartMonitoring(for: requested))
         XCTAssertEqual(completion.successes, 1)
         XCTAssertEqual(completion.count, 1)
@@ -903,9 +904,35 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
 
         XCTAssertTrue(committed?.region === existing)
         XCTAssertEqual(committed?.initialTrigger, true)
+        XCTAssertEqual(committed?.isNewMonitoringRegistration, false)
         XCTAssertEqual(completion.successes, 1)
         XCTAssertEqual(handles.values["office"], 2)
         XCTAssertTrue(monitor.started.isEmpty)
+    }
+
+    func testChangedActiveRegistrationCommitsAsNewMonitoringRegistration() {
+        let existing = region(id: "office", radius: 100)
+        let requested = region(id: "office", radius: 200)
+        let monitor = FakeMonitor([existing])
+        let handles = HandleStore(["office": 1])
+        let subject = makeSubject(monitor, handles)
+        let completion = CompletionRecorder()
+
+        XCTAssertNil(
+            subject.start(
+                region: requested,
+                callbackHandle: 2,
+                initialTrigger: false,
+                completion: completion.record
+            )
+        )
+
+        let committed = subject.didStartMonitoring(for: requested)
+
+        XCTAssertTrue(committed?.region === requested)
+        XCTAssertEqual(committed?.isNewMonitoringRegistration, true)
+        XCTAssertEqual(completion.successes, 1)
+        XCTAssertEqual(handles.values["office"], 2)
     }
 
     func testConcurrentSameIdIsRejectedWithoutDisturbingFirst() {
