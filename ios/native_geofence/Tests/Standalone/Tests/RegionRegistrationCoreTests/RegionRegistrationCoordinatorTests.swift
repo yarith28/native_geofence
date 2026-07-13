@@ -938,6 +938,60 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
         XCTAssertEqual(recreation.failures.count, 1)
     }
 
+    func testSynchronizationCanClearRemovalTombstoneBeforeRollbackRestore() {
+        let active = region(id: "office")
+        let monitor = FakeMonitor([active])
+        let handles = HandleStore(["office": 1])
+        let subject = makeSubject(monitor, handles)
+        subject.recordRemoval(of: active)
+
+        let blocked = CompletionRecorder()
+        _ = subject.start(
+            region: region(id: "office"),
+            callbackHandle: 1,
+            initialTrigger: false,
+            completion: blocked.record
+        )
+        XCTAssertEqual(blocked.failures.count, 1)
+
+        subject.clearRemovalTombstone(id: "office")
+        let restored = CompletionRecorder()
+        let committed = subject.start(
+            region: region(id: "office"),
+            callbackHandle: 1,
+            initialTrigger: false,
+            completion: restored.record
+        )
+
+        XCTAssertNotNil(committed)
+        XCTAssertEqual(restored.successes, 1)
+        XCTAssertTrue(monitor.started.isEmpty)
+        XCTAssertTrue(monitor.stopped.isEmpty)
+    }
+
+    func testSynchronizationRollbackCanForceStartARegionStillVisibleAfterStop() {
+        let active = region(id: "office")
+        let monitor = FakeMonitor([active])
+        let handles = HandleStore(["office": 1])
+        let subject = makeSubject(monitor, handles)
+        let restored = CompletionRecorder()
+        subject.recordRemoval(of: active)
+        subject.clearRemovalTombstone(id: "office")
+
+        let committed = subject.startForSynchronization(
+            region: region(id: "office"),
+            callbackHandle: 1,
+            forceMonitoring: true,
+            completion: restored.record
+        )
+
+        XCTAssertNil(committed)
+        XCTAssertEqual(monitor.started.map(\.identifier), ["office"])
+        XCTAssertEqual(restored.count, 0)
+        _ = subject.didStartMonitoring(for: monitor.started[0])
+        XCTAssertEqual(restored.successes, 1)
+    }
+
     func testRemovalTombstoneTracksPendingAndActiveReplacementRegions() {
         let active = region(id: "office", radius: 50)
         let requested = region(id: "office", radius: 100)

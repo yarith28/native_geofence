@@ -260,6 +260,12 @@ enum NativeGeofenceCallbackRefreshState: Int {
   case notApplicable = 3
 }
 
+enum NativeGeofenceSynchronizationReasonWire: Int {
+  case firstRun = 0
+  case callbackFingerprintChanged = 1
+  case registrationDrift = 2
+}
+
 /// Generated class from Pigeon that represents data sent in messages.
 struct LocationWire: Hashable {
   var latitude: Double
@@ -761,6 +767,129 @@ struct NativeGeofenceStatusWire: Hashable {
   }
 }
 
+/// Read-only point-in-time plugin-owned state used by synchronization
+/// inspection.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct NativeGeofenceSynchronizationStateWire: Hashable {
+  var platform: NativeGeofencePlatform
+  var pluginOwnedIds: [String]
+  var registrations: [GeofenceWire]
+  var inactiveRegistrationIds: [String]
+  var registrationFingerprint: String? = nil
+  /// Platform-normalized fingerprint computed natively for the desired state.
+  var desiredRegistrationFingerprint: String
+  var callbackFingerprintCurrent: Bool
+  var iosMaximumRegionMonitoringDistance: Double? = nil
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> NativeGeofenceSynchronizationStateWire? {
+    let platform = pigeonVar_list[0] as! NativeGeofencePlatform
+    let pluginOwnedIds = pigeonVar_list[1] as! [String]
+    let registrations = pigeonVar_list[2] as! [GeofenceWire]
+    let inactiveRegistrationIds = pigeonVar_list[3] as! [String]
+    let registrationFingerprint: String? = nilOrValue(pigeonVar_list[4])
+    let desiredRegistrationFingerprint = pigeonVar_list[5] as! String
+    let callbackFingerprintCurrent = pigeonVar_list[6] as! Bool
+    let iosMaximumRegionMonitoringDistance: Double? = nilOrValue(pigeonVar_list[7])
+
+    return NativeGeofenceSynchronizationStateWire(
+      platform: platform,
+      pluginOwnedIds: pluginOwnedIds,
+      registrations: registrations,
+      inactiveRegistrationIds: inactiveRegistrationIds,
+      registrationFingerprint: registrationFingerprint,
+      desiredRegistrationFingerprint: desiredRegistrationFingerprint,
+      callbackFingerprintCurrent: callbackFingerprintCurrent,
+      iosMaximumRegionMonitoringDistance: iosMaximumRegionMonitoringDistance
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      platform,
+      pluginOwnedIds,
+      registrations,
+      inactiveRegistrationIds,
+      registrationFingerprint,
+      desiredRegistrationFingerprint,
+      callbackFingerprintCurrent,
+      iosMaximumRegionMonitoringDistance,
+    ]
+  }
+  static func == (lhs: NativeGeofenceSynchronizationStateWire, rhs: NativeGeofenceSynchronizationStateWire) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsFlutterBindings(lhs.platform, rhs.platform) && deepEqualsFlutterBindings(lhs.pluginOwnedIds, rhs.pluginOwnedIds) && deepEqualsFlutterBindings(lhs.registrations, rhs.registrations) && deepEqualsFlutterBindings(lhs.inactiveRegistrationIds, rhs.inactiveRegistrationIds) && deepEqualsFlutterBindings(lhs.registrationFingerprint, rhs.registrationFingerprint) && deepEqualsFlutterBindings(lhs.desiredRegistrationFingerprint, rhs.desiredRegistrationFingerprint) && deepEqualsFlutterBindings(lhs.callbackFingerprintCurrent, rhs.callbackFingerprintCurrent) && deepEqualsFlutterBindings(lhs.iosMaximumRegionMonitoringDistance, rhs.iosMaximumRegionMonitoringDistance)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("NativeGeofenceSynchronizationStateWire")
+    deepHashFlutterBindings(value: platform, hasher: &hasher)
+    deepHashFlutterBindings(value: pluginOwnedIds, hasher: &hasher)
+    deepHashFlutterBindings(value: registrations, hasher: &hasher)
+    deepHashFlutterBindings(value: inactiveRegistrationIds, hasher: &hasher)
+    deepHashFlutterBindings(value: registrationFingerprint, hasher: &hasher)
+    deepHashFlutterBindings(value: desiredRegistrationFingerprint, hasher: &hasher)
+    deepHashFlutterBindings(value: callbackFingerprintCurrent, hasher: &hasher)
+    deepHashFlutterBindings(value: iosMaximumRegionMonitoringDistance, hasher: &hasher)
+  }
+}
+
+/// Authoritative result of one serialized native inspect-and-mutate pass.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct NativeGeofenceSynchronizationResultWire: Hashable {
+  var didSynchronize: Bool
+  var reasons: [NativeGeofenceSynchronizationReasonWire]
+  var desiredCount: Int64
+  var previousCount: Int64
+  var registrationFingerprint: String
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> NativeGeofenceSynchronizationResultWire? {
+    let didSynchronize = pigeonVar_list[0] as! Bool
+    let reasons = pigeonVar_list[1] as! [NativeGeofenceSynchronizationReasonWire]
+    let desiredCount = pigeonVar_list[2] as! Int64
+    let previousCount = pigeonVar_list[3] as! Int64
+    let registrationFingerprint = pigeonVar_list[4] as! String
+
+    return NativeGeofenceSynchronizationResultWire(
+      didSynchronize: didSynchronize,
+      reasons: reasons,
+      desiredCount: desiredCount,
+      previousCount: previousCount,
+      registrationFingerprint: registrationFingerprint
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      didSynchronize,
+      reasons,
+      desiredCount,
+      previousCount,
+      registrationFingerprint,
+    ]
+  }
+  static func == (lhs: NativeGeofenceSynchronizationResultWire, rhs: NativeGeofenceSynchronizationResultWire) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsFlutterBindings(lhs.didSynchronize, rhs.didSynchronize) && deepEqualsFlutterBindings(lhs.reasons, rhs.reasons) && deepEqualsFlutterBindings(lhs.desiredCount, rhs.desiredCount) && deepEqualsFlutterBindings(lhs.previousCount, rhs.previousCount) && deepEqualsFlutterBindings(lhs.registrationFingerprint, rhs.registrationFingerprint)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("NativeGeofenceSynchronizationResultWire")
+    deepHashFlutterBindings(value: didSynchronize, hasher: &hasher)
+    deepHashFlutterBindings(value: reasons, hasher: &hasher)
+    deepHashFlutterBindings(value: desiredCount, hasher: &hasher)
+    deepHashFlutterBindings(value: previousCount, hasher: &hasher)
+    deepHashFlutterBindings(value: registrationFingerprint, hasher: &hasher)
+  }
+}
+
 private class FlutterBindingsPigeonCodecReader: FlutterStandardReader {
   override func readValue(ofType type: UInt8) -> Any? {
     switch type {
@@ -795,21 +924,31 @@ private class FlutterBindingsPigeonCodecReader: FlutterStandardReader {
       }
       return nil
     case 134:
-      return LocationWire.fromList(self.readValue() as! [Any?])
+      let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
+      if let enumResultAsInt = enumResultAsInt {
+        return NativeGeofenceSynchronizationReasonWire(rawValue: enumResultAsInt)
+      }
+      return nil
     case 135:
-      return IosGeofenceSettingsWire.fromList(self.readValue() as! [Any?])
+      return LocationWire.fromList(self.readValue() as! [Any?])
     case 136:
-      return AndroidGeofenceSettingsWire.fromList(self.readValue() as! [Any?])
+      return IosGeofenceSettingsWire.fromList(self.readValue() as! [Any?])
     case 137:
-      return GeofenceWire.fromList(self.readValue() as! [Any?])
+      return AndroidGeofenceSettingsWire.fromList(self.readValue() as! [Any?])
     case 138:
-      return ActiveGeofenceWire.fromList(self.readValue() as! [Any?])
+      return GeofenceWire.fromList(self.readValue() as! [Any?])
     case 139:
-      return GeofenceCallbackParamsWire.fromList(self.readValue() as! [Any?])
+      return ActiveGeofenceWire.fromList(self.readValue() as! [Any?])
     case 140:
-      return NativeGeofenceLifecycleFactWire.fromList(self.readValue() as! [Any?])
+      return GeofenceCallbackParamsWire.fromList(self.readValue() as! [Any?])
     case 141:
+      return NativeGeofenceLifecycleFactWire.fromList(self.readValue() as! [Any?])
+    case 142:
       return NativeGeofenceStatusWire.fromList(self.readValue() as! [Any?])
+    case 143:
+      return NativeGeofenceSynchronizationStateWire.fromList(self.readValue() as! [Any?])
+    case 144:
+      return NativeGeofenceSynchronizationResultWire.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
     }
@@ -833,29 +972,38 @@ private class FlutterBindingsPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? NativeGeofenceCallbackRefreshState {
       super.writeByte(133)
       super.writeValue(value.rawValue)
-    } else if let value = value as? LocationWire {
+    } else if let value = value as? NativeGeofenceSynchronizationReasonWire {
       super.writeByte(134)
-      super.writeValue(value.toList())
-    } else if let value = value as? IosGeofenceSettingsWire {
+      super.writeValue(value.rawValue)
+    } else if let value = value as? LocationWire {
       super.writeByte(135)
       super.writeValue(value.toList())
-    } else if let value = value as? AndroidGeofenceSettingsWire {
+    } else if let value = value as? IosGeofenceSettingsWire {
       super.writeByte(136)
       super.writeValue(value.toList())
-    } else if let value = value as? GeofenceWire {
+    } else if let value = value as? AndroidGeofenceSettingsWire {
       super.writeByte(137)
       super.writeValue(value.toList())
-    } else if let value = value as? ActiveGeofenceWire {
+    } else if let value = value as? GeofenceWire {
       super.writeByte(138)
       super.writeValue(value.toList())
-    } else if let value = value as? GeofenceCallbackParamsWire {
+    } else if let value = value as? ActiveGeofenceWire {
       super.writeByte(139)
       super.writeValue(value.toList())
-    } else if let value = value as? NativeGeofenceLifecycleFactWire {
+    } else if let value = value as? GeofenceCallbackParamsWire {
       super.writeByte(140)
       super.writeValue(value.toList())
-    } else if let value = value as? NativeGeofenceStatusWire {
+    } else if let value = value as? NativeGeofenceLifecycleFactWire {
       super.writeByte(141)
+      super.writeValue(value.toList())
+    } else if let value = value as? NativeGeofenceStatusWire {
+      super.writeByte(142)
+      super.writeValue(value.toList())
+    } else if let value = value as? NativeGeofenceSynchronizationStateWire {
+      super.writeByte(143)
+      super.writeValue(value.toList())
+    } else if let value = value as? NativeGeofenceSynchronizationResultWire {
+      super.writeByte(144)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -884,6 +1032,8 @@ protocol NativeGeofenceApi {
   func createGeofence(geofence: GeofenceWire, completion: @escaping (Result<Void, Error>) -> Void)
   func reCreateAfterReboot(completion: @escaping (Result<Void, Error>) -> Void)
   func getStatus(completion: @escaping (Result<NativeGeofenceStatusWire, Error>) -> Void)
+  func getSynchronizationState(desiredRegistrations: [GeofenceWire], completion: @escaping (Result<NativeGeofenceSynchronizationStateWire, Error>) -> Void)
+  func synchronizeGeofences(desiredRegistrations: [GeofenceWire], removeUnlisted: Bool, completion: @escaping (Result<NativeGeofenceSynchronizationResultWire, Error>) -> Void)
   func getGeofenceIds() throws -> [String]
   func getGeofences() throws -> [ActiveGeofenceWire]
   func removeGeofenceById(id: String, completion: @escaping (Result<Void, Error>) -> Void)
@@ -957,6 +1107,41 @@ class NativeGeofenceApiSetup {
       }
     } else {
       getStatusChannel.setMessageHandler(nil)
+    }
+    let getSynchronizationStateChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.native_geofence.NativeGeofenceApi.getSynchronizationState\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      getSynchronizationStateChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let desiredRegistrationsArg = args[0] as! [GeofenceWire]
+        api.getSynchronizationState(desiredRegistrations: desiredRegistrationsArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      getSynchronizationStateChannel.setMessageHandler(nil)
+    }
+    let synchronizeGeofencesChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.native_geofence.NativeGeofenceApi.synchronizeGeofences\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      synchronizeGeofencesChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let desiredRegistrationsArg = args[0] as! [GeofenceWire]
+        let removeUnlistedArg = args[1] as! Bool
+        api.synchronizeGeofences(desiredRegistrations: desiredRegistrationsArg, removeUnlisted: removeUnlistedArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      synchronizeGeofencesChannel.setMessageHandler(nil)
     }
     let getGeofenceIdsChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.native_geofence.NativeGeofenceApi.getGeofenceIds\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {

@@ -88,6 +88,38 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         log.debug("Handled monitoring request for geofence ID=\(region.identifier).")
     }
 
+    func startMonitoringForSynchronization(
+        region: CLCircularRegion,
+        callbackHandle: Int64,
+        callbackContext: Int64?,
+        forceMonitoring: Bool = false,
+        completion: @escaping (Result<Void, any Error>) -> Void
+    ) {
+        let committedRegistration = regionRegistrationCoordinator
+            .startForSynchronization(
+                region: region,
+                callbackHandle: callbackHandle,
+                callbackContext: callbackContext,
+                forceMonitoring: forceMonitoring
+            ) { result in
+                switch result {
+                case .success:
+                    completion(.success(()))
+                case .failure(let failure):
+                    completion(.failure(nativeGeofenceError(failure)))
+                }
+            }
+        // A matching synchronization registration is a metadata-only refresh.
+        // It must not cancel an already-authorized initial-state probe for the
+        // unchanged platform registration.
+        if committedRegistration?.isNewMonitoringRegistration == true {
+            applyInitialStateContract(committedRegistration, using: locationManager)
+        }
+        log.debug(
+            "Handled synchronization monitoring request for geofence ID=\(region.identifier)."
+        )
+    }
+
     func cancelMonitoringStart(id: String) {
         initialStateRequestGate.remove(id)
         regionRegistrationCoordinator.cancel(id: id)
@@ -103,6 +135,20 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
     func recordRemoval(of region: CLRegion) {
         initialStateRequestGate.remove(region.identifier)
         regionRegistrationCoordinator.recordRemoval(of: region)
+    }
+
+    func clearSynchronizationRemovalTombstone(id: String) {
+        regionRegistrationCoordinator.clearRemovalTombstone(id: id)
+    }
+
+    func restoreSynchronizationAuthority(
+        regions: [CLCircularRegion],
+        transactionOwnedIds: Set<String>
+    ) {
+        initialStateRequestGate.replaceCommittedRegions(
+            for: transactionOwnedIds,
+            with: regions
+        )
     }
     
     func locationManager(_ manager: CLLocationManager, didDetermineState state: CLRegionState, for region: CLRegion) {

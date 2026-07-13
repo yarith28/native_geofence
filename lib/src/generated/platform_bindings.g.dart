@@ -204,6 +204,12 @@ enum NativeGeofenceCallbackRefreshState {
   notApplicable,
 }
 
+enum NativeGeofenceSynchronizationReasonWire {
+  firstRun,
+  callbackFingerprintChanged,
+  registrationDrift,
+}
+
 class LocationWire {
   LocationWire({
     required this.latitude,
@@ -848,6 +854,164 @@ class NativeGeofenceStatusWire {
   int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
 }
 
+/// Read-only point-in-time plugin-owned state used by synchronization
+/// inspection.
+class NativeGeofenceSynchronizationStateWire {
+  NativeGeofenceSynchronizationStateWire({
+    required this.platform,
+    required this.pluginOwnedIds,
+    required this.registrations,
+    required this.inactiveRegistrationIds,
+    this.registrationFingerprint,
+    required this.desiredRegistrationFingerprint,
+    required this.callbackFingerprintCurrent,
+    this.iosMaximumRegionMonitoringDistance,
+  });
+
+  NativeGeofencePlatform platform;
+
+  List<String> pluginOwnedIds;
+
+  List<GeofenceWire> registrations;
+
+  List<String> inactiveRegistrationIds;
+
+  String? registrationFingerprint;
+
+  /// Platform-normalized fingerprint computed natively for the desired state.
+  String desiredRegistrationFingerprint;
+
+  bool callbackFingerprintCurrent;
+
+  double? iosMaximumRegionMonitoringDistance;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      platform,
+      pluginOwnedIds,
+      registrations,
+      inactiveRegistrationIds,
+      registrationFingerprint,
+      desiredRegistrationFingerprint,
+      callbackFingerprintCurrent,
+      iosMaximumRegionMonitoringDistance,
+    ];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static NativeGeofenceSynchronizationStateWire decode(Object result) {
+    result as List<Object?>;
+    return NativeGeofenceSynchronizationStateWire(
+      platform: result[0]! as NativeGeofencePlatform,
+      pluginOwnedIds: (result[1]! as List<Object?>).cast<String>(),
+      registrations: (result[2]! as List<Object?>).cast<GeofenceWire>(),
+      inactiveRegistrationIds: (result[3]! as List<Object?>).cast<String>(),
+      registrationFingerprint: result[4] as String?,
+      desiredRegistrationFingerprint: result[5]! as String,
+      callbackFingerprintCurrent: result[6]! as bool,
+      iosMaximumRegionMonitoringDistance: result[7] as double?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! NativeGeofenceSynchronizationStateWire ||
+        other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(platform, other.platform) &&
+        _deepEquals(pluginOwnedIds, other.pluginOwnedIds) &&
+        _deepEquals(registrations, other.registrations) &&
+        _deepEquals(inactiveRegistrationIds, other.inactiveRegistrationIds) &&
+        _deepEquals(registrationFingerprint, other.registrationFingerprint) &&
+        _deepEquals(desiredRegistrationFingerprint,
+            other.desiredRegistrationFingerprint) &&
+        _deepEquals(
+            callbackFingerprintCurrent, other.callbackFingerprintCurrent) &&
+        _deepEquals(iosMaximumRegionMonitoringDistance,
+            other.iosMaximumRegionMonitoringDistance);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// Authoritative result of one serialized native inspect-and-mutate pass.
+class NativeGeofenceSynchronizationResultWire {
+  NativeGeofenceSynchronizationResultWire({
+    required this.didSynchronize,
+    required this.reasons,
+    required this.desiredCount,
+    required this.previousCount,
+    required this.registrationFingerprint,
+  });
+
+  bool didSynchronize;
+
+  List<NativeGeofenceSynchronizationReasonWire> reasons;
+
+  int desiredCount;
+
+  int previousCount;
+
+  String registrationFingerprint;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      didSynchronize,
+      reasons,
+      desiredCount,
+      previousCount,
+      registrationFingerprint,
+    ];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static NativeGeofenceSynchronizationResultWire decode(Object result) {
+    result as List<Object?>;
+    return NativeGeofenceSynchronizationResultWire(
+      didSynchronize: result[0]! as bool,
+      reasons: (result[1]! as List<Object?>)
+          .cast<NativeGeofenceSynchronizationReasonWire>(),
+      desiredCount: result[2]! as int,
+      previousCount: result[3]! as int,
+      registrationFingerprint: result[4]! as String,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! NativeGeofenceSynchronizationResultWire ||
+        other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(didSynchronize, other.didSynchronize) &&
+        _deepEquals(reasons, other.reasons) &&
+        _deepEquals(desiredCount, other.desiredCount) &&
+        _deepEquals(previousCount, other.previousCount) &&
+        _deepEquals(registrationFingerprint, other.registrationFingerprint);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
   @override
@@ -870,29 +1034,38 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is NativeGeofenceCallbackRefreshState) {
       buffer.putUint8(133);
       writeValue(buffer, value.index);
-    } else if (value is LocationWire) {
+    } else if (value is NativeGeofenceSynchronizationReasonWire) {
       buffer.putUint8(134);
-      writeValue(buffer, value.encode());
-    } else if (value is IosGeofenceSettingsWire) {
+      writeValue(buffer, value.index);
+    } else if (value is LocationWire) {
       buffer.putUint8(135);
       writeValue(buffer, value.encode());
-    } else if (value is AndroidGeofenceSettingsWire) {
+    } else if (value is IosGeofenceSettingsWire) {
       buffer.putUint8(136);
       writeValue(buffer, value.encode());
-    } else if (value is GeofenceWire) {
+    } else if (value is AndroidGeofenceSettingsWire) {
       buffer.putUint8(137);
       writeValue(buffer, value.encode());
-    } else if (value is ActiveGeofenceWire) {
+    } else if (value is GeofenceWire) {
       buffer.putUint8(138);
       writeValue(buffer, value.encode());
-    } else if (value is GeofenceCallbackParamsWire) {
+    } else if (value is ActiveGeofenceWire) {
       buffer.putUint8(139);
       writeValue(buffer, value.encode());
-    } else if (value is NativeGeofenceLifecycleFactWire) {
+    } else if (value is GeofenceCallbackParamsWire) {
       buffer.putUint8(140);
       writeValue(buffer, value.encode());
-    } else if (value is NativeGeofenceStatusWire) {
+    } else if (value is NativeGeofenceLifecycleFactWire) {
       buffer.putUint8(141);
+      writeValue(buffer, value.encode());
+    } else if (value is NativeGeofenceStatusWire) {
+      buffer.putUint8(142);
+      writeValue(buffer, value.encode());
+    } else if (value is NativeGeofenceSynchronizationStateWire) {
+      buffer.putUint8(143);
+      writeValue(buffer, value.encode());
+    } else if (value is NativeGeofenceSynchronizationResultWire) {
+      buffer.putUint8(144);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -922,21 +1095,32 @@ class _PigeonCodec extends StandardMessageCodec {
             ? null
             : NativeGeofenceCallbackRefreshState.values[value];
       case 134:
-        return LocationWire.decode(readValue(buffer)!);
+        final value = readValue(buffer) as int?;
+        return value == null
+            ? null
+            : NativeGeofenceSynchronizationReasonWire.values[value];
       case 135:
-        return IosGeofenceSettingsWire.decode(readValue(buffer)!);
+        return LocationWire.decode(readValue(buffer)!);
       case 136:
-        return AndroidGeofenceSettingsWire.decode(readValue(buffer)!);
+        return IosGeofenceSettingsWire.decode(readValue(buffer)!);
       case 137:
-        return GeofenceWire.decode(readValue(buffer)!);
+        return AndroidGeofenceSettingsWire.decode(readValue(buffer)!);
       case 138:
-        return ActiveGeofenceWire.decode(readValue(buffer)!);
+        return GeofenceWire.decode(readValue(buffer)!);
       case 139:
-        return GeofenceCallbackParamsWire.decode(readValue(buffer)!);
+        return ActiveGeofenceWire.decode(readValue(buffer)!);
       case 140:
-        return NativeGeofenceLifecycleFactWire.decode(readValue(buffer)!);
+        return GeofenceCallbackParamsWire.decode(readValue(buffer)!);
       case 141:
+        return NativeGeofenceLifecycleFactWire.decode(readValue(buffer)!);
+      case 142:
         return NativeGeofenceStatusWire.decode(readValue(buffer)!);
+      case 143:
+        return NativeGeofenceSynchronizationStateWire.decode(
+            readValue(buffer)!);
+      case 144:
+        return NativeGeofenceSynchronizationResultWire.decode(
+            readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -1031,6 +1215,49 @@ class NativeGeofenceApi {
       isNullValid: false,
     );
     return pigeonVar_replyValue! as NativeGeofenceStatusWire;
+  }
+
+  Future<NativeGeofenceSynchronizationStateWire> getSynchronizationState(
+      {required List<GeofenceWire> desiredRegistrations}) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.native_geofence.NativeGeofenceApi.getSynchronizationState$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture =
+        pigeonVar_channel.send(<Object?>[desiredRegistrations]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as NativeGeofenceSynchronizationStateWire;
+  }
+
+  Future<NativeGeofenceSynchronizationResultWire> synchronizeGeofences(
+      {required List<GeofenceWire> desiredRegistrations,
+      required bool removeUnlisted}) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.native_geofence.NativeGeofenceApi.synchronizeGeofences$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture =
+        pigeonVar_channel.send(<Object?>[desiredRegistrations, removeUnlisted]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as NativeGeofenceSynchronizationResultWire;
   }
 
   Future<List<String>> getGeofenceIds() async {

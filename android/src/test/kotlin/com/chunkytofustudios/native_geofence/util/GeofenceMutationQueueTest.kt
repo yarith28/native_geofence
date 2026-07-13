@@ -109,6 +109,28 @@ class GeofenceMutationQueueTest {
         assertEquals(1, secondRuns)
         assertIs<IllegalArgumentException>(callbackErrors.single())
     }
+
+    @Test
+    fun `typed mutation result keeps queue ownership through callback delivery`() {
+        val dispatcher = ManualDispatcher()
+        val queue = GeofenceMutationQueue(dispatcher::dispatch)
+        val runner = GeofenceMutationRunner(queue)
+        val events = mutableListOf<String>()
+
+        runner.run(
+            callback = { result -> events += "result:${result.getOrThrow()}" },
+            start = { complete -> complete(Result.success("authoritative")) }
+        )
+        queue.enqueue { done ->
+            events += "next"
+            done()
+        }
+
+        dispatcher.runNext()
+        dispatcher.runNext()
+
+        assertEquals(listOf("result:authoritative", "next"), events)
+    }
 }
 
 private class ManualDispatcher {

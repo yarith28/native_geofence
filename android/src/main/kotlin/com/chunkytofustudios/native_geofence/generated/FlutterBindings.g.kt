@@ -321,6 +321,18 @@ enum class NativeGeofenceCallbackRefreshState(val raw: Int) {
   }
 }
 
+enum class NativeGeofenceSynchronizationReasonWire(val raw: Int) {
+  FIRST_RUN(0),
+  CALLBACK_FINGERPRINT_CHANGED(1),
+  REGISTRATION_DRIFT(2);
+
+  companion object {
+    fun ofRaw(raw: Int): NativeGeofenceSynchronizationReasonWire? {
+      return values().firstOrNull { it.raw == raw }
+    }
+  }
+}
+
 /** Generated class from Pigeon that represents data sent in messages. */
 data class LocationWire (
   val latitude: Double,
@@ -803,6 +815,128 @@ data class NativeGeofenceStatusWire (
     return result
   }
 }
+
+/**
+ * Read-only point-in-time plugin-owned state used by synchronization
+ * inspection.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class NativeGeofenceSynchronizationStateWire (
+  val platform: NativeGeofencePlatform,
+  val pluginOwnedIds: List<String>,
+  val registrations: List<GeofenceWire>,
+  val inactiveRegistrationIds: List<String>,
+  val registrationFingerprint: String? = null,
+  /** Platform-normalized fingerprint computed natively for the desired state. */
+  val desiredRegistrationFingerprint: String,
+  val callbackFingerprintCurrent: Boolean,
+  val iosMaximumRegionMonitoringDistance: Double? = null
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): NativeGeofenceSynchronizationStateWire {
+      val platform = pigeonVar_list[0] as NativeGeofencePlatform
+      val pluginOwnedIds = pigeonVar_list[1] as List<String>
+      val registrations = pigeonVar_list[2] as List<GeofenceWire>
+      val inactiveRegistrationIds = pigeonVar_list[3] as List<String>
+      val registrationFingerprint = pigeonVar_list[4] as String?
+      val desiredRegistrationFingerprint = pigeonVar_list[5] as String
+      val callbackFingerprintCurrent = pigeonVar_list[6] as Boolean
+      val iosMaximumRegionMonitoringDistance = pigeonVar_list[7] as Double?
+      return NativeGeofenceSynchronizationStateWire(platform, pluginOwnedIds, registrations, inactiveRegistrationIds, registrationFingerprint, desiredRegistrationFingerprint, callbackFingerprintCurrent, iosMaximumRegionMonitoringDistance)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      platform,
+      pluginOwnedIds,
+      registrations,
+      inactiveRegistrationIds,
+      registrationFingerprint,
+      desiredRegistrationFingerprint,
+      callbackFingerprintCurrent,
+      iosMaximumRegionMonitoringDistance,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as NativeGeofenceSynchronizationStateWire
+    return FlutterBindingsPigeonUtils.deepEquals(this.platform, other.platform) && FlutterBindingsPigeonUtils.deepEquals(this.pluginOwnedIds, other.pluginOwnedIds) && FlutterBindingsPigeonUtils.deepEquals(this.registrations, other.registrations) && FlutterBindingsPigeonUtils.deepEquals(this.inactiveRegistrationIds, other.inactiveRegistrationIds) && FlutterBindingsPigeonUtils.deepEquals(this.registrationFingerprint, other.registrationFingerprint) && FlutterBindingsPigeonUtils.deepEquals(this.desiredRegistrationFingerprint, other.desiredRegistrationFingerprint) && FlutterBindingsPigeonUtils.deepEquals(this.callbackFingerprintCurrent, other.callbackFingerprintCurrent) && FlutterBindingsPigeonUtils.deepEquals(this.iosMaximumRegionMonitoringDistance, other.iosMaximumRegionMonitoringDistance)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.platform)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.pluginOwnedIds)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.registrations)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.inactiveRegistrationIds)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.registrationFingerprint)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.desiredRegistrationFingerprint)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.callbackFingerprintCurrent)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.iosMaximumRegionMonitoringDistance)
+    return result
+  }
+}
+
+/**
+ * Authoritative result of one serialized native inspect-and-mutate pass.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class NativeGeofenceSynchronizationResultWire (
+  val didSynchronize: Boolean,
+  val reasons: List<NativeGeofenceSynchronizationReasonWire>,
+  val desiredCount: Long,
+  val previousCount: Long,
+  val registrationFingerprint: String
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): NativeGeofenceSynchronizationResultWire {
+      val didSynchronize = pigeonVar_list[0] as Boolean
+      val reasons = pigeonVar_list[1] as List<NativeGeofenceSynchronizationReasonWire>
+      val desiredCount = pigeonVar_list[2] as Long
+      val previousCount = pigeonVar_list[3] as Long
+      val registrationFingerprint = pigeonVar_list[4] as String
+      return NativeGeofenceSynchronizationResultWire(didSynchronize, reasons, desiredCount, previousCount, registrationFingerprint)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      didSynchronize,
+      reasons,
+      desiredCount,
+      previousCount,
+      registrationFingerprint,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as NativeGeofenceSynchronizationResultWire
+    return FlutterBindingsPigeonUtils.deepEquals(this.didSynchronize, other.didSynchronize) && FlutterBindingsPigeonUtils.deepEquals(this.reasons, other.reasons) && FlutterBindingsPigeonUtils.deepEquals(this.desiredCount, other.desiredCount) && FlutterBindingsPigeonUtils.deepEquals(this.previousCount, other.previousCount) && FlutterBindingsPigeonUtils.deepEquals(this.registrationFingerprint, other.registrationFingerprint)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.didSynchronize)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.reasons)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.desiredCount)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.previousCount)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.registrationFingerprint)
+    return result
+  }
+}
 private open class FlutterBindingsPigeonCodec : StandardMessageCodec() {
   override fun readValueOfType(type: Byte, buffer: ByteBuffer): Any? {
     return when (type) {
@@ -832,43 +966,58 @@ private open class FlutterBindingsPigeonCodec : StandardMessageCodec() {
         }
       }
       134.toByte() -> {
-        return (readValue(buffer) as? List<Any?>)?.let {
-          LocationWire.fromList(it)
+        return (readValue(buffer) as Long?)?.let {
+          NativeGeofenceSynchronizationReasonWire.ofRaw(it.toInt())
         }
       }
       135.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          IosGeofenceSettingsWire.fromList(it)
+          LocationWire.fromList(it)
         }
       }
       136.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          AndroidGeofenceSettingsWire.fromList(it)
+          IosGeofenceSettingsWire.fromList(it)
         }
       }
       137.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          GeofenceWire.fromList(it)
+          AndroidGeofenceSettingsWire.fromList(it)
         }
       }
       138.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          ActiveGeofenceWire.fromList(it)
+          GeofenceWire.fromList(it)
         }
       }
       139.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          GeofenceCallbackParamsWire.fromList(it)
+          ActiveGeofenceWire.fromList(it)
         }
       }
       140.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          NativeGeofenceLifecycleFactWire.fromList(it)
+          GeofenceCallbackParamsWire.fromList(it)
         }
       }
       141.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
+          NativeGeofenceLifecycleFactWire.fromList(it)
+        }
+      }
+      142.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
           NativeGeofenceStatusWire.fromList(it)
+        }
+      }
+      143.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          NativeGeofenceSynchronizationStateWire.fromList(it)
+        }
+      }
+      144.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          NativeGeofenceSynchronizationResultWire.fromList(it)
         }
       }
       else -> super.readValueOfType(type, buffer)
@@ -896,36 +1045,48 @@ private open class FlutterBindingsPigeonCodec : StandardMessageCodec() {
         stream.write(133)
         writeValue(stream, value.raw.toLong())
       }
-      is LocationWire -> {
+      is NativeGeofenceSynchronizationReasonWire -> {
         stream.write(134)
-        writeValue(stream, value.toList())
+        writeValue(stream, value.raw.toLong())
       }
-      is IosGeofenceSettingsWire -> {
+      is LocationWire -> {
         stream.write(135)
         writeValue(stream, value.toList())
       }
-      is AndroidGeofenceSettingsWire -> {
+      is IosGeofenceSettingsWire -> {
         stream.write(136)
         writeValue(stream, value.toList())
       }
-      is GeofenceWire -> {
+      is AndroidGeofenceSettingsWire -> {
         stream.write(137)
         writeValue(stream, value.toList())
       }
-      is ActiveGeofenceWire -> {
+      is GeofenceWire -> {
         stream.write(138)
         writeValue(stream, value.toList())
       }
-      is GeofenceCallbackParamsWire -> {
+      is ActiveGeofenceWire -> {
         stream.write(139)
         writeValue(stream, value.toList())
       }
-      is NativeGeofenceLifecycleFactWire -> {
+      is GeofenceCallbackParamsWire -> {
         stream.write(140)
         writeValue(stream, value.toList())
       }
-      is NativeGeofenceStatusWire -> {
+      is NativeGeofenceLifecycleFactWire -> {
         stream.write(141)
+        writeValue(stream, value.toList())
+      }
+      is NativeGeofenceStatusWire -> {
+        stream.write(142)
+        writeValue(stream, value.toList())
+      }
+      is NativeGeofenceSynchronizationStateWire -> {
+        stream.write(143)
+        writeValue(stream, value.toList())
+      }
+      is NativeGeofenceSynchronizationResultWire -> {
+        stream.write(144)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -940,6 +1101,8 @@ interface NativeGeofenceApi {
   fun createGeofence(geofence: GeofenceWire, callback: (Result<Unit>) -> Unit)
   fun reCreateAfterReboot(callback: (Result<Unit>) -> Unit)
   fun getStatus(callback: (Result<NativeGeofenceStatusWire>) -> Unit)
+  fun getSynchronizationState(desiredRegistrations: List<GeofenceWire>, callback: (Result<NativeGeofenceSynchronizationStateWire>) -> Unit)
+  fun synchronizeGeofences(desiredRegistrations: List<GeofenceWire>, removeUnlisted: Boolean, callback: (Result<NativeGeofenceSynchronizationResultWire>) -> Unit)
   fun getGeofenceIds(): List<String>
   fun getGeofences(): List<ActiveGeofenceWire>
   fun removeGeofenceById(id: String, callback: (Result<Unit>) -> Unit)
@@ -1013,6 +1176,47 @@ interface NativeGeofenceApi {
         if (api != null) {
           channel.setMessageHandler { _, reply ->
             api.getStatus{ result: Result<NativeGeofenceStatusWire> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(FlutterBindingsPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(FlutterBindingsPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.native_geofence.NativeGeofenceApi.getSynchronizationState$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val desiredRegistrationsArg = args[0] as List<GeofenceWire>
+            api.getSynchronizationState(desiredRegistrationsArg) { result: Result<NativeGeofenceSynchronizationStateWire> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(FlutterBindingsPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(FlutterBindingsPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.native_geofence.NativeGeofenceApi.synchronizeGeofences$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val desiredRegistrationsArg = args[0] as List<GeofenceWire>
+            val removeUnlistedArg = args[1] as Boolean
+            api.synchronizeGeofences(desiredRegistrationsArg, removeUnlistedArg) { result: Result<NativeGeofenceSynchronizationResultWire> ->
               val error = result.exceptionOrNull()
               if (error != null) {
                 reply.reply(FlutterBindingsPigeonUtils.wrapError(error))

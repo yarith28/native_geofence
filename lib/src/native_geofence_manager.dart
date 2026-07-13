@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:native_geofence/src/api/native_geofence_trigger_impl.dart';
 import 'package:native_geofence/src/callback_dispatcher.dart';
 import 'package:native_geofence/src/generated/platform_bindings.g.dart';
+import 'package:native_geofence/src/model/geofence_registration.dart';
 import 'package:native_geofence/src/model/log_file_config.dart';
 import 'package:native_geofence/src/model/model.dart';
 import 'package:native_geofence/src/model/model_mapper.dart';
@@ -13,6 +14,187 @@ import 'package:native_geofence/src/model/native_geofence_status.dart';
 import 'package:native_geofence/src/native_geofence_background_manager.dart';
 import 'package:native_geofence/src/platform/module.dart';
 import 'package:native_geofence/src/typedefs.dart';
+
+class _PreparedRegistration {
+  final GeofenceWire wire;
+
+  const _PreparedRegistration(this.wire);
+}
+
+class _SynchronizationDecision {
+  final Set<NativeGeofenceSynchronizationReason> reasons;
+  final List<String> desiredIds;
+  final List<String> currentIds;
+  final List<String> missingIds;
+  final List<String> unlistedIds;
+  final List<String> driftedIds;
+  final List<String> metadataChangedIds;
+  final List<String> inactiveIds;
+  final String desiredFingerprint;
+  final String? currentFingerprint;
+
+  const _SynchronizationDecision({
+    required this.reasons,
+    required this.desiredIds,
+    required this.currentIds,
+    required this.missingIds,
+    required this.unlistedIds,
+    required this.driftedIds,
+    required this.metadataChangedIds,
+    required this.inactiveIds,
+    required this.desiredFingerprint,
+    required this.currentFingerprint,
+  });
+
+  bool get matchesDesired => reasons.isEmpty;
+
+  NativeGeofenceSynchronizationInspection toInspection() =>
+      NativeGeofenceSynchronizationInspection(
+        matchesDesired: matchesDesired,
+        reasons: Set.unmodifiable(reasons),
+        desiredIds: List.unmodifiable(desiredIds),
+        currentIds: List.unmodifiable(currentIds),
+        missingIds: List.unmodifiable(missingIds),
+        unlistedIds: List.unmodifiable(unlistedIds),
+        driftedIds: List.unmodifiable(driftedIds),
+        metadataChangedIds: List.unmodifiable(metadataChangedIds),
+        inactiveIds: List.unmodifiable(inactiveIds),
+        desiredRegistrationFingerprint: desiredFingerprint,
+        currentRegistrationFingerprint: currentFingerprint,
+      );
+}
+
+_SynchronizationDecision _decideSynchronization(
+  List<_PreparedRegistration> desired,
+  NativeGeofenceSynchronizationStateWire state, {
+  required bool removeUnlisted,
+}) {
+  final desiredById = {for (final value in desired) value.wire.id: value.wire};
+  final currentById = {
+    for (final value in state.registrations) value.id: value,
+  };
+  final desiredIds = desiredById.keys.toList()..sort();
+  final currentIds = state.pluginOwnedIds.toSet().toList()..sort();
+  final missingIds = desiredIds
+      .where((id) => !currentIds.contains(id))
+      .toList(growable: false);
+  final unlistedIds = removeUnlisted
+      ? currentIds.where((id) => !desiredById.containsKey(id)).toList()
+      : <String>[];
+  final driftedIds = <String>[];
+  final metadataChangedIds = <String>[];
+  for (final id in desiredIds) {
+    final current = currentById[id];
+    final wanted = desiredById[id]!;
+    if (current == null) continue;
+    if (!_platformRegistrationMatches(current, wanted, state)) {
+      driftedIds.add(id);
+    }
+    if (current.callbackHandle != wanted.callbackHandle ||
+        current.callbackContext != wanted.callbackContext) {
+      metadataChangedIds.add(id);
+    }
+  }
+  final inactiveIds = state.inactiveRegistrationIds
+      .where(desiredById.containsKey)
+      .toSet()
+      .toList()
+    ..sort();
+  final desiredFingerprint = state.desiredRegistrationFingerprint;
+  final reasons = <NativeGeofenceSynchronizationReason>{};
+  if (state.registrationFingerprint == null) {
+    reasons.add(NativeGeofenceSynchronizationReason.firstRun);
+  }
+  if (!state.callbackFingerprintCurrent || metadataChangedIds.isNotEmpty) {
+    reasons.add(
+      NativeGeofenceSynchronizationReason.callbackFingerprintChanged,
+    );
+  }
+  if (state.registrationFingerprint != desiredFingerprint ||
+      missingIds.isNotEmpty ||
+      unlistedIds.isNotEmpty ||
+      driftedIds.isNotEmpty ||
+      inactiveIds.isNotEmpty) {
+    reasons.add(NativeGeofenceSynchronizationReason.registrationDrift);
+  }
+  return _SynchronizationDecision(
+    reasons: reasons,
+    desiredIds: desiredIds,
+    currentIds: currentIds,
+    missingIds: missingIds,
+    unlistedIds: unlistedIds..sort(),
+    driftedIds: driftedIds..sort(),
+    metadataChangedIds: metadataChangedIds..sort(),
+    inactiveIds: inactiveIds,
+    desiredFingerprint: desiredFingerprint,
+    currentFingerprint: state.registrationFingerprint,
+  );
+}
+
+bool _platformRegistrationMatches(
+  GeofenceWire current,
+  GeofenceWire desired,
+  NativeGeofenceSynchronizationStateWire state,
+) {
+  final desiredRadius = state.platform == NativeGeofencePlatform.ios &&
+          state.iosMaximumRegionMonitoringDistance != null &&
+          state.iosMaximumRegionMonitoringDistance! > 0
+      ? desired.radiusMeters
+          .clamp(0, state.iosMaximumRegionMonitoringDistance!)
+          .toDouble()
+      : desired.radiusMeters;
+  final coordinatesMatch = state.platform == NativeGeofencePlatform.ios
+      ? (current.location.latitude - desired.location.latitude).abs() <=
+              0.0000001 &&
+          (current.location.longitude - desired.location.longitude).abs() <=
+              0.0000001
+      : current.location.latitude == desired.location.latitude &&
+          current.location.longitude == desired.location.longitude;
+  final radiusMatches = state.platform == NativeGeofencePlatform.ios
+      ? (current.radiusMeters - desiredRadius).abs() <= 0.01
+      : current.radiusMeters == desiredRadius;
+  if (!coordinatesMatch ||
+      !radiusMatches ||
+      !_wireEventsMatch(
+        _eventsForPlatform(current.triggers, state.platform),
+        _eventsForPlatform(desired.triggers, state.platform),
+      )) {
+    return false;
+  }
+  if (state.platform == NativeGeofencePlatform.ios) return true;
+  return current.androidSettings.expirationDurationMillis ==
+          desired.androidSettings.expirationDurationMillis &&
+      current.androidSettings.loiteringDelayMillis ==
+          desired.androidSettings.loiteringDelayMillis &&
+      current.androidSettings.notificationResponsivenessMillis ==
+          desired.androidSettings.notificationResponsivenessMillis;
+}
+
+bool _wireEventsMatch(List<GeofenceEvent> left, List<GeofenceEvent> right) {
+  final leftSet = left.toSet();
+  final rightSet = right.toSet();
+  return leftSet.length == rightSet.length && leftSet.containsAll(rightSet);
+}
+
+List<GeofenceEvent> _eventsForPlatform(
+  List<GeofenceEvent> events,
+  NativeGeofencePlatform platform,
+) =>
+    platform == NativeGeofencePlatform.ios
+        ? events.where((event) => event != GeofenceEvent.dwell).toList()
+        : events;
+
+NativeGeofenceSynchronizationReason _synchronizationReasonFromWire(
+  NativeGeofenceSynchronizationReasonWire reason,
+) =>
+    switch (reason) {
+      NativeGeofenceSynchronizationReasonWire.firstRun =>
+        NativeGeofenceSynchronizationReason.firstRun,
+      NativeGeofenceSynchronizationReasonWire.callbackFingerprintChanged =>
+        NativeGeofenceSynchronizationReason.callbackFingerprintChanged,
+      NativeGeofenceSynchronizationReasonWire.registrationDrift =>
+        NativeGeofenceSynchronizationReason.registrationDrift,
+    };
 
 class NativeGeofenceManager {
   /// Cached instance of [NativeGeofenceManager]
@@ -31,6 +213,7 @@ class NativeGeofenceManager {
   }
 
   final NativeGeofenceApi _api;
+  Future<void> _synchronizationTail = Future<void>.value();
 
   static const MethodChannel _logFileChannel =
       MethodChannel('native_geofence/log_file');
@@ -80,6 +263,22 @@ class NativeGeofenceManager {
     GeofenceCallback callback, {
     int? callbackContext,
   }) async {
+    final prepared = _prepareRegistration(
+      GeofenceRegistration(
+        geofence: geofence,
+        callback: callback,
+        callbackContext: callbackContext,
+      ),
+    );
+    return _api
+        .createGeofence(geofence: prepared.wire)
+        .catchError(NativeGeofenceExceptionMapper.catchError<void>);
+  }
+
+  _PreparedRegistration _prepareRegistration(
+    GeofenceRegistration registration,
+  ) {
+    final geofence = registration.geofence;
     if (geofence.id.isEmpty) {
       throw NativeGeofenceException.invalidArgument(
           message: 'Geofence ID cannot be empty.');
@@ -104,22 +303,119 @@ class NativeGeofenceManager {
     }
     final CallbackHandle? callbackHandle;
     try {
-      callbackHandle = PluginUtilities.getCallbackHandle(callback);
+      callbackHandle = PluginUtilities.getCallbackHandle(registration.callback);
     } catch (e, stackTrace) {
       throw NativeGeofenceExceptionMapper.fromError(e, stackTrace);
     }
     if (callbackHandle == null) {
       throw NativeGeofenceException.invalidArgument(
-          message: 'Callback is invalid.');
+          message: 'Callback for geofence "${geofence.id}" is invalid.');
     }
-    return _api
-        .createGeofence(
-          geofence: geofence.toWire(
-            callbackHandle.toRawHandle(),
-            callbackContext: callbackContext,
-          ),
+    return _PreparedRegistration(
+      geofence.toWire(
+        callbackHandle.toRawHandle(),
+        callbackContext: registration.callbackContext,
+      ),
+    );
+  }
+
+  List<_PreparedRegistration> _prepareRegistrations(
+    List<GeofenceRegistration> registrations,
+  ) {
+    final ids = registrations.map((value) => value.geofence.id).toSet();
+    if (ids.length != registrations.length) {
+      throw NativeGeofenceException.invalidArgument(
+        message: 'Registrations contain duplicate geofence IDs.',
+      );
+    }
+    return registrations.map(_prepareRegistration).toList(growable: false);
+  }
+
+  /// Compares app-owned desired registrations with complete plugin-owned
+  /// native state without mutating either platform. The result is a
+  /// point-in-time observation and does not reserve the inspected state.
+  Future<NativeGeofenceSynchronizationInspection> inspectSynchronization(
+    List<GeofenceRegistration> registrations, {
+    bool removeUnlisted = true,
+  }) {
+    final desired = _prepareRegistrations(registrations);
+    return _serializeSynchronization(() async {
+      final decision = await _inspectPreparedSynchronization(
+        desired,
+        removeUnlisted: removeUnlisted,
+      );
+      return decision.toInspection();
+    });
+  }
+
+  /// Delegates one complete inspect-and-mutate pass to the shared native
+  /// mutation authority. Native code revalidates current state, owns the no-op
+  /// decision and returned reasons, counts, and fingerprint, leaves matching
+  /// registrations armed, and reports any rollback failure explicitly.
+  Future<NativeGeofenceSynchronizationReport> ensureSynchronized(
+    List<GeofenceRegistration> registrations, {
+    bool removeUnlisted = true,
+  }) {
+    final desired = _prepareRegistrations(registrations);
+    return _serializeSynchronization(() async {
+      final result = await _api
+          .synchronizeGeofences(
+            desiredRegistrations:
+                desired.map((value) => value.wire).toList(growable: false),
+            removeUnlisted: removeUnlisted,
+          )
+          .catchError(
+            NativeGeofenceExceptionMapper
+                .catchError<NativeGeofenceSynchronizationResultWire>,
+          );
+      return NativeGeofenceSynchronizationReport(
+        didSynchronize: result.didSynchronize,
+        reasons: Set<NativeGeofenceSynchronizationReason>.unmodifiable(
+          result.reasons.map(_synchronizationReasonFromWire),
+        ),
+        desiredCount: result.desiredCount,
+        previousCount: result.previousCount,
+        registrationFingerprint: result.registrationFingerprint,
+      );
+    });
+  }
+
+  Future<_SynchronizationDecision> _inspectPreparedSynchronization(
+    List<_PreparedRegistration> desired, {
+    required bool removeUnlisted,
+  }) async {
+    final state = await _api
+        .getSynchronizationState(
+          desiredRegistrations:
+              desired.map((value) => value.wire).toList(growable: false),
         )
-        .catchError(NativeGeofenceExceptionMapper.catchError<void>);
+        .catchError(
+          NativeGeofenceExceptionMapper
+              .catchError<NativeGeofenceSynchronizationStateWire>,
+        );
+    return _decideSynchronization(
+      desired,
+      state,
+      removeUnlisted: removeUnlisted,
+    );
+  }
+
+  Future<T> _serializeSynchronization<T>(Future<T> Function() operation) {
+    final previous = _synchronizationTail;
+    final gate = Completer<void>();
+    _synchronizationTail = gate.future;
+    return () async {
+      try {
+        try {
+          await previous;
+        } catch (_) {
+          // A failed earlier caller must not poison later queued inspections.
+        }
+        return await operation();
+      } finally {
+        gate.complete();
+      }
+    }();
   }
 
   /// Re-register geofences after reboot.

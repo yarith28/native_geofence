@@ -289,6 +289,45 @@ final class InitialStateRequestGateTests: XCTestCase {
         )
     }
 
+    func testSynchronizationAuthorityReplacementPreservesUnrelatedProbe() {
+        let gate = InitialStateRequestGate()
+        let office = region(id: "office", radius: 50)
+        let home = region(id: "home", radius: 75)
+        let officeProbe = try! XCTUnwrap(
+            gate.commit(region: office, initialTrigger: true)
+        )
+        let homeProbe = try! XCTUnwrap(
+            gate.commit(region: home, initialTrigger: true)
+        )
+        let restoredOffice = region(id: "office", radius: 100)
+
+        gate.replaceCommittedRegions(
+            for: ["office"],
+            with: [restoredOffice, home]
+        )
+
+        XCTAssertNil(gate.consumeInitialStateResponse(for: officeProbe))
+        XCTAssertTrue(
+            gate.consumeBoundaryEvent(for: restoredOffice) === restoredOffice
+        )
+        XCTAssertTrue(gate.consumeInitialStateResponse(for: homeProbe) === home)
+    }
+
+    func testEmptyTargetedRestorationRemovesOnlyTransactionOwnedAuthority() {
+        let gate = InitialStateRequestGate()
+        let office = region(id: "office")
+        let home = region(id: "home")
+        let homeProbe = try! XCTUnwrap(
+            gate.commit(region: home, initialTrigger: true)
+        )
+        _ = gate.commit(region: office, initialTrigger: false)
+
+        gate.replaceCommittedRegions(for: ["office"], with: [])
+
+        XCTAssertNil(gate.consumeBoundaryEvent(for: office))
+        XCTAssertTrue(gate.consumeInitialStateResponse(for: homeProbe) === home)
+    }
+
     private func region(
         id: String,
         latitude: CLLocationDegrees = 0,

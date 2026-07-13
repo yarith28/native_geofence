@@ -104,6 +104,60 @@ class NativeGeofencePersistence {
         }
 
         @JvmStatic
+        internal fun prepareGeofenceForSynchronization(
+            context: Context,
+            geofence: GeofenceWire
+        ): PreparedSynchronizedGeofence = synchronized(sharedPreferencesLock) {
+            store(context).prepareSynchronizedGeofence(geofence)
+        }
+
+        @JvmStatic
+        internal fun commitGeofenceForSynchronization(
+            context: Context,
+            prepared: PreparedSynchronizedGeofence
+        ): Boolean = synchronized(sharedPreferencesLock) {
+            store(context).commitSynchronizedGeofence(
+                prepared,
+                AndroidPackageFingerprint.current(context)
+            )
+        }
+
+        @JvmStatic
+        internal fun updateCallbackMetadata(
+            context: Context,
+            geofence: GeofenceWire
+        ): Boolean = synchronized(sharedPreferencesLock) {
+            store(context).updateCallbackMetadata(
+                geofence.id,
+                geofence.callbackHandle,
+                geofence.callbackContext,
+                AndroidPackageFingerprint.current(context)
+            )
+        }
+
+        @JvmStatic
+        fun getSynchronizationFingerprint(context: Context): String? =
+            synchronized(sharedPreferencesLock) {
+                store(context).synchronizationFingerprint()
+            }
+
+        @JvmStatic
+        internal fun commitSynchronization(
+            context: Context,
+            fingerprint: String
+        ): Boolean = synchronized(sharedPreferencesLock) {
+            store(context).commitSynchronization(fingerprint)
+        }
+
+        @JvmStatic
+        fun restoreSynchronizationFingerprint(
+            context: Context,
+            fingerprint: String?
+        ): Boolean = synchronized(sharedPreferencesLock) {
+            store(context).restoreSynchronizationFingerprint(fingerprint)
+        }
+
+        @JvmStatic
         fun getCallbackPackageFingerprint(context: Context, id: String): String? =
             synchronized(sharedPreferencesLock) {
                 store(context).callbackPackageFingerprint(id)
