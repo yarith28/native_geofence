@@ -1,0 +1,133 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:native_geofence/native_geofence.dart';
+
+@pragma('vm:entry-point')
+Future<void> publicApiCallback(GeofenceCallbackParams params) async {}
+
+void main() {
+  test('barrel exports callback typedef and deterministic geofence JSON', () {
+    final GeofenceCallback callback = publicApiCallback;
+    const location = Location(
+      latitude: 11.5,
+      longitude: 104.9,
+      accuracyMeters: 12,
+      isMock: true,
+    );
+    const androidSettings = AndroidGeofenceSettings(
+      initialTriggers: {GeofenceEvent.exit, GeofenceEvent.enter},
+      expiration: Duration(minutes: 3),
+      loiteringDelay: Duration(seconds: 4),
+      notificationResponsiveness: Duration(seconds: 5),
+    );
+    const geofence = Geofence(
+      id: 'office',
+      location: location,
+      radiusMeters: 150,
+      triggers: {GeofenceEvent.exit, GeofenceEvent.enter},
+      iosSettings: IosGeofenceSettings(initialTrigger: true),
+      androidSettings: androidSettings,
+    );
+    final registration = GeofenceRegistration(
+      geofence: geofence,
+      callback: callback,
+      callbackContext: 7,
+    );
+
+    expect(location.toJson(), {
+      'latitude': 11.5,
+      'longitude': 104.9,
+      'accuracyMeters': 12.0,
+      'isMock': true,
+    });
+    expect(androidSettings.toJson(), {
+      'initialTriggers': ['enter', 'exit'],
+      'expirationMillis': 180000,
+      'loiteringDelayMillis': 4000,
+      'notificationResponsivenessMillis': 5000,
+    });
+    expect(geofence.toJson()['triggers'], ['enter', 'exit']);
+    expect(registration.callback, same(publicApiCallback));
+    expect(registration.callbackContext, 7);
+  });
+
+  test('synchronization models serialize all final decision evidence', () {
+    const inspection = NativeGeofenceSynchronizationInspection(
+      matchesDesired: false,
+      reasons: {
+        NativeGeofenceSynchronizationReason.registrationDrift,
+        NativeGeofenceSynchronizationReason.firstRun,
+      },
+      desiredIds: ['work', 'home'],
+      currentIds: ['legacy'],
+      missingIds: ['work', 'home'],
+      unlistedIds: ['legacy'],
+      driftedIds: [],
+      metadataChangedIds: ['work'],
+      inactiveIds: ['home'],
+      desiredRegistrationFingerprint: 'desired',
+      currentRegistrationFingerprint: null,
+    );
+    const report = NativeGeofenceSynchronizationReport(
+      didSynchronize: true,
+      reasons: {NativeGeofenceSynchronizationReason.registrationDrift},
+      desiredCount: 2,
+      previousCount: 1,
+      registrationFingerprint: 'desired',
+    );
+
+    expect(inspection.desiredCount, 2);
+    expect(inspection.currentCount, 1);
+    expect(inspection.toJson(), {
+      'matchesDesired': false,
+      'reasons': ['firstRun', 'registrationDrift'],
+      'desiredCount': 2,
+      'currentCount': 1,
+      'desiredIds': ['home', 'work'],
+      'currentIds': ['legacy'],
+      'missingIds': ['home', 'work'],
+      'unlistedIds': ['legacy'],
+      'driftedIds': <String>[],
+      'metadataChangedIds': ['work'],
+      'inactiveIds': ['home'],
+      'desiredRegistrationFingerprint': 'desired',
+      'currentRegistrationFingerprint': null,
+    });
+    expect(report.toJson(), {
+      'didSynchronize': true,
+      'reasons': ['registrationDrift'],
+      'desiredCount': 2,
+      'previousCount': 1,
+      'registrationFingerprint': 'desired',
+    });
+  });
+
+  test('privacy-safe status JSON preserves nullable evidence and facts', () {
+    final fact = NativeGeofenceLifecycleFact(
+      occurredAt: DateTime.fromMillisecondsSinceEpoch(123),
+      succeeded: true,
+      outcome: 'registered',
+      geofenceCount: 1,
+    );
+    final status = NativeGeofenceStatus(
+      platform: NativeGeofencePlatform.android,
+      persistedGeofenceIds: const ['b', 'a'],
+      canEnumerateLivePlatformRegistrations: false,
+      callbackRefreshState: NativeGeofenceCallbackRefreshState.current,
+      registrationHealth: NativeGeofenceRegistrationHealth.healthy,
+      lastRegistrationFact: fact,
+    );
+
+    expect(fact.toJson(), {
+      'occurredAtMillis': 123,
+      'succeeded': true,
+      'outcome': 'registered',
+      'geofenceCount': 1,
+    });
+    expect(status.toJson(), containsPair('platform', 'android'));
+    expect(status.toJson(), containsPair('persistedGeofenceIds', ['a', 'b']));
+    expect(
+      status.toJson(),
+      containsPair('lastRegistrationFact', fact.toJson()),
+    );
+  });
+}
