@@ -1,10 +1,30 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
   package="com.chunkytofustudios.native_geofence">
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
   <application>
     <receiver
       android:name=".receivers.NativeGeofenceBroadcastReceiver"
       android:enabled="true"
       android:exported="false" />
+    <receiver
+      android:name=".receivers.NativeGeofenceRebootBroadcastReceiver"
+      android:enabled="true"
+      android:exported="false">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+        <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+        <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+        <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+      </intent-filter>
+    </receiver>
+    <receiver
+      android:name=".receivers.NativeGeofenceLocationModeBroadcastReceiver"
+      android:enabled="true"
+      android:exported="false">
+      <intent-filter>
+        <action android:name="android.location.MODE_CHANGED" />
+      </intent-filter>
+    </receiver>
     <service
       android:name=".NativeGeofenceForegroundService"
       android:enabled="true"

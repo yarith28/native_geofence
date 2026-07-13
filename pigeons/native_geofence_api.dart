@@ -187,6 +187,7 @@ abstract class NativeGeofenceApi {
   @async
   void createGeofence({required GeofenceWire geofence});
 
+  @async
   void reCreateAfterReboot();
 
   List<String> getGeofenceIds();

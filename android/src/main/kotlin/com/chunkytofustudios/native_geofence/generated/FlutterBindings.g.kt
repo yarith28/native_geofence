@@ -661,7 +661,7 @@ private open class FlutterBindingsPigeonCodec : StandardMessageCodec() {
 interface NativeGeofenceApi {
   fun initialize(callbackDispatcherHandle: Long)
   fun createGeofence(geofence: GeofenceWire, callback: (Result<Unit>) -> Unit)
-  fun reCreateAfterReboot()
+  fun reCreateAfterReboot(callback: (Result<Unit>) -> Unit)
   fun getGeofenceIds(): List<String>
   fun getGeofences(): List<ActiveGeofenceWire>
   fun removeGeofenceById(id: String, callback: (Result<Unit>) -> Unit)
@@ -717,13 +717,14 @@ interface NativeGeofenceApi {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.native_geofence.NativeGeofenceApi.reCreateAfterReboot$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              api.reCreateAfterReboot()
-              listOf(null)
-            } catch (exception: Throwable) {
-              FlutterBindingsPigeonUtils.wrapError(exception)
+            api.reCreateAfterReboot{ result: Result<Unit> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(FlutterBindingsPigeonUtils.wrapError(error))
+              } else {
+                reply.reply(FlutterBindingsPigeonUtils.wrapResult(null))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
