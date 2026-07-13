@@ -708,10 +708,8 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
             platform = NativeGeofencePlatform.ANDROID,
             pluginOwnedIds = rawIds,
             registrations = stored.map { it.configuredGeofence },
-            inactiveRegistrationIds = stored
-                .filterNot { it.active }
-                .map { it.configuredGeofence.id }
-                .sorted(),
+            inactiveRegistrationIds = AndroidGeofenceSynchronizationPlanner
+                .incompleteRegistrationIds(stored, rawIds, inspectedAtMillis),
             registrationFingerprint = NativeGeofencePersistence
                 .getSynchronizationFingerprint(context),
             desiredRegistrationFingerprint = AndroidGeofenceSynchronizationPlanner
