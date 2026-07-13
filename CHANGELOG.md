@@ -1,5 +1,6 @@
 ## 1.4.0
 
+* Owns the required non-exported Android callback receiver and foreground service, and reports a typed error if the receiver is removed or disabled in the merged manifest
 * Fails Android initialization when the callback dispatcher handle cannot be durably persisted
 * Serializes iOS background callback delivery and protects callback execution with bounded cleanup
 * Adds iOS delivery IDs and suppresses same-direction duplicate bursts within 10 seconds
