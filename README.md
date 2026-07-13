@@ -54,20 +54,20 @@ See the [example plugin](https://github.com/ChunkyTofuStudios/native_geofence/bl
 <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
 <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
 <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-<uses-permission android:name="android.permission.WAKE_LOCK"/>
 ```
 
 *Explanation: The coarse and fine locations are required to create a geofence.
 The background location permission is [also required](https://developer.android.com/develop/sensors-and-location/location/geofencing#RequestGeofences)
-for geofence creation on Android API level 29+. The wake lock permission is
-only required if you need to run foreground services to respond to geofence
-events. The plugin automatically merges its non-exported callback receiver,
-foreground service, reboot/package-replacement receiver, and
-`RECEIVE_BOOT_COMPLETED` permission. It also listens for location services
-becoming available through a live non-exported receiver while the plugin is
-attached and a non-exported manifest receiver where Android delivers the
-location-mode broadcast. Platform background-broadcast restrictions mean the
-manifest path is a fallback, not a guarantee on every Android release or OEM.*
+for geofence creation on Android API level 29+. The plugin automatically merges
+its non-exported callback receiver, foreground service,
+reboot/package-replacement receiver, and the normal permissions required for
+boot recovery, wake locks, and location-type foreground services. It also
+declares `POST_NOTIFICATIONS`; the app must still request that runtime permission
+on Android 13+ before foreground promotion. The plugin listens for location
+services becoming available through a live non-exported receiver while the
+plugin is attached and a non-exported manifest receiver where Android delivers
+the location-mode broadcast. Platform background-broadcast restrictions mean
+the manifest path is a fallback, not a guarantee on every Android release or OEM.*
 
 Android recovery preserves each finite registration's original absolute
 expiration deadline; reboot or repair never grants a new full lifetime.
@@ -185,6 +185,8 @@ As noted in the setup section you will need to obtain the following permissions:
 
 * `Permission.location`
 * `Permission.locationAlways`: required on iOS before `createGeofence()`
+* `Permission.notification`: required on Android 13+ before calling
+  `promoteToForeground()`
 
 ### Create geofence
 
@@ -254,9 +256,28 @@ NativeGeofenceBackgroundManager.instance.promoteToForeground();
 NativeGeofenceBackgroundManager.instance.demoteToBackground();
 ```
 
-*Note: Most tasks that complete in a few seconds, such as sending a notification, don't require your callback to run in a foreground service.*
+*Note: Most tasks that complete in a few seconds, such as sending a notification,
+don't require foreground promotion. Promotion waits up to 10 seconds for the
+service to confirm `startForeground()`. The callback delivery itself has a
+60-second watchdog, so foreground promotion does not make callback execution
+unbounded. Android may also reject a foreground-service start when the app is
+background-restricted. The returned `NativeGeofenceException` distinguishes a
+missing notification permission, invalid service configuration, a background
+start restriction, and promotion timeout. The worker always demotes and stops
+the service when delivery succeeds, retries, fails, times out, or is cancelled.*
 
-*Warning: This functionality is not well tested. Please report any bugs you find.*
+The host app can override the foreground notification copy by defining any of
+these string resources in `android/app/src/main/res/values/strings.xml`:
+
+```xml
+<resources>
+    <string name="native_geofence_notification_channel_name">Location updates</string>
+    <string name="native_geofence_notification_title">Checking your location</string>
+    <string name="native_geofence_notification_text">Your foreground disclosure</string>
+</resources>
+```
+
+Omitted resources keep the plugin defaults.
 
 ### Get registered geofences
 

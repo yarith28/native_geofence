@@ -89,8 +89,9 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
         }
     }
 
-    func promoteToForeground() throws {
+    func promoteToForeground(completion: @escaping (Result<Void, Error>) -> Void) {
         log.info("promoteToForeground called. iOS does not distinguish between foreground and background, nothing to do here.")
+        completion(.success(()))
     }
 
     func demoteToBackground() throws {

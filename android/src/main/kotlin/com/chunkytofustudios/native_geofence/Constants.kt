@@ -22,7 +22,8 @@ class Constants {
             "$PACKAGE_NAME.callback_dispatcher_package_fingerprint"
         const val CALLBACK_REFRESH_REQUIRED_KEY = "$PACKAGE_NAME.callback_refresh_required"
 
-        const val ACTION_SHUTDOWN = "SHUTDOWN"
+        const val ACTION_PROMOTE_FOREGROUND = "$PACKAGE_NAME.action.PROMOTE_FOREGROUND"
+        const val FOREGROUND_PROMOTION_TOKEN_KEY = "$PACKAGE_NAME.foreground_promotion_token"
 
         const val WORKER_PAYLOAD_KEY = "$PACKAGE_NAME.worker_payload"
         const val WORKER_PAYLOAD_REFERENCE_KEY = "$PACKAGE_NAME.worker_payload_reference"

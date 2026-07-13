@@ -16,13 +16,15 @@ class Notifications {
             return createForegroundServiceNotification(context)
         }
 
-        // TODO: Make notification details customizable by plugin user.
         fun createForegroundServiceNotification(context: Context): Notification {
             val channelId = "native_geofence_plugin_channel"
+            val text = NotificationResources.resolve { name ->
+                stringResource(context, name)
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val channel = NotificationChannel(
                     channelId,
-                    "Geofence Events",
+                    text.channelName,
                     // This has to be at least IMPORTANCE_LOW.
                     // Source: https://developer.android.com/develop/background-work/services/foreground-services#start
                     NotificationManager.IMPORTANCE_LOW
@@ -41,11 +43,17 @@ class Notifications {
             }
 
             return NotificationCompat.Builder(context, channelId)
-                .setContentTitle("Processing geofence event.")
-                .setContentText("We noticed you are near a key location and are checking if we can help.")
+                .setContentTitle(text.title)
+                .setContentText(text.text)
                 .setSmallIcon(smallIconId)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .build()
+        }
+
+        @SuppressLint("DiscouragedApi")
+        private fun stringResource(context: Context, name: String): String? {
+            val id = context.resources.getIdentifier(name, "string", context.packageName)
+            return if (id == 0) null else runCatching { context.getString(id) }.getOrNull()
         }
     }
 }

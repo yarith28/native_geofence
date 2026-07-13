@@ -178,6 +178,18 @@ enum NativeGeofenceErrorCode {
   /// An Android component required by the plugin was removed or disabled in
   /// the merged application manifest.
   androidManifestComponentMissing,
+
+  /// Android rejected starting a foreground service from the current app state.
+  androidForegroundServiceStartNotAllowed,
+
+  /// Android foreground-service manifest or runtime prerequisites are missing.
+  androidForegroundServiceConfigurationMissing,
+
+  /// Notification permission or notification delivery is unavailable.
+  missingNotificationPermission,
+
+  /// Android did not confirm foreground promotion before the watchdog expired.
+  androidForegroundServicePromotionTimeout,
 }
 
 @HostApi()
@@ -205,6 +217,7 @@ abstract class NativeGeofenceApi {
 abstract class NativeGeofenceBackgroundApi {
   void triggerApiInitialized();
 
+  @async
   void promoteToForeground();
 
   void demoteToBackground();
