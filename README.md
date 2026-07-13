@@ -246,6 +246,31 @@ later queued events. Each callback receives a non-null `eventId` identifying
 that delivery attempt. It is useful for tracing short-lived delivery attempts,
 but it is not a durable business idempotency key.
 
+#### [Android only] Optional native event bridge
+
+A host app may inspect an event before Dart by implementing
+`NativeGeofenceEventProcessor` and installing it during application startup:
+
+```kotlin
+NativeGeofenceBridge.setProcessor { context, event, completion ->
+    // Complete Accept only after native handling has finished.
+    completion(Result.success(NativeGeofenceBridgeDecision.Decline))
+}
+```
+
+For cold-process delivery, the processor may instead be a public no-argument
+class named in application metadata using the key
+`com.chunkytofustudios.native_geofence.native_event_processor`. `Accept` marks
+the event handled and suppresses Dart delivery. `Transform` may select a
+non-empty subset of the originally triggered IDs and alter the transition or
+trigger location; invalid transformations fall back unchanged. `Decline`, a
+processor exception/failure, or the three-second ownership timeout all continue
+through normal Dart delivery. Late completions are ignored. The bridge runs
+inside the same durable worker path, so it cannot bypass callback grouping,
+payload cleanup, retries, or lifecycle telemetry.
+Processors run on a bounded plugin bridge executor rather than the main thread;
+their completion may be invoked from any thread.
+
 #### [Android only] Foreground work
 
 If you need to access certain APIs or run a long job in your geofence callback you can promote the runner to a foreground service. You have access to the following functions when running within a geofence callback:

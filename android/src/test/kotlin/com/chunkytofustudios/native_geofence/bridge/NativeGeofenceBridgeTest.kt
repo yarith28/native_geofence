@@ -1,0 +1,170 @@
+package com.chunkytofustudios.native_geofence.bridge
+
+import com.chunkytofustudios.native_geofence.generated.ActiveGeofenceWire
+import com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWire
+import com.chunkytofustudios.native_geofence.generated.GeofenceEvent
+import com.chunkytofustudios.native_geofence.generated.LocationWire
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
+
+class NativeGeofenceBridgeDecisionGateTest {
+    @Test
+    fun `first completion owns the decision and late completions are ignored`() {
+        val scheduler = BridgeScheduler()
+        val decisions = mutableListOf<NativeGeofenceBridgeDecision?>()
+        val gate = NativeGeofenceBridgeDecisionGate(
+            timeoutMillis = 10L,
+            schedule = scheduler::schedule,
+            onResolved = decisions::add
+        )
+
+        assertTrue(gate.resolve(NativeGeofenceBridgeDecision.Accept))
+        assertFalse(gate.resolve(NativeGeofenceBridgeDecision.Decline))
+        scheduler.fireIncludingCancelled()
+
+        assertEquals(
+            listOf<NativeGeofenceBridgeDecision?>(NativeGeofenceBridgeDecision.Accept),
+            decisions
+        )
+    }
+
+    @Test
+    fun `ownership timeout falls through and ignores a late accept`() {
+        val scheduler = BridgeScheduler()
+        val decisions = mutableListOf<NativeGeofenceBridgeDecision?>()
+        val gate = NativeGeofenceBridgeDecisionGate(
+            timeoutMillis = 10L,
+            schedule = scheduler::schedule,
+            onResolved = decisions::add
+        )
+
+        scheduler.fire()
+        assertFalse(gate.resolve(NativeGeofenceBridgeDecision.Accept))
+        assertEquals(listOf<NativeGeofenceBridgeDecision?>(null), decisions)
+    }
+}
+
+class NativeGeofenceBridgeMapperTest {
+    @Test
+    fun `accepted event is owned while decline preserves the original`() {
+        val original = params()
+
+        assertIs<NativeGeofenceBridgeOutcome.Accepted>(
+            NativeGeofenceBridgeMapper.outcome(
+                original,
+                NativeGeofenceBridgeDecision.Accept
+            )
+        )
+        val declined = assertIs<NativeGeofenceBridgeOutcome.Continue>(
+            NativeGeofenceBridgeMapper.outcome(
+                original,
+                NativeGeofenceBridgeDecision.Decline
+            )
+        )
+        assertSame(original, declined.params)
+    }
+
+    @Test
+    fun `valid transformation preserves delivery identity and callback routing`() {
+        val original = params()
+        val transformed = assertIs<NativeGeofenceBridgeOutcome.Continue>(
+            NativeGeofenceBridgeMapper.outcome(
+                original,
+                NativeGeofenceBridgeDecision.Transform(
+                    NativeGeofenceBridgeTransformation(
+                        geofenceIds = listOf("b"),
+                        transition = NativeGeofenceBridgeTransition.EXIT,
+                        location = NativeGeofenceBridgeLocation(
+                            latitude = 12.0,
+                            longitude = 105.0,
+                            accuracyMeters = 5.0,
+                            isMock = true
+                        )
+                    )
+                )
+            )
+        ).params
+
+        assertEquals(listOf("b"), transformed.geofences.map { it.id })
+        assertEquals(GeofenceEvent.EXIT, transformed.event)
+        assertEquals(12.0, transformed.location?.latitude)
+        assertEquals(91L, transformed.callbackHandle)
+        assertEquals(123L, transformed.eventAtMillis)
+        assertEquals("delivery-1", transformed.eventId)
+    }
+
+    @Test
+    fun `invalid transformation safely falls through unchanged`() {
+        val original = params()
+        val invalid = NativeGeofenceBridgeDecision.Transform(
+            NativeGeofenceBridgeTransformation(
+                geofenceIds = listOf("not-triggered"),
+                transition = NativeGeofenceBridgeTransition.DWELL,
+                location = null
+            )
+        )
+        val outcome = assertIs<NativeGeofenceBridgeOutcome.Continue>(
+            NativeGeofenceBridgeMapper.outcome(original, invalid)
+        )
+
+        assertSame(original, outcome.params)
+    }
+
+    @Test
+    fun `bridge event exposes no callback handle or registration geometry`() {
+        val event = NativeGeofenceBridgeMapper.event(params())
+
+        assertEquals(listOf("a", "b"), event?.geofenceIds)
+        assertEquals(NativeGeofenceBridgeTransition.ENTER, event?.transition)
+        assertEquals("delivery-1", event?.eventId)
+    }
+
+    private fun params() = GeofenceCallbackParamsWire(
+        geofences = listOf(active("a"), active("b")),
+        event = GeofenceEvent.ENTER,
+        location = LocationWire(
+            latitude = 11.0,
+            longitude = 104.0,
+            accuracyMeters = 3.0,
+            isMock = false
+        ),
+        eventAtMillis = 123L,
+        callbackHandle = 91L,
+        eventId = "delivery-1"
+    )
+
+    private fun active(id: String) = ActiveGeofenceWire(
+        id = id,
+        location = LocationWire(
+            latitude = 10.0,
+            longitude = 103.0,
+            accuracyMeters = null,
+            isMock = false
+        ),
+        radiusMeters = 100.0,
+        triggers = listOf(GeofenceEvent.ENTER, GeofenceEvent.EXIT),
+        androidSettings = null
+    )
+}
+
+private class BridgeScheduler {
+    private lateinit var action: () -> Unit
+    private var cancelled = false
+
+    fun schedule(@Suppress("UNUSED_PARAMETER") delayMillis: Long, action: () -> Unit): () -> Unit {
+        this.action = action
+        return { cancelled = true }
+    }
+
+    fun fire() {
+        if (!cancelled) action()
+    }
+
+    fun fireIncludingCancelled() {
+        action()
+    }
+}
