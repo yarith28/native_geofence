@@ -230,6 +230,26 @@ class GeofenceRegistrationStoreTest {
     }
 
     @Test
+    fun `configured inspection reports legacy metadata without migrating persistence`() {
+        val backend = FakeGeofencePersistenceBackend()
+        val legacy = geofence(duration = 500)
+        backend.values[Constants.PERSISTENT_GEOFENCES_IDS_KEY] = setOf("office")
+        backend.values[recordKey("office")] =
+            Json.encodeToString(GeofenceStorage.fromWire(legacy))
+        backend.values[callbackPackageFingerprintKey("office")] = "package-v1"
+        val store = GeofenceRegistrationStore(backend) { 2_000L }
+        val before = backend.values.toMap()
+
+        val inspected = assertNotNull(store.inspectConfiguredGeofences().singleOrNull())
+
+        assertFalse(inspected.lifecycleMetadataDurable)
+        assertEquals(2_500L, inspected.expirationDeadlineMillis)
+        assertEquals("package-v1", store.callbackPackageFingerprint("office"))
+        assertEquals(before, backend.values)
+        assertEquals(0, backend.editCalls)
+    }
+
+    @Test
     fun `corrupt and missing records retain raw cleanup ids`() {
         val backend = FakeGeofencePersistenceBackend()
         backend.values[Constants.PERSISTENT_GEOFENCES_IDS_KEY] = setOf("corrupt", "missing")

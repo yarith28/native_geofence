@@ -130,6 +130,23 @@ internal object AndroidGeofenceSynchronizationPlanner {
         )
     }
 
+    fun incompleteRegistrationIds(
+        current: List<StoredGeofenceRegistration>,
+        rawIds: List<String>,
+        nowMillis: Long
+    ): List<String> {
+        val parsedIds = current.map { it.configuredGeofence.id }.toSet()
+        return (
+            rawIds.filterNot(parsedIds::contains) +
+                current.filter { stored ->
+                    !stored.active ||
+                        !stored.recoveryEligible ||
+                        !stored.lifecycleMetadataDurable ||
+                        stored.expirationDeadlineMillis?.let { it <= nowMillis } == true
+                }.map { it.configuredGeofence.id }
+            ).toSet().sorted()
+    }
+
     fun platformSemanticsMatch(current: GeofenceWire, desired: GeofenceWire): Boolean =
         current.location.latitude == desired.location.latitude &&
             current.location.longitude == desired.location.longitude &&
