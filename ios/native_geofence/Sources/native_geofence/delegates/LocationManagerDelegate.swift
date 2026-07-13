@@ -164,7 +164,12 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
             return
         }
         
-        let params = GeofenceCallbackParamsWire(geofences: [activeGeofence], event: event, callbackHandle: callbackHandle)
+        let params = GeofenceCallbackParamsWire(
+            geofences: [activeGeofence],
+            event: event,
+            eventAtMillis: Int64(Date().timeIntervalSince1970 * 1000),
+            callbackHandle: callbackHandle
+        )
         
         guard let backgroundApi = nativeGeofenceBackgroundApi ?? createFlutterEngine() else {
             return

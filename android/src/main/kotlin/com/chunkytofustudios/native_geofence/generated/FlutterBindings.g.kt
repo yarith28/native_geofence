@@ -511,6 +511,7 @@ data class GeofenceCallbackParamsWire (
   val geofences: List<ActiveGeofenceWire>,
   val event: GeofenceEvent,
   val location: LocationWire? = null,
+  val eventAtMillis: Long? = null,
   val callbackHandle: Long
 )
  {
@@ -519,8 +520,9 @@ data class GeofenceCallbackParamsWire (
       val geofences = pigeonVar_list[0] as List<ActiveGeofenceWire>
       val event = pigeonVar_list[1] as GeofenceEvent
       val location = pigeonVar_list[2] as LocationWire?
-      val callbackHandle = pigeonVar_list[3] as Long
-      return GeofenceCallbackParamsWire(geofences, event, location, callbackHandle)
+      val eventAtMillis = pigeonVar_list[3] as Long?
+      val callbackHandle = pigeonVar_list[4] as Long
+      return GeofenceCallbackParamsWire(geofences, event, location, eventAtMillis, callbackHandle)
     }
   }
   fun toList(): List<Any?> {
@@ -528,6 +530,7 @@ data class GeofenceCallbackParamsWire (
       geofences,
       event,
       location,
+      eventAtMillis,
       callbackHandle,
     )
   }
@@ -539,7 +542,7 @@ data class GeofenceCallbackParamsWire (
       return true
     }
     val other = other as GeofenceCallbackParamsWire
-    return FlutterBindingsPigeonUtils.deepEquals(this.geofences, other.geofences) && FlutterBindingsPigeonUtils.deepEquals(this.event, other.event) && FlutterBindingsPigeonUtils.deepEquals(this.location, other.location) && FlutterBindingsPigeonUtils.deepEquals(this.callbackHandle, other.callbackHandle)
+    return FlutterBindingsPigeonUtils.deepEquals(this.geofences, other.geofences) && FlutterBindingsPigeonUtils.deepEquals(this.event, other.event) && FlutterBindingsPigeonUtils.deepEquals(this.location, other.location) && FlutterBindingsPigeonUtils.deepEquals(this.eventAtMillis, other.eventAtMillis) && FlutterBindingsPigeonUtils.deepEquals(this.callbackHandle, other.callbackHandle)
   }
 
   override fun hashCode(): Int {
@@ -547,6 +550,7 @@ data class GeofenceCallbackParamsWire (
     result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.geofences)
     result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.event)
     result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.location)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.eventAtMillis)
     result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.callbackHandle)
     return result
   }

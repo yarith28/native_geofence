@@ -471,6 +471,7 @@ struct GeofenceCallbackParamsWire: Hashable {
   var geofences: [ActiveGeofenceWire]
   var event: GeofenceEvent
   var location: LocationWire? = nil
+  var eventAtMillis: Int64? = nil
   var callbackHandle: Int64
 
 
@@ -479,12 +480,14 @@ struct GeofenceCallbackParamsWire: Hashable {
     let geofences = pigeonVar_list[0] as! [ActiveGeofenceWire]
     let event = pigeonVar_list[1] as! GeofenceEvent
     let location: LocationWire? = nilOrValue(pigeonVar_list[2])
-    let callbackHandle = pigeonVar_list[3] as! Int64
+    let eventAtMillis: Int64? = nilOrValue(pigeonVar_list[3])
+    let callbackHandle = pigeonVar_list[4] as! Int64
 
     return GeofenceCallbackParamsWire(
       geofences: geofences,
       event: event,
       location: location,
+      eventAtMillis: eventAtMillis,
       callbackHandle: callbackHandle
     )
   }
@@ -493,6 +496,7 @@ struct GeofenceCallbackParamsWire: Hashable {
       geofences,
       event,
       location,
+      eventAtMillis,
       callbackHandle,
     ]
   }
@@ -500,7 +504,7 @@ struct GeofenceCallbackParamsWire: Hashable {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsFlutterBindings(lhs.geofences, rhs.geofences) && deepEqualsFlutterBindings(lhs.event, rhs.event) && deepEqualsFlutterBindings(lhs.location, rhs.location) && deepEqualsFlutterBindings(lhs.callbackHandle, rhs.callbackHandle)
+    return deepEqualsFlutterBindings(lhs.geofences, rhs.geofences) && deepEqualsFlutterBindings(lhs.event, rhs.event) && deepEqualsFlutterBindings(lhs.location, rhs.location) && deepEqualsFlutterBindings(lhs.eventAtMillis, rhs.eventAtMillis) && deepEqualsFlutterBindings(lhs.callbackHandle, rhs.callbackHandle)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -508,6 +512,7 @@ struct GeofenceCallbackParamsWire: Hashable {
     deepHashFlutterBindings(value: geofences, hasher: &hasher)
     deepHashFlutterBindings(value: event, hasher: &hasher)
     deepHashFlutterBindings(value: location, hasher: &hasher)
+    deepHashFlutterBindings(value: eventAtMillis, hasher: &hasher)
     deepHashFlutterBindings(value: callbackHandle, hasher: &hasher)
   }
 }

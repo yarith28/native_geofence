@@ -74,6 +74,8 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
             return null
         }
 
+        val eventAtMillis = System.currentTimeMillis()
+
         // Get the geofences that were triggered. A single event can trigger
         // multiple geofences.
         val triggeringGeofences = geofencingEvent.triggeringGeofences?.map {
@@ -90,10 +92,11 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
         }
 
         return GeofenceCallbackParamsWire(
-            triggeringGeofences,
-            geofenceEvent,
-            location?.let { LocationWires.fromLocation(it) },
-            callbackHandle
+            geofences = triggeringGeofences,
+            event = geofenceEvent,
+            location = location?.let { LocationWires.fromLocation(it) },
+            eventAtMillis = eventAtMillis,
+            callbackHandle = callbackHandle,
         )
     }
 }
