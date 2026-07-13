@@ -14,3 +14,23 @@ func nativeGeofenceError(_ failure: RegionRegistrationFailure) -> PigeonError {
     }
     return nativeGeofenceError(code, message: failure.message)
 }
+
+func nativeGeofenceError(_ failure: IosGeofencePreflightFailure) -> PigeonError {
+    switch failure {
+    case .locationServicesDisabled:
+        return nativeGeofenceError(
+            .missingLocationPermission,
+            message: "Location Services are disabled."
+        )
+    case .locationPermissionMissing:
+        return nativeGeofenceError(
+            .missingLocationPermission,
+            message: "Location permission is not granted."
+        )
+    case .backgroundLocationPermissionMissing:
+        return nativeGeofenceError(
+            .missingBackgroundLocationPermission,
+            message: "Always location authorization is required to monitor geofences on iOS."
+        )
+    }
+}
