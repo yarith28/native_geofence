@@ -7,6 +7,7 @@
 * Owns Android reboot, package-replacement, location-restoration, and `GEOFENCE_NOT_AVAILABLE` recovery; preserves finite lifetime, suppresses recovery initial triggers, and retries 14 times over a 660-minute horizon
 * Records privacy-safe Android package fingerprints with callback registrations so handles created by an older app package can be detected before delivery
 * Moves Android callback payloads out of WorkManager `Data`, continues already-enqueued legacy file payloads across plugin upgrades, confirms enqueue acceptance before releasing one callback-and-orphan broadcast lease, adds non-null delivery IDs, bounded retries, proven-stale callback evidence, and exact-once startup/API/callback watchdog cleanup
+* Makes Android foreground promotion token-confirmed and time-bounded, owns the wake lock, stops on every worker outcome, maps start restrictions to typed errors, and supports host string-resource overrides for its notification
 * Fails Android initialization when the callback dispatcher handle cannot be durably persisted
 * Serializes iOS background callback delivery and protects callback execution with bounded cleanup
 * Adds iOS delivery IDs and suppresses same-direction duplicate bursts within 10 seconds

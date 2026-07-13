@@ -230,6 +230,14 @@ enum NativeGeofenceErrorCode: Int {
   /// An Android component required by the plugin was removed or disabled in
   /// the merged application manifest.
   case androidManifestComponentMissing = 10
+  /// Android rejected starting a foreground service from the current app state.
+  case androidForegroundServiceStartNotAllowed = 11
+  /// Android foreground-service manifest or runtime prerequisites are missing.
+  case androidForegroundServiceConfigurationMissing = 12
+  /// Notification permission or notification delivery is unavailable.
+  case missingNotificationPermission = 13
+  /// Android did not confirm foreground promotion before the watchdog expired.
+  case androidForegroundServicePromotionTimeout = 14
 }
 
 /// Generated class from Pigeon that represents data sent in messages.
@@ -737,7 +745,7 @@ class NativeGeofenceApiSetup {
 /// Generated protocol from Pigeon that represents a handler of messages from Flutter.
 protocol NativeGeofenceBackgroundApi {
   func triggerApiInitialized() throws
-  func promoteToForeground() throws
+  func promoteToForeground(completion: @escaping (Result<Void, Error>) -> Void)
   func demoteToBackground() throws
 }
 
@@ -763,11 +771,13 @@ class NativeGeofenceBackgroundApiSetup {
     let promoteToForegroundChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.native_geofence.NativeGeofenceBackgroundApi.promoteToForeground\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       promoteToForegroundChannel.setMessageHandler { _, reply in
-        do {
-          try api.promoteToForeground()
-          reply(wrapResult(nil))
-        } catch {
-          reply(wrapError(error))
+        api.promoteToForeground { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {

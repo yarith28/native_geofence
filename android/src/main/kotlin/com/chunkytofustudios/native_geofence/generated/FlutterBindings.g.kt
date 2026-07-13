@@ -266,7 +266,15 @@ enum class NativeGeofenceErrorCode(val raw: Int) {
    * An Android component required by the plugin was removed or disabled in
    * the merged application manifest.
    */
-  ANDROID_MANIFEST_COMPONENT_MISSING(10);
+  ANDROID_MANIFEST_COMPONENT_MISSING(10),
+  /** Android rejected starting a foreground service from the current app state. */
+  ANDROID_FOREGROUND_SERVICE_START_NOT_ALLOWED(11),
+  /** Android foreground-service manifest or runtime prerequisites are missing. */
+  ANDROID_FOREGROUND_SERVICE_CONFIGURATION_MISSING(12),
+  /** Notification permission or notification delivery is unavailable. */
+  MISSING_NOTIFICATION_PERMISSION(13),
+  /** Android did not confirm foreground promotion before the watchdog expired. */
+  ANDROID_FOREGROUND_SERVICE_PROMOTION_TIMEOUT(14);
 
   companion object {
     fun ofRaw(raw: Int): NativeGeofenceErrorCode? {
@@ -802,7 +810,7 @@ interface NativeGeofenceApi {
 /** Generated interface from Pigeon that represents a handler of messages from Flutter. */
 interface NativeGeofenceBackgroundApi {
   fun triggerApiInitialized()
-  fun promoteToForeground()
+  fun promoteToForeground(callback: (Result<Unit>) -> Unit)
   fun demoteToBackground()
 
   companion object {
@@ -834,13 +842,14 @@ interface NativeGeofenceBackgroundApi {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.native_geofence.NativeGeofenceBackgroundApi.promoteToForeground$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              api.promoteToForeground()
-              listOf(null)
-            } catch (exception: Throwable) {
-              FlutterBindingsPigeonUtils.wrapError(exception)
+            api.promoteToForeground{ result: Result<Unit> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(FlutterBindingsPigeonUtils.wrapError(error))
+              } else {
+                reply.reply(FlutterBindingsPigeonUtils.wrapResult(null))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
