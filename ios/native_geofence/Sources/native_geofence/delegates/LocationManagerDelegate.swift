@@ -15,8 +15,18 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         monitor: locationManager,
         getCallbackHandle: NativeGeofencePersistence.getRegionCallbackHandle,
         setCallbackHandle: NativeGeofencePersistence.setRegionCallbackHandle,
-        removeCallbackHandle: NativeGeofencePersistence.removeRegionCallbackHandle
+        removeCallbackHandle: NativeGeofencePersistence.removeRegionCallbackHandle,
+        restoreCommittedRegion: { [weak self] region in
+            self?.initialStateRequestGate.restoreCommittedRegions([region])
+        },
+        invalidateCommittedRegion: { [weak self] id in
+            self?.initialStateRequestGate.remove(id)
+        },
+        invalidateMatchingCommittedRegion: { [weak self] region in
+            self?.initialStateRequestGate.remove(matching: region) ?? false
+        }
     )
+    private let initialStateRequestGate = InitialStateRequestGate()
     
     private var headlessFlutterEngine: FlutterEngine? = nil
     private var nativeGeofenceBackgroundApi: NativeGeofenceBackgroundApiImpl? = nil
@@ -27,6 +37,12 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         LocationManagerDelegate.sharedLocationManager = locationManager
         
         super.init()
+        initialStateRequestGate.restoreCommittedRegions(
+            PluginOwnedRegions.select(
+                from: locationManager.monitoredRegions,
+                callbackIds: NativeGeofencePersistence.getRegionCallbackIds()
+            )
+        )
         locationManager.delegate = self
         
         log.debug("LocationManagerDelegate created with instance ID=\(Int.random(in: 1 ... 1000000)).")
@@ -38,7 +54,7 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         initialTrigger: Bool,
         completion: @escaping (Result<Void, any Error>) -> Void
     ) {
-        let initialStateRegion = regionRegistrationCoordinator.start(
+        let committedRegistration = regionRegistrationCoordinator.start(
             region: region,
             callbackHandle: callbackHandle,
             initialTrigger: initialTrigger
@@ -51,27 +67,35 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
             }
         }
 
-        if let initialStateRegion {
-            locationManager.requestState(for: initialStateRegion)
-        }
+        applyInitialStateContract(committedRegistration, using: locationManager)
         log.debug("Handled monitoring request for geofence ID=\(region.identifier).")
     }
 
     func cancelMonitoringStart(id: String) {
+        initialStateRequestGate.remove(id)
         regionRegistrationCoordinator.cancel(id: id)
     }
 
     func cancelAllMonitoringStarts() {
+        initialStateRequestGate.removeAll()
         regionRegistrationCoordinator.cancelAll()
     }
 
     func recordRemoval(of region: CLRegion) {
+        initialStateRequestGate.remove(region.identifier)
         regionRegistrationCoordinator.recordRemoval(of: region)
     }
     
     func locationManager(_ manager: CLLocationManager, didDetermineState state: CLRegionState, for region: CLRegion) {
         log.debug("didDetermineState: \(String(describing: state)) for geofence ID: \(region.identifier)")
         
+        guard let publicRegion = initialStateRequestGate.consumeInitialStateResponse(
+            for: region
+        ) else {
+            log.debug("Ignoring unrequested state for geofence ID: \(region.identifier)")
+            return
+        }
+
         guard let event: GeofenceEvent = switch state {
         case .unknown: nil
         case .inside: .enter
@@ -81,6 +105,51 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
             return
         }
         
+        handleRegionEvent(event: event, region: publicRegion)
+    }
+
+    func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
+        log.debug("didEnterRegion for geofence ID: \(region.identifier)")
+        guard let publicRegion = admittedBoundaryRegion(
+            for: region,
+            event: "enter"
+        ) else {
+            return
+        }
+        handleRegionEvent(event: .enter, region: publicRegion)
+    }
+
+    func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
+        log.debug("didExitRegion for geofence ID: \(region.identifier)")
+        guard let publicRegion = admittedBoundaryRegion(
+            for: region,
+            event: "exit"
+        ) else {
+            return
+        }
+        handleRegionEvent(event: .exit, region: publicRegion)
+    }
+
+    private func admittedBoundaryRegion(
+        for region: CLRegion,
+        event: String
+    ) -> CLCircularRegion? {
+        switch initialStateRequestGate.decideBoundaryEvent(
+            for: region,
+            requireMonitoringSemanticsMatch: regionRegistrationCoordinator
+                .hasPendingMutation(id: region.identifier)
+        ) {
+        case .accepted(let publicRegion, _):
+            return publicRegion
+        case .rejected(let reason):
+            log.debug(
+                "Ignoring \(event) for geofence ID=\(region.identifier), reason=\(reason.rawValue)"
+            )
+            return nil
+        }
+    }
+
+    private func handleRegionEvent(event: GeofenceEvent, region: CLRegion) {
         guard let activeGeofence = ActiveGeofenceWires.fromRegion(region) else {
             log.error("Unknown CLRegion type: \(String(describing: type(of: region)))")
             return
@@ -115,14 +184,27 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
 
     func locationManager(_ manager: CLLocationManager, didStartMonitoringFor region: CLRegion) {
         log.debug("didStartMonitoringFor geofence ID: \(region.identifier)")
-        if let initialStateRegion = regionRegistrationCoordinator.didStartMonitoring(for: region) {
-            manager.requestState(for: initialStateRegion)
-        }
+        let committedRegistration = regionRegistrationCoordinator.didStartMonitoring(
+            for: region
+        )
+        applyInitialStateContract(committedRegistration, using: manager)
     }
     
     func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: any Error) {
         log.error("monitoringDidFailFor: \(region?.identifier ?? "nil") withError: \(error)")
         regionRegistrationCoordinator.didFailMonitoring(for: region, error: error)
+    }
+
+    private func applyInitialStateContract(
+        _ committedRegistration: CommittedRegionRegistration?,
+        using manager: CLLocationManager
+    ) {
+        guard let committedRegistration else { return }
+        guard let probe = initialStateRequestGate.commit(
+            region: committedRegistration.region,
+            initialTrigger: committedRegistration.initialTrigger
+        ) else { return }
+        manager.requestState(for: probe)
     }
     
     private func createFlutterEngine() -> NativeGeofenceBackgroundApiImpl? {

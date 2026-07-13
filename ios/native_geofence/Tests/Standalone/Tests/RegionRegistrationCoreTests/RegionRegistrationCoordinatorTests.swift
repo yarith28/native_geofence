@@ -59,11 +59,15 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
         let requested = region(id: "office")
 
         XCTAssertNil(subject.start(region: requested, callbackHandle: 2, initialTrigger: false, completion: completion.record))
+        XCTAssertTrue(subject.hasPendingMutation(id: "office"))
         XCTAssertEqual(completion.count, 0)
         XCTAssertNil(handles.values["office"])
         XCTAssertEqual(monitor.started.map(\.identifier), ["office"])
 
-        XCTAssertNil(subject.didStartMonitoring(for: requested))
+        let committed = subject.didStartMonitoring(for: requested)
+        XCTAssertFalse(subject.hasPendingMutation(id: "office"))
+        XCTAssertTrue(committed?.region === requested)
+        XCTAssertEqual(committed?.initialTrigger, false)
         XCTAssertNil(subject.didStartMonitoring(for: requested))
         XCTAssertEqual(completion.successes, 1)
         XCTAssertEqual(completion.count, 1)
@@ -95,7 +99,7 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
         XCTAssertEqual(completion.successes, 1)
     }
 
-    func testInitialTriggerControlsRegionReturnedAfterConfirmation() {
+    func testConfirmationReturnsTheCommittedInitialTriggerContract() {
         for initialTrigger in [false, true] {
             let monitor = FakeMonitor()
             let handles = HandleStore()
@@ -109,10 +113,9 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
                 completion: { _ in }
             )
 
-            XCTAssertEqual(
-                subject.didStartMonitoring(for: requested)?.identifier,
-                initialTrigger ? requested.identifier : nil
-            )
+            let committed = subject.didStartMonitoring(for: requested)
+            XCTAssertTrue(committed?.region === requested)
+            XCTAssertEqual(committed?.initialTrigger, initialTrigger)
         }
     }
 
@@ -196,8 +199,10 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
         let subject = makeSubject(monitor, handles)
         let completion = CompletionRecorder()
         _ = subject.start(region: requested, callbackHandle: 2, initialTrigger: false, completion: completion.record)
+        XCTAssertTrue(subject.hasPendingMutation(id: "office"))
 
         subject.didFailMonitoring(for: requested, error: NSError(domain: "test", code: 1))
+        XCTAssertTrue(subject.hasPendingMutation(id: "office"))
 
         XCTAssertEqual(completion.count, 0)
         XCTAssertEqual(handles.values["office"], 1)
@@ -209,9 +214,319 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
         XCTAssertTrue(monitor.stopped[0] === requested)
 
         XCTAssertNil(subject.didStartMonitoring(for: previous))
+        XCTAssertFalse(subject.hasPendingMutation(id: "office"))
         XCTAssertEqual(completion.failures.count, 1)
         XCTAssertEqual(handles.values["office"], 1)
         XCTAssertFalse(handles.events.contains(.set("office", 2)))
+    }
+
+    func testIgnoredPreviousFailurePreservesGateThroughSuccessfulRestoration() {
+        let previous = region(id: "office", radius: 50)
+        let requested = region(id: "office", radius: 100)
+        let monitor = FakeMonitor([previous])
+        let handles = HandleStore(["office": 1])
+        let gate = InitialStateRequestGate()
+        let previousProbe = try! XCTUnwrap(
+            gate.commit(region: previous, initialTrigger: true)
+        )
+        var restoredRegions: [CLCircularRegion] = []
+        let subject = makeSubject(
+            monitor,
+            handles,
+            restoreCommittedRegion: { region in
+                restoredRegions.append(region)
+                gate.restoreCommittedRegions([region])
+            },
+            invalidateCommittedRegion: gate.remove
+        )
+
+        _ = subject.start(
+            region: requested,
+            callbackHandle: 2,
+            initialTrigger: false,
+            completion: { _ in }
+        )
+
+        subject.didFailMonitoring(
+            for: previous,
+            error: NSError(domain: "stale-previous", code: 1)
+        )
+        subject.didFailMonitoring(
+            for: requested,
+            error: NSError(domain: "requested", code: 2)
+        )
+        _ = subject.didStartMonitoring(for: previous)
+
+        XCTAssertEqual(restoredRegions.count, 1)
+        XCTAssertTrue(restoredRegions.first === previous)
+        XCTAssertTrue(
+            gate.consumeInitialStateResponse(for: previousProbe) === previous
+        )
+        XCTAssertTrue(gate.consumeBoundaryEvent(for: previous) === previous)
+    }
+
+    func testCommittedFailureInvalidatesGateAndCallbackHandle() {
+        let active = region(id: "office")
+        let monitor = FakeMonitor([active])
+        let handles = HandleStore(["office": 1])
+        let gate = InitialStateRequestGate()
+        let probe = try! XCTUnwrap(
+            gate.commit(region: active, initialTrigger: true)
+        )
+        let subject = makeSubject(
+            monitor,
+            handles,
+            invalidateMatchingCommittedRegion: gate.remove
+        )
+
+        subject.didFailMonitoring(
+            for: active,
+            error: NSError(domain: "active", code: 1)
+        )
+
+        XCTAssertNil(handles.values["office"])
+        XCTAssertEqual(monitor.stopped.map(\.identifier), ["office"])
+        XCTAssertNil(gate.consumeInitialStateResponse(for: probe))
+        XCTAssertNil(gate.consumeBoundaryEvent(for: active))
+    }
+
+    func testStaleFailureAfterReplacementPreservesCurrentCommit() {
+        let previous = region(id: "office", radius: 50)
+        let replacement = region(id: "office", radius: 100)
+        let monitor = FakeMonitor([previous])
+        let handles = HandleStore(["office": 1])
+        let gate = InitialStateRequestGate()
+        _ = gate.commit(region: previous, initialTrigger: false)
+        let subject = makeSubject(
+            monitor,
+            handles,
+            invalidateMatchingCommittedRegion: gate.remove
+        )
+
+        _ = subject.start(
+            region: replacement,
+            callbackHandle: 2,
+            initialTrigger: false,
+            completion: { _ in }
+        )
+        let committed = try! XCTUnwrap(
+            subject.didStartMonitoring(for: replacement)
+        )
+        _ = gate.commit(
+            region: committed.region,
+            initialTrigger: committed.initialTrigger
+        )
+
+        subject.didFailMonitoring(
+            for: previous,
+            error: NSError(domain: "stale", code: 1)
+        )
+
+        XCTAssertEqual(handles.values["office"], 2)
+        XCTAssertTrue(
+            gate.consumeBoundaryEvent(for: replacement) === replacement
+        )
+        XCTAssertTrue(monitor.stopped.isEmpty)
+
+        subject.didFailMonitoring(
+            for: replacement,
+            error: NSError(domain: "active", code: 2)
+        )
+
+        XCTAssertNil(handles.values["office"])
+        XCTAssertNil(gate.consumeBoundaryEvent(for: replacement))
+        XCTAssertEqual(monitor.stopped.map(\.identifier), ["office"])
+    }
+
+    func testNilFailureDoesNotCancelUnrelatedPendingRegistrationOrCommittedProbe() {
+        let active = region(id: "office")
+        let pending = region(id: "home")
+        let monitor = FakeMonitor([active])
+        let handles = HandleStore(["office": 1])
+        let gate = InitialStateRequestGate()
+        let probe = try! XCTUnwrap(
+            gate.commit(region: active, initialTrigger: true)
+        )
+        let subject = makeSubject(
+            monitor,
+            handles,
+            invalidateCommittedRegion: gate.remove
+        )
+
+        _ = subject.start(
+            region: pending,
+            callbackHandle: 2,
+            initialTrigger: false,
+            completion: { _ in }
+        )
+
+        subject.didFailMonitoring(
+            for: nil,
+            error: NSError(domain: "global", code: 1)
+        )
+
+        XCTAssertEqual(handles.values["office"], 1)
+        XCTAssertNil(handles.values["home"])
+        XCTAssertTrue(monitor.stopped.isEmpty)
+        XCTAssertTrue(gate.consumeInitialStateResponse(for: probe) === active)
+        XCTAssertTrue(gate.consumeBoundaryEvent(for: active) === active)
+
+        _ = subject.didStartMonitoring(for: pending)
+        XCTAssertEqual(handles.values["home"], 2)
+    }
+
+    func testNilFailureLeavesReplacementPendingUntilScopedFailureRestoresProbe() {
+        let previous = region(id: "office", radius: 50)
+        let requested = region(id: "office", radius: 100)
+        let monitor = FakeMonitor([previous])
+        let handles = HandleStore(["office": 1])
+        let gate = InitialStateRequestGate()
+        let previousProbe = try! XCTUnwrap(
+            gate.commit(region: previous, initialTrigger: true)
+        )
+        let subject = makeSubject(
+            monitor,
+            handles,
+            restoreCommittedRegion: { gate.restoreCommittedRegions([$0]) },
+            invalidateCommittedRegion: gate.remove
+        )
+
+        _ = subject.start(
+            region: requested,
+            callbackHandle: 2,
+            initialTrigger: false,
+            completion: { _ in }
+        )
+        subject.didFailMonitoring(
+            for: nil,
+            error: NSError(domain: "global", code: 1)
+        )
+        XCTAssertEqual(handles.values["office"], 1)
+
+        subject.didFailMonitoring(
+            for: requested,
+            error: NSError(domain: "requested", code: 2)
+        )
+        _ = subject.didStartMonitoring(for: previous)
+
+        XCTAssertEqual(handles.values["office"], 1)
+        XCTAssertTrue(
+            gate.consumeInitialStateResponse(for: previousProbe) === previous
+        )
+        XCTAssertTrue(gate.consumeBoundaryEvent(for: previous) === previous)
+    }
+
+    func testRestorationFailureInvalidatesGateAuthority() {
+        let previous = region(id: "office", radius: 50)
+        let requested = region(id: "office", radius: 100)
+        let monitor = FakeMonitor([previous])
+        let handles = HandleStore(["office": 1])
+        let gate = InitialStateRequestGate()
+        let previousProbe = try! XCTUnwrap(
+            gate.commit(region: previous, initialTrigger: true)
+        )
+        let subject = makeSubject(
+            monitor,
+            handles,
+            invalidateCommittedRegion: gate.remove
+        )
+
+        _ = subject.start(
+            region: requested,
+            callbackHandle: 2,
+            initialTrigger: false,
+            completion: { _ in }
+        )
+        subject.didFailMonitoring(
+            for: requested,
+            error: NSError(domain: "requested", code: 1)
+        )
+        subject.didFailMonitoring(
+            for: previous,
+            error: NSError(domain: "restoration", code: 2)
+        )
+
+        XCTAssertNil(gate.consumeInitialStateResponse(for: previousProbe))
+        XCTAssertNil(gate.consumeBoundaryEvent(for: previous))
+    }
+
+    func testNilRestorationFailureDoesNotInvalidateUntilScopedFailure() {
+        let previous = region(id: "office", radius: 50)
+        let requested = region(id: "office", radius: 100)
+        let monitor = FakeMonitor([previous])
+        let handles = HandleStore(["office": 1])
+        let gate = InitialStateRequestGate()
+        let previousProbe = try! XCTUnwrap(
+            gate.commit(region: previous, initialTrigger: true)
+        )
+        var invalidated: [String] = []
+        let subject = makeSubject(
+            monitor,
+            handles,
+            invalidateCommittedRegion: {
+                invalidated.append($0)
+                gate.remove($0)
+            }
+        )
+
+        _ = subject.start(
+            region: requested,
+            callbackHandle: 2,
+            initialTrigger: false,
+            completion: { _ in }
+        )
+        subject.didFailMonitoring(
+            for: requested,
+            error: NSError(domain: "requested", code: 1)
+        )
+        subject.didFailMonitoring(
+            for: nil,
+            error: NSError(domain: "global", code: 2)
+        )
+
+        XCTAssertEqual(handles.values["office"], 1)
+        XCTAssertTrue(invalidated.isEmpty)
+
+        subject.didFailMonitoring(
+            for: previous,
+            error: NSError(domain: "restoration", code: 3)
+        )
+
+        XCTAssertEqual(invalidated, ["office"])
+        XCTAssertNil(gate.consumeInitialStateResponse(for: previousProbe))
+        XCTAssertNil(gate.consumeBoundaryEvent(for: previous))
+    }
+
+    func testRestorationTimeoutInvalidatesGateAuthority() {
+        let previous = region(id: "office", radius: 50)
+        let requested = region(id: "office", radius: 100)
+        let monitor = FakeMonitor([previous])
+        let handles = HandleStore(["office": 1])
+        let gate = InitialStateRequestGate()
+        _ = gate.commit(region: previous, initialTrigger: false)
+        var timeouts: [DispatchWorkItem] = []
+        let subject = makeSubject(
+            monitor,
+            handles,
+            scheduleTimeout: { _, workItem in timeouts.append(workItem) },
+            invalidateCommittedRegion: gate.remove
+        )
+
+        _ = subject.start(
+            region: requested,
+            callbackHandle: 2,
+            initialTrigger: false,
+            completion: { _ in }
+        )
+        subject.didFailMonitoring(
+            for: requested,
+            error: NSError(domain: "requested", code: 1)
+        )
+        XCTAssertEqual(timeouts.count, 2)
+
+        timeouts[1].perform()
+
+        XCTAssertNil(gate.consumeBoundaryEvent(for: previous))
     }
 
     func testReplacementRestorationFailureRemovesHandleAndCompletesOnce() {
@@ -579,14 +894,15 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
         let subject = makeSubject(monitor, handles)
         let completion = CompletionRecorder()
 
-        let initialStateRegion = subject.start(
+        let committed = subject.start(
             region: requested,
             callbackHandle: 2,
             initialTrigger: true,
             completion: completion.record
         )
 
-        XCTAssertTrue(initialStateRegion === existing)
+        XCTAssertTrue(committed?.region === existing)
+        XCTAssertEqual(committed?.initialTrigger, true)
         XCTAssertEqual(completion.successes, 1)
         XCTAssertEqual(handles.values["office"], 2)
         XCTAssertTrue(monitor.started.isEmpty)
@@ -635,7 +951,10 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
         XCTAssertTrue(monitor.stopped.isEmpty)
         XCTAssertNil(handles.values["office"])
 
-        XCTAssertEqual(subject.didStartMonitoring(for: requested)?.identifier, "office")
+        XCTAssertEqual(
+            subject.didStartMonitoring(for: requested)?.region.identifier,
+            "office"
+        )
         XCTAssertEqual(completion.successes, 1)
         XCTAssertEqual(handles.values["office"], 2)
     }
@@ -679,40 +998,48 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
         XCTAssertEqual(second.count, 0)
         XCTAssertTrue(monitor.stopped.isEmpty)
 
-        XCTAssertNil(subject.didStartMonitoring(for: office))
-        XCTAssertNil(subject.didStartMonitoring(for: home))
+        _ = subject.didStartMonitoring(for: office)
+        _ = subject.didStartMonitoring(for: home)
         XCTAssertEqual(first.successes, 1)
         XCTAssertEqual(second.successes, 1)
         XCTAssertEqual(handles.values, ["office": 1, "home": 2])
     }
 
-    func testIdenticalActiveRegistrationRefreshesHandleWithoutRestart() {
-        let existing = region(id: "office")
-        let monitor = FakeMonitor([existing])
-        let handles = HandleStore(["office": 1])
-        let subject = makeSubject(monitor, handles)
-        let completion = CompletionRecorder()
+    func testIdenticalActiveRegistrationCommitsWithoutRestart() {
+        for initialTrigger in [false, true] {
+            let id = initialTrigger ? "initial" : "no-initial"
+            let existing = region(id: id)
+            let monitor = FakeMonitor([existing])
+            let handles = HandleStore([id: 1])
+            let subject = makeSubject(monitor, handles)
+            let completion = CompletionRecorder()
 
-        let initialStateRegion = subject.start(
-            region: region(id: "office"),
-            callbackHandle: 2,
-            initialTrigger: true,
-            completion: completion.record
-        )
+            let committed = subject.start(
+                region: region(id: id),
+                callbackHandle: 2,
+                initialTrigger: initialTrigger,
+                completion: completion.record
+            )
 
-        XCTAssertTrue(initialStateRegion === existing)
-        XCTAssertEqual(completion.successes, 1)
-        XCTAssertEqual(handles.values["office"], 2)
-        XCTAssertEqual(handles.events, [.set("office", 2)])
-        XCTAssertTrue(monitor.started.isEmpty)
-        XCTAssertTrue(monitor.stopped.isEmpty)
+            XCTAssertTrue(committed?.region === existing)
+            XCTAssertEqual(committed?.initialTrigger, initialTrigger)
+            XCTAssertEqual(completion.successes, 1)
+            XCTAssertEqual(handles.values[id], 2)
+            XCTAssertEqual(handles.events, [.set(id, 2)])
+            XCTAssertTrue(monitor.started.isEmpty)
+            XCTAssertTrue(monitor.stopped.isEmpty)
+        }
     }
 
     private func makeSubject(
         _ monitor: FakeMonitor,
         _ handles: HandleStore,
         timeoutSeconds: TimeInterval = 10,
-        scheduleTimeout: @escaping RegionRegistrationCoordinator.TimeoutScheduler = { _, _ in }
+        scheduleTimeout: @escaping RegionRegistrationCoordinator.TimeoutScheduler = { _, _ in },
+        restoreCommittedRegion: @escaping RegionRegistrationCoordinator.CommittedRegionRestorer = { _ in },
+        invalidateCommittedRegion: @escaping RegionRegistrationCoordinator.CommittedRegionInvalidator = { _ in },
+        invalidateMatchingCommittedRegion: @escaping
+            RegionRegistrationCoordinator.MatchingCommittedRegionInvalidator = { _ in false }
     ) -> RegionRegistrationCoordinator {
         RegionRegistrationCoordinator(
             monitor: monitor,
@@ -720,7 +1047,10 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
             scheduleTimeout: scheduleTimeout,
             getCallbackHandle: { handles.values[$0] },
             setCallbackHandle: handles.set,
-            removeCallbackHandle: handles.remove
+            removeCallbackHandle: handles.remove,
+            restoreCommittedRegion: restoreCommittedRegion,
+            invalidateCommittedRegion: invalidateCommittedRegion,
+            invalidateMatchingCommittedRegion: invalidateMatchingCommittedRegion
         )
     }
 
