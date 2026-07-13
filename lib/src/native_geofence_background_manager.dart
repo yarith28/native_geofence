@@ -9,14 +9,18 @@ class NativeGeofenceBackgroundManager {
 
   /// The singleton instance of [NativeGeofenceBackgroundManager].
   ///
-  /// WARNING: Can only be accessed within Geofence callbacks. Trying to access
-  /// this anywhere else will throw an [AssertionError].
+  /// This is initialized by the plugin's background callback dispatcher.
+  /// Access before a geofence callback initializes it throws a
+  /// [NativeGeofenceException].
   static NativeGeofenceBackgroundManager get instance {
-    assert(
-        _instance != null,
-        'NativeGeofenceBackgroundManager has not been initialized yet; '
-        'Are you running within a Geofence callback?');
-    return _instance!;
+    final instance = _instance;
+    if (instance == null) {
+      throw NativeGeofenceException.internal(
+        message: 'NativeGeofenceBackgroundManager has not been initialized '
+            'yet; call this only from a geofence callback.',
+      );
+    }
+    return instance;
   }
 
   final NativeGeofenceBackgroundApi _api;
