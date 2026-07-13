@@ -3,6 +3,7 @@ package com.chunkytofustudios.native_geofence
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
@@ -40,8 +41,8 @@ class NativeGeofenceForegroundService : Service() {
         Log.d(TAG, "Foreground service started with notification ID=$NOTIFICATION_ID.")
     }
 
-    override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
-        if (intent.action == Constants.ACTION_SHUTDOWN) {
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == Constants.ACTION_SHUTDOWN) {
             (getSystemService(Context.POWER_SERVICE) as PowerManager).run {
                 newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, Constants.ISOLATE_HOLDER_WAKE_LOCK_TAG).apply {
                     if (isHeld) {
@@ -49,10 +50,19 @@ class NativeGeofenceForegroundService : Service() {
                     }
                 }
             }
-            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopForegroundCompat()
             stopSelf()
             Log.d(TAG, "Foreground service stopped.")
         }
         return START_STICKY
+    }
+
+    private fun stopForegroundCompat() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
     }
 }

@@ -5,6 +5,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.os.Build
 import androidx.core.app.NotificationCompat
 
 class Notifications {
@@ -18,24 +19,31 @@ class Notifications {
         // TODO: Make notification details customizable by plugin user.
         fun createForegroundServiceNotification(context: Context): Notification {
             val channelId = "native_geofence_plugin_channel"
-            val channel = NotificationChannel(
-                channelId,
-                "Geofence Events",
-                // This has to be at least IMPORTANCE_LOW.
-                // Source: https://developer.android.com/develop/background-work/services/foreground-services#start
-                NotificationManager.IMPORTANCE_LOW
-            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    channelId,
+                    "Geofence Events",
+                    // This has to be at least IMPORTANCE_LOW.
+                    // Source: https://developer.android.com/develop/background-work/services/foreground-services#start
+                    NotificationManager.IMPORTANCE_LOW
+                )
+                (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                    .createNotificationChannel(channel)
+            }
 
             @SuppressLint("DiscouragedApi") // Can't use R syntax in Flutter plugin.
-            val imageId = context.resources.getIdentifier("ic_launcher", "mipmap", context.packageName)
+            val launcherIconId =
+                context.resources.getIdentifier("ic_launcher", "mipmap", context.packageName)
+            val smallIconId = if (launcherIconId != 0) {
+                launcherIconId
+            } else {
+                android.R.drawable.ic_dialog_info
+            }
 
-            (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(
-                channel
-            )
             return NotificationCompat.Builder(context, channelId)
                 .setContentTitle("Processing geofence event.")
                 .setContentText("We noticed you are near a key location and are checking if we can help.")
-                .setSmallIcon(imageId)
+                .setSmallIcon(smallIconId)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .build()
         }
