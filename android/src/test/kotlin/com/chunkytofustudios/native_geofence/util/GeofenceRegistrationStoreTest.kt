@@ -117,6 +117,71 @@ class GeofenceRegistrationStoreTest {
     }
 
     @Test
+    fun `status inspection leaves legacy and expired lifecycle bytes unchanged`() {
+        var now = 2_000L
+        val legacyBackend = FakeGeofencePersistenceBackend()
+        val legacy = geofence(duration = 500)
+        legacyBackend.values[Constants.PERSISTENT_GEOFENCES_IDS_KEY] = setOf("office")
+        legacyBackend.values[recordKey("office")] =
+            Json.encodeToString(GeofenceStorage.fromWire(legacy))
+        legacyBackend.values[callbackPackageFingerprintKey("office")] = "package-v1"
+        val legacyStore = GeofenceRegistrationStore(legacyBackend) { now }
+        val legacyBefore = legacyBackend.values.toMap()
+
+        val unknown = legacyStore.statusInventory().single()
+
+        assertEquals(GeofenceStatusDisposition.UNKNOWN_LIFECYCLE, unknown.disposition)
+        assertEquals("package-v1", unknown.callbackPackageFingerprint)
+        assertEquals(legacyBefore, legacyBackend.values)
+        assertEquals(0, legacyBackend.editCalls)
+
+        val activeBackend = FakeGeofencePersistenceBackend()
+        val activeStore = GeofenceRegistrationStore(activeBackend) { now }
+        assertTrue(activeStore.saveConfiguredGeofence(geofence(duration = 100)))
+        activeBackend.editCalls = 0
+        val activeBefore = activeBackend.values.toMap()
+        now += 101
+
+        val expired = activeStore.statusInventory().single()
+
+        assertEquals(GeofenceStatusDisposition.PENDING_CLEANUP, expired.disposition)
+        assertEquals(activeBefore, activeBackend.values)
+        assertEquals(0, activeBackend.editCalls)
+        assertEquals(true, activeBackend.values[recoveryEligibleKey("office")])
+        assertEquals(true, activeBackend.values[activeKey("office")])
+    }
+
+    @Test
+    fun `status inventory distinguishes every lifecycle disposition`() {
+        val backend = FakeGeofencePersistenceBackend()
+        val store = GeofenceRegistrationStore(backend) { 1_000L }
+        assertTrue(store.saveConfiguredGeofence(geofence()))
+        assertEquals(
+            GeofenceStatusDisposition.ACTIVE,
+            store.statusInventory().single().disposition
+        )
+
+        assertTrue(store.setLifecycleState("office", recoveryEligible = true, active = false))
+        assertEquals(
+            GeofenceStatusDisposition.RECOVERABLE,
+            store.statusInventory().single().disposition
+        )
+
+        assertTrue(store.setLifecycleState("office", recoveryEligible = false, active = false))
+        assertEquals(
+            GeofenceStatusDisposition.PENDING_CLEANUP,
+            store.statusInventory().single().disposition
+        )
+
+        val corruptBackend = FakeGeofencePersistenceBackend()
+        corruptBackend.values[Constants.PERSISTENT_GEOFENCES_IDS_KEY] = setOf("office")
+        assertEquals(
+            GeofenceStatusDisposition.CORRUPT_OR_RAW_ONLY,
+            GeofenceRegistrationStore(corruptBackend).statusInventory().single().disposition
+        )
+    }
+
+    @Test
     fun `failed finite lifecycle migration stays unknown and reuses derived deadline`() {
         var now = 2_000L
         val backend = FakeGeofencePersistenceBackend()
@@ -281,12 +346,16 @@ class GeofenceRegistrationStoreTest {
             Constants.PERSISTENT_GEOFENCE_RECOVERY_ELIGIBLE_KEY_PREFIX + id
 
         fun activeKey(id: String) = Constants.PERSISTENT_GEOFENCE_ACTIVE_KEY_PREFIX + id
+
+        fun callbackPackageFingerprintKey(id: String) =
+            Constants.PERSISTENT_GEOFENCE_CALLBACK_PACKAGE_FINGERPRINT_KEY_PREFIX + id
     }
 }
 
 private class FakeGeofencePersistenceBackend : GeofencePersistenceBackend {
     val values = mutableMapOf<String, Any>()
     var failNextCommit = false
+    var editCalls = 0
 
     override fun keys(): Set<String> = values.keys.toSet()
 
@@ -304,6 +373,7 @@ private class FakeGeofencePersistenceBackend : GeofencePersistenceBackend {
         values[key] as? Boolean ?: defaultValue
 
     override fun edit(block: GeofencePersistenceEditor.() -> Unit): Boolean {
+        editCalls += 1
         val pending = values.toMutableMap()
         val editor = object : GeofencePersistenceEditor {
             override fun putString(key: String, value: String) {

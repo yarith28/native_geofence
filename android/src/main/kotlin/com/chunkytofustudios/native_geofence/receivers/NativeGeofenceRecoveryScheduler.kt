@@ -167,6 +167,43 @@ internal object NativeGeofenceRecoveryScheduler {
         return cleared
     }
 
+    /**
+     * Publishes and completes a worker terminal outcome while the exact durable
+     * generation/attempt ticket still owns the recovery lifecycle.
+     */
+    fun completeWorkerTicket(
+        context: Context,
+        worker: RecoveryRetryTicket,
+        recordTerminal: () -> Unit
+    ): Boolean {
+        val cleared = synchronized(lock) {
+            val preferences = preferences(context)
+            val currentGeneration = preferences.getLong(
+                Constants.RECOVERY_GENERATION_KEY,
+                0L
+            )
+            if (
+                !NativeGeofenceRecoverySchedulePolicy.mayPublishTerminal(
+                    currentGeneration = currentGeneration,
+                    scheduled = scheduledTicket(preferences),
+                    worker = worker
+                )
+            ) {
+                return false
+            }
+            recordTerminal()
+            preferences.edit()
+                .remove(Constants.RECOVERY_SCHEDULED_GENERATION_KEY)
+                .remove(Constants.RECOVERY_SCHEDULED_ATTEMPT_KEY)
+                .commit()
+        }
+        if (cleared) {
+            WorkManager.getInstance(context.applicationContext)
+                .cancelUniqueWork(Constants.RECOVERY_RETRY_WORK_NAME)
+        }
+        return cleared
+    }
+
     private fun scheduledTicket(preferences: SharedPreferences): RecoveryRetryTicket? {
         if (
             !preferences.contains(Constants.RECOVERY_SCHEDULED_GENERATION_KEY) ||

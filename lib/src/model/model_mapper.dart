@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:native_geofence/src/generated/platform_bindings.g.dart';
 import 'package:native_geofence/src/model/model.dart';
 import 'package:native_geofence/src/model/native_geofence_exception.dart';
+import 'package:native_geofence/src/model/native_geofence_status.dart';
 
 extension LocationMapper on Location {
   LocationWire toWire() {
@@ -175,4 +176,44 @@ extension NativeGeofenceExceptionMapper on NativeGeofenceException {
   static T catchError<T>(dynamic error, StackTrace stacktrace) {
     throw fromError(error, stacktrace);
   }
+}
+
+extension NativeGeofenceLifecycleFactWireMapper
+    on NativeGeofenceLifecycleFactWire {
+  NativeGeofenceLifecycleFact fromWire() => NativeGeofenceLifecycleFact(
+        occurredAt: DateTime.fromMillisecondsSinceEpoch(occurredAtMillis),
+        succeeded: succeeded,
+        outcome: outcome,
+        geofenceCount: geofenceCount,
+      );
+}
+
+extension NativeGeofenceStatusWireMapper on NativeGeofenceStatusWire {
+  NativeGeofenceStatus fromWire() => NativeGeofenceStatus(
+        platform: platform,
+        osVersion: osVersion,
+        persistedGeofenceIds: List.unmodifiable(persistedGeofenceIds),
+        fineLocationPermissionGranted: fineLocationPermissionGranted,
+        backgroundLocationPermissionGranted:
+            backgroundLocationPermissionGranted,
+        notificationPermissionGranted: notificationPermissionGranted,
+        locationServicesEnabled: locationServicesEnabled,
+        monitoringAvailable: monitoringAvailable,
+        playServicesAvailable: playServicesAvailable,
+        callbackPendingIntentAvailable: callbackPendingIntentAvailable,
+        callbackReceiverAvailable: callbackReceiverAvailable,
+        canEnumerateLivePlatformRegistrations:
+            canEnumerateLivePlatformRegistrations,
+        pluginOwnedMonitoringCount: pluginOwnedMonitoringCount,
+        callbackDispatcherRegistered: callbackDispatcherRegistered,
+        callbackRefreshState: callbackRefreshState,
+        registrationHealth: registrationHealth,
+        lastRegistrationFact: lastRegistrationFact?.fromWire(),
+        lastRemovalFact: lastRemovalFact?.fromWire(),
+        lastBroadcastFact: lastBroadcastFact?.fromWire(),
+        lastEnqueueFact: lastEnqueueFact?.fromWire(),
+        lastWorkerFact: lastWorkerFact?.fromWire(),
+        lastRecoveryFact: lastRecoveryFact?.fromWire(),
+        lastForegroundFact: lastForegroundFact?.fromWire(),
+      );
 }

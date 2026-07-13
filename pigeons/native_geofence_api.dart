@@ -192,6 +192,92 @@ enum NativeGeofenceErrorCode {
   androidForegroundServicePromotionTimeout,
 }
 
+enum NativeGeofencePlatform {
+  android,
+  ios,
+}
+
+enum NativeGeofenceRegistrationHealth {
+  noRegistrations,
+  healthy,
+  degraded,
+  unavailable,
+  unknown,
+}
+
+enum NativeGeofenceCallbackRefreshState {
+  current,
+  refreshRequired,
+  unknown,
+  notApplicable,
+}
+
+class NativeGeofenceLifecycleFactWire {
+  final int occurredAtMillis;
+  final bool succeeded;
+  final String outcome;
+  final int? geofenceCount;
+
+  const NativeGeofenceLifecycleFactWire({
+    required this.occurredAtMillis,
+    required this.succeeded,
+    required this.outcome,
+    this.geofenceCount,
+  });
+}
+
+class NativeGeofenceStatusWire {
+  final NativeGeofencePlatform platform;
+  final String? osVersion;
+  final List<String> persistedGeofenceIds;
+  final bool? fineLocationPermissionGranted;
+  final bool? backgroundLocationPermissionGranted;
+  final bool? notificationPermissionGranted;
+  final bool? locationServicesEnabled;
+  final bool? monitoringAvailable;
+  final bool? playServicesAvailable;
+  final bool? callbackPendingIntentAvailable;
+  final bool? callbackReceiverAvailable;
+  final bool? canEnumerateLivePlatformRegistrations;
+  final int? pluginOwnedMonitoringCount;
+  final bool? callbackDispatcherRegistered;
+  final NativeGeofenceCallbackRefreshState callbackRefreshState;
+  final NativeGeofenceRegistrationHealth registrationHealth;
+  final NativeGeofenceLifecycleFactWire? lastRegistrationFact;
+  final NativeGeofenceLifecycleFactWire? lastRemovalFact;
+  final NativeGeofenceLifecycleFactWire? lastBroadcastFact;
+  final NativeGeofenceLifecycleFactWire? lastEnqueueFact;
+  final NativeGeofenceLifecycleFactWire? lastWorkerFact;
+  final NativeGeofenceLifecycleFactWire? lastRecoveryFact;
+  final NativeGeofenceLifecycleFactWire? lastForegroundFact;
+
+  const NativeGeofenceStatusWire({
+    required this.platform,
+    this.osVersion,
+    required this.persistedGeofenceIds,
+    this.fineLocationPermissionGranted,
+    this.backgroundLocationPermissionGranted,
+    this.notificationPermissionGranted,
+    this.locationServicesEnabled,
+    this.monitoringAvailable,
+    this.playServicesAvailable,
+    this.callbackPendingIntentAvailable,
+    this.callbackReceiverAvailable,
+    this.canEnumerateLivePlatformRegistrations,
+    this.pluginOwnedMonitoringCount,
+    this.callbackDispatcherRegistered,
+    required this.callbackRefreshState,
+    required this.registrationHealth,
+    this.lastRegistrationFact,
+    this.lastRemovalFact,
+    this.lastBroadcastFact,
+    this.lastEnqueueFact,
+    this.lastWorkerFact,
+    this.lastRecoveryFact,
+    this.lastForegroundFact,
+  });
+}
+
 @HostApi()
 abstract class NativeGeofenceApi {
   void initialize({required int callbackDispatcherHandle});
@@ -201,6 +287,9 @@ abstract class NativeGeofenceApi {
 
   @async
   void reCreateAfterReboot();
+
+  @async
+  NativeGeofenceStatusWire getStatus();
 
   List<String> getGeofenceIds();
 

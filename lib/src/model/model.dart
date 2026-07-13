@@ -235,7 +235,7 @@ class GeofenceCallbackParams {
   ///
   /// A later delivery for the same physical transition can have a different
   /// ID, so this is not a durable business idempotency key. Apps and backends
-  /// should still enforce their own state rules. Currently only set on iOS.
+  /// should still enforce their own state rules. Set on Android and iOS.
   final String? eventId;
 
   const GeofenceCallbackParams({

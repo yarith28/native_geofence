@@ -84,10 +84,24 @@ class NativeGeofencePersistence {
         }
 
         @JvmStatic
+        internal fun inspectStatusInventory(
+            context: Context,
+        ): List<GeofenceStatusInventoryEntry> = synchronized(sharedPreferencesLock) {
+            store(context).statusInventory()
+        }
+
+        @JvmStatic
         fun getAllConfiguredGeofences(context: Context): List<GeofenceWire> =
             synchronized(sharedPreferencesLock) {
                 store(context).getConfiguredGeofences().map { it.configuredGeofence }
             }
+
+        @JvmStatic
+        internal fun inspectAllStoredConfiguredGeofences(
+            context: Context
+        ): List<StoredGeofenceRegistration> = synchronized(sharedPreferencesLock) {
+            store(context).inspectConfiguredGeofences()
+        }
 
         @JvmStatic
         fun getCallbackPackageFingerprint(context: Context, id: String): String? =

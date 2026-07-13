@@ -28,9 +28,23 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
     }
     
     func createGeofence(geofence: GeofenceWire, completion: @escaping (Result<Void, any Error>) -> Void) {
+        let diagnosticCompletion: (Result<Void, any Error>) -> Void = { result in
+            let succeeded: Bool
+            switch result {
+            case .success: succeeded = true
+            case .failure: succeeded = false
+            }
+            NativeGeofenceDiagnostics.record(
+                .registration,
+                succeeded: succeeded,
+                outcome: succeeded ? "registered" : "registration_failed",
+                geofenceCount: 1
+            )
+            completion(result)
+        }
         guard let preflightToken = createPreflightRegistry.begin(
             id: geofence.id,
-            completion: completion
+            completion: diagnosticCompletion
         ) else {
             return
         }
@@ -117,7 +131,89 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
     
     func reCreateAfterReboot(completion: @escaping (Result<Void, Error>) -> Void) {
         log.info("Re-create after reboot called. iOS handles this automatically, nothing for us to do here.")
+        NativeGeofenceDiagnostics.record(
+            .recovery,
+            succeeded: true,
+            outcome: "ios_managed",
+            geofenceCount: NativeGeofencePersistence.getRegionCallbackIds().count
+        )
         completion(.success(()))
+    }
+
+    func getStatus(
+        completion: @escaping (Result<NativeGeofenceStatusWire, Error>) -> Void
+    ) {
+        let authorizationStatus = locationManagerDelegate.locationManager.authorizationStatus
+        let monitoringAvailable = CLLocationManager.isMonitoringAvailable(
+            for: CLCircularRegion.self
+        )
+        let persistedIds = NativeGeofencePersistence.getRegionCallbackIds().sorted()
+        let monitoredCount = ownedMonitoredRegions().count
+        let dispatcherRegistered = NativeGeofencePersistence.getCallbackDispatcherHandle() != nil
+        let osVersion = UIDevice.current.systemVersion
+        locationServicesQueue.async {
+            let locationServicesEnabled = CLLocationManager.locationServicesEnabled()
+            DispatchQueue.main.async {
+                let finePermission: Bool
+                let backgroundPermission: Bool
+                switch authorizationStatus {
+                case .authorizedAlways:
+                    finePermission = true
+                    backgroundPermission = true
+                case .authorizedWhenInUse:
+                    finePermission = true
+                    backgroundPermission = false
+                case .denied, .notDetermined, .restricted:
+                    finePermission = false
+                    backgroundPermission = false
+                @unknown default:
+                    finePermission = false
+                    backgroundPermission = false
+                }
+                let refreshState: NativeGeofenceCallbackRefreshState = persistedIds.isEmpty
+                    ? .notApplicable
+                    : .unknown
+                let health = IosNativeGeofenceStatusHealth.compute(
+                    persistedCount: persistedIds.count,
+                    finePermission: finePermission,
+                    backgroundPermission: backgroundPermission,
+                    locationServicesEnabled: locationServicesEnabled,
+                    monitoringAvailable: monitoringAvailable,
+                    dispatcherRegistered: dispatcherRegistered,
+                    refreshState: refreshState,
+                    monitoredCount: monitoredCount
+                )
+                completion(
+                    .success(
+                        NativeGeofenceStatusWire(
+                            platform: .ios,
+                            osVersion: osVersion,
+                            persistedGeofenceIds: persistedIds,
+                            fineLocationPermissionGranted: finePermission,
+                            backgroundLocationPermissionGranted: backgroundPermission,
+                            notificationPermissionGranted: nil,
+                            locationServicesEnabled: locationServicesEnabled,
+                            monitoringAvailable: monitoringAvailable,
+                            playServicesAvailable: nil,
+                            callbackPendingIntentAvailable: nil,
+                            callbackReceiverAvailable: nil,
+                            canEnumerateLivePlatformRegistrations: true,
+                            pluginOwnedMonitoringCount: Int64(monitoredCount),
+                            callbackDispatcherRegistered: dispatcherRegistered,
+                            callbackRefreshState: refreshState,
+                            registrationHealth: health,
+                            lastRegistrationFact: NativeGeofenceDiagnostics.fact(.registration),
+                            lastRemovalFact: NativeGeofenceDiagnostics.fact(.removal),
+                            lastBroadcastFact: NativeGeofenceDiagnostics.fact(.broadcast),
+                            lastEnqueueFact: NativeGeofenceDiagnostics.fact(.enqueue),
+                            lastWorkerFact: NativeGeofenceDiagnostics.fact(.worker),
+                            lastRecoveryFact: NativeGeofenceDiagnostics.fact(.recovery),
+                            lastForegroundFact: NativeGeofenceDiagnostics.fact(.foreground)
+                        )
+                    )
+                )
+            }
+        }
     }
     
     func getGeofenceIds() throws -> [String] {
@@ -151,6 +247,12 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
             locationManagerDelegate.locationManager.stopMonitoring(for: region)
         }
         NativeGeofencePersistence.removeRegionCallbackHandle(id: id)
+        NativeGeofenceDiagnostics.record(
+            .removal,
+            succeeded: true,
+            outcome: "removed_by_id",
+            geofenceCount: regions.count
+        )
         log.debug("Removed \(regions.count) geofence(s) with ID=\(id).")
         completion(.success(()))
     }
@@ -166,6 +268,12 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
             locationManagerDelegate.locationManager.stopMonitoring(for: region)
         }
         NativeGeofencePersistence.removeAllRegionCallbackHandles()
+        NativeGeofenceDiagnostics.record(
+            .removal,
+            succeeded: true,
+            outcome: "removed_all",
+            geofenceCount: regions.count
+        )
         log.debug("Removed \(regions.count) geofence(s).")
         completion(.success(()))
     }

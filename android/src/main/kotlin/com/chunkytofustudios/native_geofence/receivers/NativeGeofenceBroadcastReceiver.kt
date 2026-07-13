@@ -27,6 +27,8 @@ import com.chunkytofustudios.native_geofence.util.GeofenceMutationQueues
 import com.chunkytofustudios.native_geofence.util.GeofenceMutationRunner
 import com.chunkytofustudios.native_geofence.util.LocationWires
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceIo
+import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnosticStage
+import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnostics
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 import com.chunkytofustudios.native_geofence.util.NativeGeofencePersistence
 import com.chunkytofustudios.native_geofence.util.OrphanedGeofenceCleanupCoordinator
@@ -58,12 +60,43 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
         NativeGeofenceLogger.d(appContext, TAG, "Geofence broadcast received.")
 
         val routing = when (val outcome = getGeofenceBroadcastOutcome(appContext, intent)) {
-            is GeofenceBroadcastOutcome.Callbacks -> outcome.routing
+            is GeofenceBroadcastOutcome.Callbacks -> {
+                val routing = outcome.routing
+                val callbackCount = routing.callbackGroups.sumOf { it.geofences.size }
+                val diagnosticOutcome = when {
+                    routing.callbackGroups.isNotEmpty() -> "resolved"
+                    routing.orphanIds.isNotEmpty() -> "orphaned"
+                    routing.staleIds.isNotEmpty() -> "stale"
+                    else -> "unresolved"
+                }
+                NativeGeofenceDiagnostics.record(
+                    appContext,
+                    NativeGeofenceDiagnosticStage.BROADCAST,
+                    succeeded = routing.callbackGroups.isNotEmpty(),
+                    outcome = diagnosticOutcome,
+                    geofenceCount = callbackCount
+                )
+                routing
+            }
             GeofenceBroadcastOutcome.GeofenceNotAvailable -> {
+                NativeGeofenceDiagnostics.record(
+                    appContext,
+                    NativeGeofenceDiagnosticStage.BROADCAST,
+                    succeeded = false,
+                    outcome = "geofence_not_available"
+                )
                 startNotAvailableRecovery(appContext)
                 return
             }
-            GeofenceBroadcastOutcome.Ignored -> return
+            GeofenceBroadcastOutcome.Ignored -> {
+                NativeGeofenceDiagnostics.record(
+                    appContext,
+                    NativeGeofenceDiagnosticStage.BROADCAST,
+                    succeeded = false,
+                    outcome = "ignored"
+                )
+                return
+            }
         }
 
         if (routing.staleIds.isNotEmpty()) {
@@ -145,6 +178,13 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
             null
         }
         if (reference == null) {
+            NativeGeofenceDiagnostics.record(
+                context,
+                NativeGeofenceDiagnosticStage.ENQUEUE,
+                succeeded = false,
+                outcome = "payload_persistence_failed",
+                geofenceCount = params.geofences.size
+            )
             NativeGeofenceLogger.e(context, TAG, "Failed to persist a callback payload.")
             completion()
             return
@@ -193,21 +233,48 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
         ) { outcome ->
             try {
                 when (outcome) {
-                    CallbackEnqueueOutcome.ACCEPTED -> NativeGeofenceLogger.d(
-                        context,
-                        TAG,
-                        "Callback work enqueue was confirmed."
-                    )
-                    CallbackEnqueueOutcome.REJECTED -> NativeGeofenceLogger.e(
-                        context,
-                        TAG,
-                        "Callback work enqueue was rejected."
-                    )
-                    CallbackEnqueueOutcome.UNCONFIRMED -> NativeGeofenceLogger.w(
-                        context,
-                        TAG,
-                        "Callback work enqueue could not be confirmed; payload retained."
-                    )
+                    CallbackEnqueueOutcome.ACCEPTED -> {
+                        NativeGeofenceDiagnostics.record(
+                            context,
+                            NativeGeofenceDiagnosticStage.ENQUEUE,
+                            succeeded = true,
+                            outcome = "work_enqueue_confirmed",
+                            geofenceCount = params.geofences.size
+                        )
+                        NativeGeofenceLogger.d(
+                            context,
+                            TAG,
+                            "Callback work enqueue was confirmed."
+                        )
+                    }
+                    CallbackEnqueueOutcome.REJECTED -> {
+                        NativeGeofenceDiagnostics.record(
+                            context,
+                            NativeGeofenceDiagnosticStage.ENQUEUE,
+                            succeeded = false,
+                            outcome = "work_enqueue_failed",
+                            geofenceCount = params.geofences.size
+                        )
+                        NativeGeofenceLogger.e(
+                            context,
+                            TAG,
+                            "Callback work enqueue was rejected."
+                        )
+                    }
+                    CallbackEnqueueOutcome.UNCONFIRMED -> {
+                        NativeGeofenceDiagnostics.record(
+                            context,
+                            NativeGeofenceDiagnosticStage.ENQUEUE,
+                            succeeded = false,
+                            outcome = "work_enqueue_unconfirmed",
+                            geofenceCount = params.geofences.size
+                        )
+                        NativeGeofenceLogger.w(
+                            context,
+                            TAG,
+                            "Callback work enqueue could not be confirmed; payload retained."
+                        )
+                    }
                 }
             } finally {
                 completion()
