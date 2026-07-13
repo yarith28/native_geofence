@@ -1,3 +1,7 @@
+## Unreleased
+
+* Supports foreground callbacks on Android 6.0–7.1 by guarding newer service and notification APIs, providing a valid fallback notification icon, and declaring the AndroidX Core APIs used by the plugin directly
+
 ## 1.3.1
 
 * Improves AGP 9 support (by [doug-shontz](https://github.com/doug-shontz))
