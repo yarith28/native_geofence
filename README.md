@@ -46,23 +46,24 @@ NOTE: You may also need Gradle 8+ to use this plugin. See this [issue](https://g
 
 See the [example plugin](https://github.com/ChunkyTofuStudios/native_geofence/blob/main/example/android/app/src/main/AndroidManifest.xml) for a full demonstration.
 
-3. In your `AndroidManifest.xml` add the following lines right before `</application>`:
+3. Optional: add the reboot receiver right before `</application>` if you want
+persisted geofences re-registered after a device reboot:
 
 ```xml
-<!-- Used by plugin: native_geofence -->
-<receiver android:name="com.chunkytofustudios.native_geofence.receivers.NativeGeofenceBroadcastReceiver"
-          android:exported="true"/>
 <receiver android:name="com.chunkytofustudios.native_geofence.receivers.NativeGeofenceRebootBroadcastReceiver"
           android:exported="true">
     <intent-filter>
         <action android:name="android.intent.action.BOOT_COMPLETED"></action>
     </intent-filter>
 </receiver>
-<service android:name="com.chunkytofustudios.native_geofence.NativeGeofenceForegroundService"
-          android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true"/>
 ```
 
-*Explanation: The `NativeGeofenceBroadcastReceiver` is used to listen for geofence events the Android OS sends. The `NativeGeofenceRebootBroadcastReceiver` runs after device reboot and re-registers geofences (this is required since Android doesn't retain them). Finally, `NativeGeofenceForegroundService` is utilized when you want to run a foreground service when handling a geofence callback.*
+*Explanation: The callback receiver and optional callback foreground service are
+non-exported components owned and merged automatically by native_geofence. The
+plugin verifies that the callback receiver is present and enabled before
+registering a geofence. The reboot receiver remains an application opt-in at
+this stage because it listens for system broadcasts and requires
+`RECEIVE_BOOT_COMPLETED`.*
 
 4. In the same file declare the neccesary permissions before the `<application ...` line:
 
