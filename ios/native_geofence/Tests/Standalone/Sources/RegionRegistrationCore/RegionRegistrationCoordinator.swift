@@ -1,0 +1,1 @@
+../../../../Sources/native_geofence/delegates/RegionRegistrationCoordinator.swift

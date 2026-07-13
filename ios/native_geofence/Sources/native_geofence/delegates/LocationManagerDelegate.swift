@@ -11,6 +11,12 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
     
     private let flutterPluginRegistrantCallback: FlutterPluginRegistrantCallback?
     let locationManager: CLLocationManager
+    private lazy var regionRegistrationCoordinator = RegionRegistrationCoordinator(
+        monitor: locationManager,
+        getCallbackHandle: NativeGeofencePersistence.getRegionCallbackHandle,
+        setCallbackHandle: NativeGeofencePersistence.setRegionCallbackHandle,
+        removeCallbackHandle: NativeGeofencePersistence.removeRegionCallbackHandle
+    )
     
     private var headlessFlutterEngine: FlutterEngine? = nil
     private var nativeGeofenceBackgroundApi: NativeGeofenceBackgroundApiImpl? = nil
@@ -24,6 +30,39 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         locationManager.delegate = self
         
         log.debug("LocationManagerDelegate created with instance ID=\(Int.random(in: 1 ... 1000000)).")
+    }
+
+    func startMonitoring(
+        region: CLCircularRegion,
+        callbackHandle: Int64,
+        initialTrigger: Bool,
+        completion: @escaping (Result<Void, any Error>) -> Void
+    ) {
+        let initialStateRegion = regionRegistrationCoordinator.start(
+            region: region,
+            callbackHandle: callbackHandle,
+            initialTrigger: initialTrigger
+        ) { result in
+            switch result {
+            case .success:
+                completion(.success(()))
+            case .failure(let failure):
+                completion(.failure(nativeGeofenceError(failure)))
+            }
+        }
+
+        if let initialStateRegion {
+            locationManager.requestState(for: initialStateRegion)
+        }
+        log.debug("Handled monitoring request for geofence ID=\(region.identifier).")
+    }
+
+    func cancelMonitoringStart(id: String) {
+        regionRegistrationCoordinator.cancel(id: id)
+    }
+
+    func cancelAllMonitoringStarts() {
+        regionRegistrationCoordinator.cancelAll()
     }
     
     func locationManager(_ manager: CLLocationManager, didDetermineState state: CLRegionState, for region: CLRegion) {
@@ -69,9 +108,17 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         nativeGeofenceBackgroundApi!.geofenceTriggered(params: params, cleanup: cleanup)
         log.debug("Geofence trigger event sent.")
     }
+
+    func locationManager(_ manager: CLLocationManager, didStartMonitoringFor region: CLRegion) {
+        log.debug("didStartMonitoringFor geofence ID: \(region.identifier)")
+        if let initialStateRegion = regionRegistrationCoordinator.didStartMonitoring(for: region) {
+            manager.requestState(for: initialStateRegion)
+        }
+    }
     
     func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: any Error) {
         log.error("monitoringDidFailFor: \(region?.identifier ?? "nil") withError: \(error)")
+        regionRegistrationCoordinator.didFailMonitoring(for: region, error: error)
     }
     
     private func createFlutterEngine() -> NativeGeofenceBackgroundApiImpl? {
