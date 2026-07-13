@@ -25,7 +25,7 @@ class GeofenceRegistrationStoreTest {
 
         assertTrue(
             store.saveConfiguredGeofence(
-                geofence(callbackHandle = 11, duration = 500),
+                geofence(callbackHandle = 11, callbackContext = 111, duration = 500),
                 callbackPackageFingerprint = "package-v1"
             )
         )
@@ -36,7 +36,7 @@ class GeofenceRegistrationStoreTest {
         now = 1_200L
         assertTrue(
             store.saveConfiguredGeofence(
-                geofence(callbackHandle = 22, duration = 900),
+                geofence(callbackHandle = 22, callbackContext = 222, duration = 900),
                 callbackPackageFingerprint = "package-v2"
             )
         )
@@ -46,6 +46,7 @@ class GeofenceRegistrationStoreTest {
         assertEquals(originalJson, backend.values[recordKey("office")])
         assertEquals(originalDeadline, backend.values[expirationKey("office")])
         assertEquals(11L, store.getConfiguredGeofence("office")?.configuredGeofence?.callbackHandle)
+        assertEquals(111L, store.getConfiguredGeofence("office")?.configuredGeofence?.callbackContext)
         assertEquals("package-v1", store.callbackPackageFingerprint("office"))
         assertEquals(1_500L, backend.values[expirationKey("office")])
     }
@@ -313,6 +314,7 @@ class GeofenceRegistrationStoreTest {
 
     private fun geofence(
         callbackHandle: Long = 7,
+        callbackContext: Long? = null,
         duration: Long? = null
     ) = GeofenceWire(
         id = "office",
@@ -331,7 +333,8 @@ class GeofenceRegistrationStoreTest {
             loiteringDelayMillis = 0,
             notificationResponsivenessMillis = null
         ),
-        callbackHandle = callbackHandle
+        callbackHandle = callbackHandle,
+        callbackContext = callbackContext
     )
 
     private companion object {

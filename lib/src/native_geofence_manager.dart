@@ -69,10 +69,17 @@ class NativeGeofenceManager {
   /// [region] is the geofence region to register with the system.
   /// [callback] is the method to be called when a geofence event associated
   /// with [region] occurs.
+  /// [callbackContext] is an optional opaque 64-bit value persisted with this
+  /// registration and returned by geofence ID in
+  /// [GeofenceCallbackParams.callbackContextsByGeofenceId]. The plugin never
+  /// interprets it.
   ///
   /// Throws [NativeGeofenceException].
   Future<void> createGeofence(
-      Geofence geofence, GeofenceCallback callback) async {
+    Geofence geofence,
+    GeofenceCallback callback, {
+    int? callbackContext,
+  }) async {
     if (geofence.id.isEmpty) {
       throw NativeGeofenceException.invalidArgument(
           message: 'Geofence ID cannot be empty.');
@@ -106,7 +113,12 @@ class NativeGeofenceManager {
           message: 'Callback is invalid.');
     }
     return _api
-        .createGeofence(geofence: geofence.toWire(callbackHandle.toRawHandle()))
+        .createGeofence(
+          geofence: geofence.toWire(
+            callbackHandle.toRawHandle(),
+            callbackContext: callbackContext,
+          ),
+        )
         .catchError(NativeGeofenceExceptionMapper.catchError<void>);
   }
 

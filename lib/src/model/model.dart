@@ -238,12 +238,19 @@ class GeofenceCallbackParams {
   /// should still enforce their own state rules. Set on Android and iOS.
   final String? eventId;
 
+  /// Opaque callback contexts keyed by triggering geofence ID.
+  ///
+  /// Registrations without a context are absent. The plugin never interprets
+  /// these values; they are useful when one callback dispatches app-owned work.
+  final Map<String, int> callbackContextsByGeofenceId;
+
   const GeofenceCallbackParams({
     required this.geofences,
     required this.event,
     required this.location,
     this.eventAt,
     this.eventId,
+    this.callbackContextsByGeofenceId = const {},
   });
 
   @override
@@ -253,6 +260,7 @@ class GeofenceCallbackParams {
         'event: ${event.name}, '
         'location: $location, '
         'eventAt: $eventAt, '
-        'eventId: $eventId)';
+        'eventId: $eventId, '
+        'callbackContextsByGeofenceId: $callbackContextsByGeofenceId)';
   }
 }

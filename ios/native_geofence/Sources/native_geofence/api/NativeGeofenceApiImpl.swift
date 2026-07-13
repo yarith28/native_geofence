@@ -124,6 +124,7 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
         locationManagerDelegate.startMonitoring(
             region: region,
             callbackHandle: geofence.callbackHandle,
+            callbackContext: geofence.callbackContext,
             initialTrigger: geofence.iosSettings.initialTrigger,
             completion: completion
         )
@@ -247,6 +248,7 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
             locationManagerDelegate.locationManager.stopMonitoring(for: region)
         }
         NativeGeofencePersistence.removeRegionCallbackHandle(id: id)
+        NativeGeofencePersistence.setRegionCallbackContext(id: id, context: nil)
         NativeGeofenceDiagnostics.record(
             .removal,
             succeeded: true,
@@ -268,6 +270,7 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
             locationManagerDelegate.locationManager.stopMonitoring(for: region)
         }
         NativeGeofencePersistence.removeAllRegionCallbackHandles()
+        NativeGeofencePersistence.removeAllRegionCallbackContexts()
         NativeGeofenceDiagnostics.record(
             .removal,
             succeeded: true,

@@ -67,7 +67,7 @@ extension AndroidGeofenceSettingsWireMapper on AndroidGeofenceSettingsWire {
 }
 
 extension GeofenceMapper on Geofence {
-  GeofenceWire toWire(int callbackHandle) {
+  GeofenceWire toWire(int callbackHandle, {int? callbackContext}) {
     return GeofenceWire(
       id: id,
       location: location.toWire(),
@@ -76,6 +76,7 @@ extension GeofenceMapper on Geofence {
       iosSettings: iosSettings.toWire(),
       androidSettings: androidSettings.toWire(),
       callbackHandle: callbackHandle,
+      callbackContext: callbackContext,
     );
   }
 }
@@ -127,6 +128,9 @@ extension GeofenceCallbackParamsWireMapper on GeofenceCallbackParamsWire {
           ? null
           : DateTime.fromMillisecondsSinceEpoch(eventAtMillis!),
       eventId: eventId,
+      callbackContextsByGeofenceId: Map.unmodifiable(
+        callbackContextsByGeofenceId ?? const <String, int>{},
+      ),
     );
   }
 }

@@ -37,6 +37,20 @@ private final class HandleStore {
     }
 }
 
+private final class ContextStore {
+    var values: [String: Int64]
+
+    init(_ values: [String: Int64] = [:]) { self.values = values }
+
+    func set(_ id: String, _ context: Int64?) {
+        if let context {
+            values[id] = context
+        } else {
+            values.removeValue(forKey: id)
+        }
+    }
+}
+
 private final class CompletionRecorder {
     private(set) var successes = 0
     private(set) var failures: [RegionRegistrationFailure] = []
@@ -51,6 +65,73 @@ private final class CompletionRecorder {
 }
 
 final class RegionRegistrationCoordinatorTests: XCTestCase {
+    func testChangedMetadataPublishesOnlyAfterMonitoringConfirmation() {
+        let previous = region(id: "office", radius: 50)
+        let requested = region(id: "office", radius: 100)
+        let monitor = FakeMonitor([previous])
+        let handles = HandleStore(["office": 1])
+        let contexts = ContextStore(["office": 11])
+        let subject = makeSubject(monitor, handles, contexts)
+
+        _ = subject.start(
+            region: requested,
+            callbackHandle: 2,
+            callbackContext: 22,
+            initialTrigger: false,
+            completion: { _ in }
+        )
+
+        XCTAssertEqual(handles.values["office"], 1)
+        XCTAssertEqual(contexts.values["office"], 11)
+        _ = subject.didStartMonitoring(for: requested)
+        XCTAssertEqual(handles.values["office"], 2)
+        XCTAssertEqual(contexts.values["office"], 22)
+    }
+
+    func testIdenticalRegistrationRefreshesMetadataWithoutRestartingMonitoring() {
+        let existing = region(id: "office")
+        let monitor = FakeMonitor([existing])
+        let handles = HandleStore(["office": 1])
+        let contexts = ContextStore(["office": 11])
+        let subject = makeSubject(monitor, handles, contexts)
+
+        let committed = subject.start(
+            region: region(id: "office"),
+            callbackHandle: 2,
+            callbackContext: 22,
+            initialTrigger: false,
+            completion: { _ in }
+        )
+
+        XCTAssertNotNil(committed)
+        XCTAssertEqual(handles.values["office"], 2)
+        XCTAssertEqual(contexts.values["office"], 22)
+        XCTAssertTrue(monitor.started.isEmpty)
+        XCTAssertTrue(monitor.stopped.isEmpty)
+    }
+
+    func testFailedReplacementRetainsPreviousContextThroughRestoration() {
+        let previous = region(id: "office", radius: 50)
+        let requested = region(id: "office", radius: 100)
+        let monitor = FakeMonitor([previous])
+        let handles = HandleStore(["office": 1])
+        let contexts = ContextStore(["office": 11])
+        let subject = makeSubject(monitor, handles, contexts)
+
+        _ = subject.start(
+            region: requested,
+            callbackHandle: 2,
+            callbackContext: 22,
+            initialTrigger: false,
+            completion: { _ in }
+        )
+        subject.didFailMonitoring(for: requested, error: NSError(domain: "test", code: 1))
+        _ = subject.didStartMonitoring(for: previous)
+
+        XCTAssertEqual(handles.values["office"], 1)
+        XCTAssertEqual(contexts.values["office"], 11)
+    }
+
     func testDoesNotCompleteEarlyAndMatchingConfirmationCompletesOnlyOnce() {
         let monitor = FakeMonitor()
         let handles = HandleStore()
@@ -265,6 +346,7 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
         let active = region(id: "office")
         let monitor = FakeMonitor([active])
         let handles = HandleStore(["office": 1])
+        let contexts = ContextStore(["office": 11])
         let gate = InitialStateRequestGate()
         let probe = try! XCTUnwrap(
             gate.commit(region: active, initialTrigger: true)
@@ -272,6 +354,7 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
         let subject = makeSubject(
             monitor,
             handles,
+            contexts,
             invalidateMatchingCommittedRegion: gate.remove
         )
 
@@ -281,6 +364,7 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
         )
 
         XCTAssertNil(handles.values["office"])
+        XCTAssertNil(contexts.values["office"])
         XCTAssertEqual(monitor.stopped.map(\.identifier), ["office"])
         XCTAssertNil(gate.consumeInitialStateResponse(for: probe))
         XCTAssertNil(gate.consumeBoundaryEvent(for: active))
@@ -1159,6 +1243,7 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
     private func makeSubject(
         _ monitor: FakeMonitor,
         _ handles: HandleStore,
+        _ contexts: ContextStore = ContextStore(),
         timeoutSeconds: TimeInterval = 10,
         scheduleTimeout: @escaping RegionRegistrationCoordinator.TimeoutScheduler = { _, _ in },
         restoreCommittedRegion: @escaping RegionRegistrationCoordinator.CommittedRegionRestorer = { _ in },
@@ -1173,6 +1258,7 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
             getCallbackHandle: { handles.values[$0] },
             setCallbackHandle: handles.set,
             removeCallbackHandle: handles.remove,
+            setCallbackContext: contexts.set,
             restoreCommittedRegion: restoreCommittedRegion,
             invalidateCommittedRegion: invalidateCommittedRegion,
             invalidateMatchingCommittedRegion: invalidateMatchingCommittedRegion

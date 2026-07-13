@@ -95,6 +95,7 @@ class NativeGeofenceBridgeMapperTest {
         assertEquals(91L, transformed.callbackHandle)
         assertEquals(123L, transformed.eventAtMillis)
         assertEquals("delivery-1", transformed.eventId)
+        assertEquals(mapOf("b" to 2L), transformed.callbackContextsByGeofenceId)
     }
 
     @Test
@@ -134,7 +135,8 @@ class NativeGeofenceBridgeMapperTest {
         ),
         eventAtMillis = 123L,
         callbackHandle = 91L,
-        eventId = "delivery-1"
+        eventId = "delivery-1",
+        callbackContextsByGeofenceId = mapOf("a" to 1L, "b" to 2L)
     )
 
     private fun active(id: String) = ActiveGeofenceWire(

@@ -34,6 +34,7 @@ enum RegionRegistrationFailure: Error, Equatable {
 private final class PendingRegionRegistration {
     let requestedRegion: CLCircularRegion
     let requestedCallbackHandle: Int64
+    let requestedCallbackContext: Int64?
     let previousRegion: CLRegion?
     let previousCallbackHandle: Int64?
     let initialTrigger: Bool
@@ -43,6 +44,7 @@ private final class PendingRegionRegistration {
     init(
         requestedRegion: CLCircularRegion,
         requestedCallbackHandle: Int64,
+        requestedCallbackContext: Int64?,
         previousRegion: CLRegion?,
         previousCallbackHandle: Int64?,
         initialTrigger: Bool,
@@ -50,6 +52,7 @@ private final class PendingRegionRegistration {
     ) {
         self.requestedRegion = requestedRegion
         self.requestedCallbackHandle = requestedCallbackHandle
+        self.requestedCallbackContext = requestedCallbackContext
         self.previousRegion = previousRegion
         self.previousCallbackHandle = previousCallbackHandle
         self.initialTrigger = initialTrigger
@@ -113,6 +116,7 @@ final class RegionRegistrationCoordinator {
     private let getCallbackHandle: (String) -> Int64?
     private let setCallbackHandle: (String, Int64) -> Void
     private let removeCallbackHandle: (String) -> Void
+    private let setCallbackContext: (String, Int64?) -> Void
     private let restoreCommittedRegion: CommittedRegionRestorer
     private let invalidateCommittedRegion: CommittedRegionInvalidator
     private let invalidateMatchingCommittedRegion: MatchingCommittedRegionInvalidator
@@ -129,6 +133,7 @@ final class RegionRegistrationCoordinator {
         getCallbackHandle: @escaping (String) -> Int64?,
         setCallbackHandle: @escaping (String, Int64) -> Void,
         removeCallbackHandle: @escaping (String) -> Void,
+        setCallbackContext: @escaping (String, Int64?) -> Void = { _, _ in },
         restoreCommittedRegion: @escaping CommittedRegionRestorer = { _ in },
         invalidateCommittedRegion: @escaping CommittedRegionInvalidator = { _ in },
         invalidateMatchingCommittedRegion: @escaping MatchingCommittedRegionInvalidator = { _ in false }
@@ -139,6 +144,7 @@ final class RegionRegistrationCoordinator {
         self.getCallbackHandle = getCallbackHandle
         self.setCallbackHandle = setCallbackHandle
         self.removeCallbackHandle = removeCallbackHandle
+        self.setCallbackContext = setCallbackContext
         self.restoreCommittedRegion = restoreCommittedRegion
         self.invalidateCommittedRegion = invalidateCommittedRegion
         self.invalidateMatchingCommittedRegion = invalidateMatchingCommittedRegion
@@ -149,6 +155,7 @@ final class RegionRegistrationCoordinator {
     func start(
         region: CLCircularRegion,
         callbackHandle: Int64,
+        callbackContext: Int64? = nil,
         initialTrigger: Bool,
         completion: @escaping (Result<Void, RegionRegistrationFailure>) -> Void
     ) -> CommittedRegionRegistration? {
@@ -214,6 +221,7 @@ final class RegionRegistrationCoordinator {
            RegionMonitoringSemantics.matches(existingRegion, region)
         {
             setCallbackHandle(id, callbackHandle)
+            setCallbackContext(id, callbackContext)
             completion(.success(()))
             return CommittedRegionRegistration(
                 region: existingRegion,
@@ -225,6 +233,7 @@ final class RegionRegistrationCoordinator {
         let pending = PendingRegionRegistration(
             requestedRegion: region,
             requestedCallbackHandle: callbackHandle,
+            requestedCallbackContext: callbackContext,
             previousRegion: previousRegion,
             previousCallbackHandle: previousCallbackHandle,
             initialTrigger: initialTrigger,
@@ -252,7 +261,7 @@ final class RegionRegistrationCoordinator {
         // A callback handle without a live region is stale. Do not publish it
         // while a genuinely new registration is awaiting confirmation.
         if previousRegion == nil, storedCallbackHandle != nil {
-            removeCallbackHandle(id)
+            removeCallbackMetadata(id: id)
             invalidateCommittedRegion(id)
         }
         monitor.startMonitoring(for: region)
@@ -269,6 +278,7 @@ final class RegionRegistrationCoordinator {
             pendingRegistrations.removeValue(forKey: id)
             pending.timeoutWorkItem?.cancel()
             setCallbackHandle(id, pending.requestedCallbackHandle)
+            setCallbackContext(id, pending.requestedCallbackContext)
             pending.completion(.success(()))
             return CommittedRegionRegistration(
                 region: pending.requestedRegion,
@@ -335,7 +345,7 @@ final class RegionRegistrationCoordinator {
 
         if invalidateMatchingCommittedRegion(region) {
             monitor.stopMonitoring(for: region)
-            removeCallbackHandle(region.identifier)
+            removeCallbackMetadata(id: region.identifier)
             return .committedRegistrationInvalidated
         }
         return .ignoredStaleOrUnowned
@@ -346,7 +356,7 @@ final class RegionRegistrationCoordinator {
         if let pending = pendingRegistrations.removeValue(forKey: id) {
             pending.timeoutWorkItem?.cancel()
             monitor.stopMonitoring(for: pending.requestedRegion)
-            removeCallbackHandle(id)
+            removeCallbackMetadata(id: id)
             addCancellationTombstone(for: pending.requestedRegion)
             pending.completion(.failure(cancellationFailure(id: id)))
             return true
@@ -355,7 +365,7 @@ final class RegionRegistrationCoordinator {
         if let restoration = pendingRestorations.removeValue(forKey: id) {
             restoration.timeoutWorkItem?.cancel()
             monitor.stopMonitoring(for: restoration.region)
-            removeCallbackHandle(id)
+            removeCallbackMetadata(id: id)
             addCancellationTombstone(for: restoration.region)
             restoration.completion(.failure(cancellationFailure(id: id)))
             return true
@@ -404,7 +414,7 @@ final class RegionRegistrationCoordinator {
                 completion: pending.completion
             )
         } else {
-            removeCallbackHandle(id)
+            removeCallbackMetadata(id: id)
             invalidateCommittedRegion(id)
             pending.completion(.failure(failure))
         }
@@ -455,7 +465,7 @@ final class RegionRegistrationCoordinator {
         pendingRestorations.removeValue(forKey: id)
         restoration.timeoutWorkItem?.cancel()
         monitor.stopMonitoring(for: restoration.region)
-        removeCallbackHandle(id)
+        removeCallbackMetadata(id: id)
         invalidateCommittedRegion(id)
         restoration.completion(.failure(failure))
     }
@@ -483,6 +493,11 @@ final class RegionRegistrationCoordinator {
         }
         cancelled.timeoutWorkItem = timeoutWorkItem
         scheduleTimeout(timeoutSeconds, timeoutWorkItem)
+    }
+
+    private func removeCallbackMetadata(id: String) {
+        removeCallbackHandle(id)
+        setCallbackContext(id, nil)
     }
 
     private func cancellationFailure(id: String) -> RegionRegistrationFailure {
