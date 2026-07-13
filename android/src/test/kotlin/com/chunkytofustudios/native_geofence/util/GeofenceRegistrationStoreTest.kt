@@ -204,6 +204,21 @@ class GeofenceRegistrationStoreTest {
     }
 
     @Test
+    fun `callback refresh marker is checked and failed writes are not reported as durable`() {
+        val backend = FakeGeofencePersistenceBackend()
+        val store = GeofenceRegistrationStore(backend) { 1_000L }
+
+        assertFalse(store.isCallbackRefreshRequired())
+        backend.failNextCommit = true
+        assertFalse(store.markCallbackRefreshRequired())
+        assertFalse(store.isCallbackRefreshRequired())
+
+        assertTrue(store.markCallbackRefreshRequired())
+        assertTrue(store.isCallbackRefreshRequired())
+        assertEquals(true, backend.values[Constants.CALLBACK_REFRESH_REQUIRED_KEY])
+    }
+
+    @Test
     fun `finite to infinite replacement removes the deadline`() {
         var now = 1_000L
         val backend = FakeGeofencePersistenceBackend()
