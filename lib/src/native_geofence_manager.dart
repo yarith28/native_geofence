@@ -131,8 +131,7 @@ class NativeGeofenceManager {
   ///
   /// If the [Geofence] is not registered, this method does nothing.
   ///
-  /// Throws [NativeGeofenceException]. Might throw
-  /// [NativeGeofenceErrorCode.geofenceNotFound] on Android.
+  /// Throws [NativeGeofenceException].
   Future<void> removeGeofence(Geofence region) async =>
       removeGeofenceById(region.id);
 
@@ -142,8 +141,7 @@ class NativeGeofenceManager {
   /// If a [Geofence] with the given ID is not registered, this method does
   /// nothing.
   ///
-  /// Throws [NativeGeofenceException]. Might throw
-  /// [NativeGeofenceErrorCode.geofenceNotFound] on Android.
+  /// Throws [NativeGeofenceException].
   Future<void> removeGeofenceById(String id) async => _api
       .removeGeofenceById(id: id)
       .catchError(NativeGeofenceExceptionMapper.catchError<void>);

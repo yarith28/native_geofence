@@ -18,6 +18,7 @@ import com.chunkytofustudios.native_geofence.generated.NativeGeofenceErrorCode
 import com.chunkytofustudios.native_geofence.util.GeofenceEvents
 import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceBroadcastReceiver
 import com.chunkytofustudios.native_geofence.util.ActiveGeofenceWires
+import com.chunkytofustudios.native_geofence.util.AndroidGeofenceFailureMapper
 import com.chunkytofustudios.native_geofence.util.GeofenceWires
 import com.chunkytofustudios.native_geofence.util.NativeGeofencePersistence
 import com.google.android.gms.location.GeofencingRequest
@@ -71,15 +72,14 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                 callback.invoke(Result.success(Unit))
             }
             addOnFailureListener {
-                val existingIds = NativeGeofencePersistence.getAllGeofenceIds(context)
-                val errorCode =
-                    if (existingIds.contains(id)) NativeGeofenceErrorCode.PLUGIN_INTERNAL else NativeGeofenceErrorCode.GEOFENCE_NOT_FOUND
+                val failure = AndroidGeofenceFailureMapper.from(it)
                 Log.e(TAG, "Failure when removing Geofence ID=$id: $it")
                 callback.invoke(
                     Result.failure(
                         FlutterError(
-                            errorCode.raw.toString(),
-                            it.toString()
+                            NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                            failure.message,
+                            failure.details
                         )
                     )
                 )
@@ -95,12 +95,14 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                 callback.invoke(Result.success(Unit))
             }
             addOnFailureListener {
+                val failure = AndroidGeofenceFailureMapper.from(it)
                 Log.e(TAG, "Failed to remove all geofences: $it")
                 callback.invoke(
                     Result.failure(
                         FlutterError(
                             NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
-                            it.toString()
+                            failure.message,
+                            failure.details
                         )
                     )
                 )
@@ -193,11 +195,13 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                     }
                 }
 
+                val failure = AndroidGeofenceFailureMapper.from(it)
                 callback?.invoke(
                     Result.failure(
                         FlutterError(
                             NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
-                            it.toString()
+                            failure.message,
+                            failure.details
                         )
                     )
                 )
