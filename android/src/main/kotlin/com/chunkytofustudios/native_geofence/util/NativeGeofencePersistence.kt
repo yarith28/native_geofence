@@ -76,6 +76,13 @@ class NativeGeofencePersistence {
             }
 
         @JvmStatic
+        internal fun getRecoveryInventory(
+            context: Context,
+        ): List<GeofenceRecoveryInventoryEntry> = synchronized(sharedPreferencesLock) {
+            store(context).recoveryInventory()
+        }
+
+        @JvmStatic
         fun getAllConfiguredGeofences(context: Context): List<GeofenceWire> =
             synchronized(sharedPreferencesLock) {
                 store(context).getConfiguredGeofences().map { it.configuredGeofence }

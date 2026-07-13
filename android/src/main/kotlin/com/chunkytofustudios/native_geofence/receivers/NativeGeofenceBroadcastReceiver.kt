@@ -11,6 +11,7 @@ import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import com.chunkytofustudios.native_geofence.Constants
 import com.chunkytofustudios.native_geofence.NativeGeofenceBackgroundWorker
+import com.chunkytofustudios.native_geofence.api.NativeGeofenceApiImpl
 import com.chunkytofustudios.native_geofence.model.GeofenceCallbackParamsStorage
 import com.chunkytofustudios.native_geofence.util.GeofenceCallbackRouting
 import com.chunkytofustudios.native_geofence.util.GeofenceCallbackRoutingResult
@@ -21,9 +22,25 @@ import com.chunkytofustudios.native_geofence.util.LocationWires
 import com.chunkytofustudios.native_geofence.util.NativeGeofencePersistence
 import com.chunkytofustudios.native_geofence.util.OrphanedGeofenceCleanupCoordinator
 import com.google.android.gms.location.GeofencingEvent
+import com.google.android.gms.location.GeofenceStatusCodes
 import com.google.android.gms.location.LocationServices
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+
+internal sealed interface GeofenceBroadcastOutcome {
+    data class Callbacks(val routing: GeofenceCallbackRoutingResult) : GeofenceBroadcastOutcome
+    data object GeofenceNotAvailable : GeofenceBroadcastOutcome
+    data object Ignored : GeofenceBroadcastOutcome
+}
+
+internal object GeofenceBroadcastOutcomeClassifier {
+    fun fromErrorCode(errorCode: Int): GeofenceBroadcastOutcome =
+        if (errorCode == GeofenceStatusCodes.GEOFENCE_NOT_AVAILABLE) {
+            GeofenceBroadcastOutcome.GeofenceNotAvailable
+        } else {
+            GeofenceBroadcastOutcome.Ignored
+        }
+}
 
 class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
     companion object {
@@ -33,7 +50,14 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         Log.d(TAG, "Geofence broadcast received.")
 
-        val routing = getGeofenceCallbackParams(context, intent) ?: return
+        val routing = when (val outcome = getGeofenceBroadcastOutcome(context, intent)) {
+            is GeofenceBroadcastOutcome.Callbacks -> outcome.routing
+            GeofenceBroadcastOutcome.GeofenceNotAvailable -> {
+                startNotAvailableRecovery(context)
+                return
+            }
+            GeofenceBroadcastOutcome.Ignored -> return
+        }
         if (routing.orphanIds.isNotEmpty()) {
             cleanupOrphans(context, routing.orphanIds)
         }
@@ -58,6 +82,27 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                 workRequest
             )
             work.enqueue()
+        }
+    }
+
+    private fun startNotAvailableRecovery(context: Context) {
+        val applicationContext = context.applicationContext
+        val lease = RecoveryBroadcastLease(goAsync())
+        try {
+            NativeGeofenceApiImpl(applicationContext).startAutomaticRecovery(
+                reason = "geofence_not_available"
+            ) { result ->
+                try {
+                    result.exceptionOrNull()?.let { error ->
+                        Log.e(TAG, "GEOFENCE_NOT_AVAILABLE recovery failed.", error)
+                    }
+                } finally {
+                    lease.finish()
+                }
+            }
+        } catch (error: Throwable) {
+            Log.e(TAG, "Failed to start GEOFENCE_NOT_AVAILABLE recovery.", error)
+            lease.finish()
         }
     }
 
@@ -96,18 +141,18 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun getGeofenceCallbackParams(
+    private fun getGeofenceBroadcastOutcome(
         context: Context,
         intent: Intent
-    ): GeofenceCallbackRoutingResult? {
+    ): GeofenceBroadcastOutcome {
         val geofencingEvent = GeofencingEvent.fromIntent(intent)
         if (geofencingEvent == null) {
             Log.e(TAG, "GeofencingEvent is null.")
-            return null
+            return GeofenceBroadcastOutcome.Ignored
         }
         if (geofencingEvent.hasError()) {
             Log.e(TAG, "GeofencingEvent has error Code=${geofencingEvent.errorCode}.")
-            return null
+            return GeofenceBroadcastOutcomeClassifier.fromErrorCode(geofencingEvent.errorCode)
         }
 
         // Get the transition type.
@@ -117,7 +162,7 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                 TAG,
                 "GeofencingEvent has invalid transition ID=${geofencingEvent.geofenceTransition}."
             )
-            return null
+            return GeofenceBroadcastOutcome.Ignored
         }
 
         val eventAtMillis = System.currentTimeMillis()
@@ -125,7 +170,7 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
         val triggeringIds = geofencingEvent.triggeringGeofences?.map { it.requestId }
         if (triggeringIds.isNullOrEmpty()) {
             Log.e(TAG, "No triggering geofences found.")
-            return null
+            return GeofenceBroadcastOutcome.Ignored
         }
 
         val location = geofencingEvent.triggeringLocation
@@ -133,12 +178,14 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
             Log.w(TAG, "No triggering location found.")
         }
 
-        return GeofenceCallbackRouting.route(
-            triggeredIds = triggeringIds,
-            event = geofenceEvent,
-            location = location?.let { LocationWires.fromLocation(it) },
-            eventAtMillis = eventAtMillis,
-            lookup = { id -> NativeGeofencePersistence.getGeofence(context, id) }
+        return GeofenceBroadcastOutcome.Callbacks(
+            GeofenceCallbackRouting.route(
+                triggeredIds = triggeringIds,
+                event = geofenceEvent,
+                location = location?.let { LocationWires.fromLocation(it) },
+                eventAtMillis = eventAtMillis,
+                lookup = { id -> NativeGeofencePersistence.getGeofence(context, id) }
+            )
         )
     }
 }

@@ -15,8 +15,13 @@ import com.chunkytofustudios.native_geofence.generated.FlutterError
 import com.chunkytofustudios.native_geofence.generated.GeofenceWire
 import com.chunkytofustudios.native_geofence.generated.NativeGeofenceApi
 import com.chunkytofustudios.native_geofence.generated.NativeGeofenceErrorCode
-import com.chunkytofustudios.native_geofence.util.GeofenceEvents
 import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceBroadcastReceiver
+import com.chunkytofustudios.native_geofence.receivers.GeofenceRecoveryAggregateException
+import com.chunkytofustudios.native_geofence.receivers.GeofenceRecoveryFailure
+import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceRecoveryFailures
+import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceRecoveryPolicy
+import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceRecoveryScheduler
+import com.chunkytofustudios.native_geofence.receivers.RecoveryScheduleOutcome
 import com.chunkytofustudios.native_geofence.util.ActiveGeofenceWires
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceAsyncOperation
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceFailureMapper
@@ -24,12 +29,15 @@ import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationFai
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationTransaction
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationTransactionException
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceTransactionStepOutcome
+import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRecoveryPlanner
+import com.chunkytofustudios.native_geofence.util.GeofenceEvents
 import com.chunkytofustudios.native_geofence.util.GeofenceMutationQueue
 import com.chunkytofustudios.native_geofence.util.GeofenceMutationQueues
 import com.chunkytofustudios.native_geofence.util.GeofenceMutationRunner
 import com.chunkytofustudios.native_geofence.util.GeofenceWires
 import com.chunkytofustudios.native_geofence.util.GeofencePersistenceSnapshot
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
+import com.chunkytofustudios.native_geofence.util.LocationState
 import com.chunkytofustudios.native_geofence.util.NativeGeofencePersistence
 import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.LocationServices
@@ -83,10 +91,190 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         }
     }
 
-    override fun reCreateAfterReboot() {
-        mutationQueue.enqueue { done ->
-            val geofences = NativeGeofencePersistence.getAllGeofences(context)
-            recreateSequentially(geofences, index = 0, done = done)
+    override fun reCreateAfterReboot(callback: (Result<Unit>) -> Unit) {
+        startRecovery(
+            "explicit_recreate_after_reboot",
+            automatic = false,
+            callback = callback
+        )
+    }
+
+    internal fun startAutomaticRecovery(
+        reason: String,
+        callback: (Result<Unit>) -> Unit
+    ) {
+        startRecovery(reason, automatic = true, callback = callback)
+    }
+
+    private fun startRecovery(
+        reason: String,
+        automatic: Boolean,
+        callback: (Result<Unit>) -> Unit
+    ) {
+        val completed = AtomicBoolean(false)
+        fun finish(result: Result<Unit>) {
+            if (completed.compareAndSet(false, true)) {
+                callback(result)
+            }
+        }
+
+        val generation = try {
+            NativeGeofenceRecoveryScheduler.beginGeneration(context)
+        } catch (error: Throwable) {
+            finish(
+                Result.failure(
+                    FlutterError(
+                        NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                        "Failed to start Android geofence recovery.",
+                        error.toString()
+                    )
+                )
+            )
+            return
+        }
+
+        if (NativeGeofencePersistence.getAllRawGeofenceIds(context).isEmpty()) {
+            NativeGeofenceRecoveryScheduler.completeGeneration(context, generation)
+            finish(Result.success(Unit))
+            return
+        }
+
+        if (!LocationState.hasFinePermission(context)) {
+            NativeGeofenceRecoveryScheduler.completeGeneration(context, generation)
+            finish(
+                Result.failure(
+                    FlutterError(
+                        NativeGeofenceErrorCode.MISSING_LOCATION_PERMISSION.raw.toString(),
+                        "The ACCESS_FINE_LOCATION permission is required to recover geofences."
+                    )
+                )
+            )
+            return
+        }
+
+        if (!LocationState.hasBackgroundPermission(context)) {
+            NativeGeofenceRecoveryScheduler.completeGeneration(context, generation)
+            finish(
+                Result.failure(
+                    FlutterError(
+                        NativeGeofenceErrorCode.MISSING_BACKGROUND_LOCATION_PERMISSION.raw.toString(),
+                        "The ACCESS_BACKGROUND_LOCATION permission is required to recover " +
+                            "geofences on Android API ${Build.VERSION.SDK_INT}."
+                    )
+                )
+            )
+            return
+        }
+
+        if (automatic) {
+            NativeGeofenceRecoveryScheduler.scheduleRetry(
+                context = context,
+                generation = generation,
+                attempt = 1,
+                reason = reason
+            ) { outcome ->
+                when (outcome) {
+                    RecoveryScheduleOutcome.CONFIRMED -> {
+                        if (!LocationState.isEnabled(context)) {
+                            finish(Result.failure(locationDisabledRecoveryError()))
+                        } else {
+                            runImmediateRecovery(
+                                generation,
+                                reason,
+                                automatic = true,
+                                finish = ::finish
+                            )
+                        }
+                    }
+                    RecoveryScheduleOutcome.UNCONFIRMED -> {
+                        finish(
+                            Result.failure(
+                                FlutterError(
+                                    NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                                    "Android geofence recovery retry ownership could not be " +
+                                        "confirmed; the durable retry ticket was retained."
+                                )
+                            )
+                        )
+                    }
+                    RecoveryScheduleOutcome.REJECTED -> {
+                        NativeGeofenceRecoveryScheduler.completeGeneration(context, generation)
+                        finish(
+                            Result.failure(
+                                FlutterError(
+                                    NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                                    "Failed to durably schedule Android geofence recovery."
+                                )
+                            )
+                        )
+                    }
+                }
+            }
+            return
+        }
+
+        if (!LocationState.isEnabled(context)) {
+            NativeGeofenceRecoveryScheduler.completeGeneration(context, generation)
+            finish(Result.failure(locationDisabledRecoveryError()))
+            return
+        }
+
+        runImmediateRecovery(
+            generation,
+            reason,
+            automatic = false,
+            finish = ::finish
+        )
+    }
+
+    private fun runImmediateRecovery(
+        generation: Long,
+        reason: String,
+        automatic: Boolean,
+        finish: (Result<Unit>) -> Unit
+    ) {
+        recoverForGeneration(generation, reason) { result ->
+            if (generation != NativeGeofenceRecoveryScheduler.currentGeneration(context)) {
+                finish(publicRecoveryResult(result))
+                return@recoverForGeneration
+            }
+            if (result.isSuccess) {
+                NativeGeofenceRecoveryScheduler.completeGeneration(context, generation)
+            } else {
+                val error = result.exceptionOrNull()
+                if (!automatic || error == null || !NativeGeofenceRecoveryPolicy.isRetryable(error)) {
+                    NativeGeofenceRecoveryScheduler.completeGeneration(context, generation)
+                }
+            }
+            finish(publicRecoveryResult(result))
+        }
+    }
+
+    private fun publicRecoveryResult(result: Result<Unit>): Result<Unit> {
+        val aggregate = result.exceptionOrNull() as? GeofenceRecoveryAggregateException
+        return if (aggregate == null) result else Result.failure(aggregate.publicError)
+    }
+
+    private fun locationDisabledRecoveryError() = FlutterError(
+        NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+        "Android location services are disabled; geofence recovery was deferred."
+    )
+
+    internal fun recoverForGeneration(
+        generation: Long,
+        reason: String,
+        callback: (Result<Unit>) -> Unit
+    ) {
+        if (generation != NativeGeofenceRecoveryScheduler.currentGeneration(context)) {
+            callback(Result.success(Unit))
+            return
+        }
+        mutationRunner.run(callback) { complete ->
+            if (generation == NativeGeofenceRecoveryScheduler.currentGeneration(context)) {
+                recoverLocked(reason, complete)
+            } else {
+                complete(Result.success(Unit))
+            }
         }
     }
 
@@ -206,37 +394,171 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         }
     }
 
-    private fun recreateSequentially(
-        geofences: List<GeofenceWire>,
-        index: Int,
-        done: () -> Unit
-    ) {
-        if (index >= geofences.size) {
-            NativeGeofenceLogger.d(context, TAG, "${geofences.size} geofences re-created.")
-            done()
-            return
-        }
-
-        val completed = AtomicBoolean(false)
-        fun advance() {
-            if (completed.compareAndSet(false, true)) {
-                recreateSequentially(geofences, index + 1, done)
-            }
-        }
-
-        try {
-            createGeofenceHelper(geofences[index], cache = false) {
-                advance()
-            }
-        } catch (error: Throwable) {
-            NativeGeofenceLogger.e(
-                context,
-                TAG,
-                "Failed to start geofence recreation.",
-                error,
+    private fun recoverLocked(reason: String, callback: (Result<Unit>) -> Unit) {
+        val recoveryInventory = NativeGeofencePersistence.getRecoveryInventory(context)
+        val recoveryPlan = AndroidGeofenceRecoveryPlanner.plan(recoveryInventory)
+        val recoverable = recoveryPlan.recoverable
+        val orphanIds = recoveryPlan.cleanupIds
+        val failures = mutableListOf<GeofenceRecoveryFailure>()
+        for (id in recoveryPlan.unknownLifecycleIds) {
+            failures.add(
+                GeofenceRecoveryFailure(
+                    id = id,
+                    operation = "repair_lifecycle_metadata",
+                    error = FlutterError(
+                        NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                        "Geofence lifecycle metadata is not durably known; raw and " +
+                            "canonical evidence was retained for a later repair.",
+                    ),
+                ),
             )
-            advance()
         }
+
+        fun finish() {
+            if (failures.isEmpty()) {
+                NativeGeofenceLogger.d(
+                    context,
+                    TAG,
+                    "Android geofence recovery completed: rearmed=${recoverable.size}, " +
+                        "cleaned=${orphanIds.size}.",
+                )
+                callback(Result.success(Unit))
+                return
+            }
+
+            callback(
+                Result.failure(
+                    NativeGeofenceRecoveryFailures.aggregate(reason, failures)
+                )
+            )
+        }
+
+        fun rearm(index: Int) {
+            if (index >= recoverable.size) {
+                finish()
+                return
+            }
+
+            val geofence = recoverable[index]
+            if (!NativeGeofencePersistence.setLifecycleState(
+                    context,
+                    geofence.id,
+                    recoveryEligible = true,
+                    active = false
+                )
+            ) {
+                failures.add(
+                    GeofenceRecoveryFailure(
+                        id = geofence.id,
+                        operation = "prepare_rearm",
+                        error = FlutterError(
+                            NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                            "Failed to persist the inactive recovery state for a geofence."
+                        )
+                    )
+                )
+                rearm(index + 1)
+                return
+            }
+
+            val completed = AtomicBoolean(false)
+            fun advance(result: Result<Unit>) {
+                if (completed.compareAndSet(false, true)) {
+                    result.exceptionOrNull()?.let { error ->
+                        failures.add(
+                            GeofenceRecoveryFailure(
+                                id = geofence.id,
+                                operation = "rearm",
+                                error = error
+                            )
+                        )
+                    }
+                    rearm(index + 1)
+                }
+            }
+            try {
+                // cache=false preserves the configured absolute deadline and
+                // suppresses initial ENTER/DWELL triggers during rearm.
+                createGeofenceHelper(geofence, cache = false, callback = ::advance)
+            } catch (error: Throwable) {
+                advance(Result.failure(error))
+            }
+        }
+
+        fun cleanOrphan(index: Int) {
+            if (index >= orphanIds.size) {
+                rearm(0)
+                return
+            }
+
+            val id = orphanIds[index]
+            if (!NativeGeofencePersistence.markGeofenceForPlatformCleanup(context, id)) {
+                failures.add(
+                    GeofenceRecoveryFailure(
+                        id = id,
+                        operation = "clean_orphan",
+                        error = FlutterError(
+                            NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                            "Failed to retain durable orphan cleanup evidence."
+                        )
+                    )
+                )
+                cleanOrphan(index + 1)
+                return
+            }
+            val completed = AtomicBoolean(false)
+            fun advance(result: Result<Unit>) {
+                if (completed.compareAndSet(false, true)) {
+                    result.exceptionOrNull()?.let { error ->
+                        failures.add(
+                            GeofenceRecoveryFailure(
+                                id = id,
+                                operation = "clean_orphan",
+                                error = error
+                            )
+                        )
+                    }
+                    cleanOrphan(index + 1)
+                }
+            }
+            try {
+                geofencingClient.removeGeofences(listOf(id)).run {
+                    addOnSuccessListener {
+                        if (NativeGeofencePersistence.removeGeofence(context, id)) {
+                            advance(Result.success(Unit))
+                        } else {
+                            advance(
+                                Result.failure(
+                                    FlutterError(
+                                        NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                                        "Play services removed an orphan geofence, but its " +
+                                            "durable cleanup marker could not be removed."
+                                    )
+                                )
+                            )
+                        }
+                    }
+                    addOnFailureListener { error ->
+                        // Preserve the raw ID so a later recovery generation can
+                        // retry platform cleanup.
+                        val failure = AndroidGeofenceFailureMapper.from(error)
+                        advance(
+                            Result.failure(
+                                FlutterError(
+                                    NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                                    failure.message,
+                                    failure.details
+                                )
+                            )
+                        )
+                    }
+                }
+            } catch (error: Throwable) {
+                advance(Result.failure(error))
+            }
+        }
+
+        cleanOrphan(0)
     }
 
     private fun getGeofencePendingIntent(context: Context): PendingIntent {

@@ -22,6 +22,15 @@ class Constants {
         const val WORKER_PAYLOAD_KEY = "$PACKAGE_NAME.worker_payload"
         const val GEOFENCE_CALLBACK_WORK_GROUP = "geofence_callback_work_group"
 
+        const val RECOVERY_GENERATION_KEY = "$PACKAGE_NAME.recovery_generation"
+        const val RECOVERY_SCHEDULED_GENERATION_KEY =
+            "$PACKAGE_NAME.recovery_scheduled_generation"
+        const val RECOVERY_SCHEDULED_ATTEMPT_KEY = "$PACKAGE_NAME.recovery_scheduled_attempt"
+        const val RECOVERY_RETRY_WORK_NAME = "$PACKAGE_NAME.recovery_retry"
+        const val RECOVERY_RETRY_GENERATION_INPUT_KEY = "$PACKAGE_NAME.recovery_retry_generation"
+        const val RECOVERY_RETRY_ATTEMPT_INPUT_KEY = "$PACKAGE_NAME.recovery_retry_attempt"
+        const val RECOVERY_RETRY_REASON_INPUT_KEY = "$PACKAGE_NAME.recovery_retry_reason"
+
         const val LOG_FILE_CHANNEL_NAME = "native_geofence/log_file"
         const val LOG_FILE_NAME = "native_geofence.log"
         const val LOG_FILE_ENABLED_KEY = "$PACKAGE_NAME.log_file_enabled"
