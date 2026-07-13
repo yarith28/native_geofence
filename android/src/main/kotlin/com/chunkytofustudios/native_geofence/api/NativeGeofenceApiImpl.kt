@@ -3,6 +3,7 @@ package com.chunkytofustudios.native_geofence.api
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.PendingIntent
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -150,12 +151,52 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         }
     }
 
+    private fun geofenceBroadcastReceiverDeclaredAndEnabled(context: Context): Boolean {
+        val component = ComponentName(context, NativeGeofenceBroadcastReceiver::class.java)
+        val receiverInfo = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getReceiverInfo(
+                    component,
+                    PackageManager.ComponentInfoFlags.of(0L)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getReceiverInfo(component, 0)
+            }
+        } catch (_: PackageManager.NameNotFoundException) {
+            return false
+        }
+
+        val enabledSetting = context.packageManager.getComponentEnabledSetting(component)
+        val enabledBySetting = enabledSetting != PackageManager.COMPONENT_ENABLED_STATE_DISABLED &&
+            enabledSetting != PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER &&
+            enabledSetting != PackageManager.COMPONENT_ENABLED_STATE_DISABLED_UNTIL_USED
+        return receiverInfo.enabled && enabledBySetting
+    }
+
     @SuppressLint("MissingPermission")
     private fun createGeofenceHelper(
         geofence: GeofenceWire,
         cache: Boolean,
         callback: ((Result<Unit>) -> Unit)?
     ) {
+        if (!geofenceBroadcastReceiverDeclaredAndEnabled(context)) {
+            val message =
+                "NativeGeofenceBroadcastReceiver is missing or disabled in the merged " +
+                    "Android manifest. The receiver declared by native_geofence is " +
+                    "required for geofence callback delivery."
+            callback?.invoke(
+                Result.failure(
+                    FlutterError(
+                        NativeGeofenceErrorCode.ANDROID_MANIFEST_COMPONENT_MISSING.raw.toString(),
+                        message,
+                        NativeGeofenceBroadcastReceiver::class.java.name
+                    )
+                )
+            )
+            return
+        }
+
         // We try to create the Geofence without checking for permissions.
         // Only if creation fails we will alert the Flutter plugin of the permission issue.
         geofencingClient.addGeofences(

@@ -174,6 +174,10 @@ enum NativeGeofenceErrorCode {
 
   /// iOS Core Location rejected or did not confirm region monitoring.
   iosRegionMonitoringFailed,
+
+  /// An Android component required by the plugin was removed or disabled in
+  /// the merged application manifest.
+  androidManifestComponentMissing,
 }
 
 @HostApi()

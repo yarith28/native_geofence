@@ -227,6 +227,9 @@ enum NativeGeofenceErrorCode: Int {
   case callbackInvalid = 8
   /// iOS Core Location rejected or did not confirm region monitoring.
   case iosRegionMonitoringFailed = 9
+  /// An Android component required by the plugin was removed or disabled in
+  /// the merged application manifest.
+  case androidManifestComponentMissing = 10
 }
 
 /// Generated class from Pigeon that represents data sent in messages.

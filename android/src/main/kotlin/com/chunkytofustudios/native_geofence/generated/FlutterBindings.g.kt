@@ -261,7 +261,12 @@ enum class NativeGeofenceErrorCode(val raw: Int) {
    */
   CALLBACK_INVALID(8),
   /** iOS Core Location rejected or did not confirm region monitoring. */
-  IOS_REGION_MONITORING_FAILED(9);
+  IOS_REGION_MONITORING_FAILED(9),
+  /**
+   * An Android component required by the plugin was removed or disabled in
+   * the merged application manifest.
+   */
+  ANDROID_MANIFEST_COMPONENT_MISSING(10);
 
   companion object {
     fun ofRaw(raw: Int): NativeGeofenceErrorCode? {
