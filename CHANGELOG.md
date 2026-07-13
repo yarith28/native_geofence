@@ -1,5 +1,6 @@
 ## 1.4.0
 
+* Fails Android initialization when the callback dispatcher handle cannot be durably persisted
 * Serializes iOS background callback delivery and protects callback execution with bounded cleanup
 * Adds iOS delivery IDs and suppresses same-direction duplicate bursts within 10 seconds
 * Exposes the native event-creation time on geofence callback parameters
