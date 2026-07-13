@@ -166,6 +166,23 @@ class GeofenceRegistrationStoreTest {
     }
 
     @Test
+    fun `cleanup marker retains corrupt bytes and adds missing raw ids`() {
+        val backend = FakeGeofencePersistenceBackend()
+        backend.values[recordKey("corrupt")] = "not-json"
+        val store = GeofenceRegistrationStore(backend) { 1_000L }
+
+        assertTrue(store.markForPlatformCleanup("corrupt"))
+        assertTrue(store.markForPlatformCleanup("missing"))
+
+        assertEquals(listOf("corrupt", "missing"), store.rawIds())
+        assertEquals("not-json", backend.values[recordKey("corrupt")])
+        for (id in listOf("corrupt", "missing")) {
+            assertEquals(false, backend.values[recoveryEligibleKey(id)])
+            assertEquals(false, backend.values[activeKey(id)])
+        }
+    }
+
+    @Test
     fun `failed lifecycle write is reported and not treated as saved`() {
         val backend = FakeGeofencePersistenceBackend().apply { failNextCommit = true }
         val store = GeofenceRegistrationStore(backend) { 1_000L }
@@ -233,6 +250,11 @@ class GeofenceRegistrationStoreTest {
 
         fun expirationKey(id: String) =
             Constants.PERSISTENT_GEOFENCE_EXPIRATION_KEY_PREFIX + id
+
+        fun recoveryEligibleKey(id: String) =
+            Constants.PERSISTENT_GEOFENCE_RECOVERY_ELIGIBLE_KEY_PREFIX + id
+
+        fun activeKey(id: String) = Constants.PERSISTENT_GEOFENCE_ACTIVE_KEY_PREFIX + id
     }
 }
 

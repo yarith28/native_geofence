@@ -3,6 +3,7 @@
 * Owns the required non-exported Android callback receiver and foreground service, and reports a typed error if the receiver is removed or disabled in the merged manifest
 * Stores canonical Android registrations, absolute expiration deadlines, recovery eligibility, plugin-active state, and raw cleanup IDs with checked synchronous writes and exact rollback snapshots
 * Routes Android shared-`PendingIntent` broadcasts by persisted geofence ID, splits mixed callbacks by handle, and restores exact prior storage when native registration fails
+* Serializes Android create, remove, remove-all, explicit recreation, and orphan cleanup through an exact-once FIFO boundary while retaining durable evidence until platform removal succeeds
 * Fails Android initialization when the callback dispatcher handle cannot be durably persisted
 * Serializes iOS background callback delivery and protects callback execution with bounded cleanup
 * Adds iOS delivery IDs and suppresses same-direction duplicate bursts within 10 seconds
