@@ -1,5 +1,13 @@
 import Foundation
 
+struct IosSynchronizationPersistenceSnapshot {
+    let callbackMapping: Any?
+    let callbackContextMapping: Any?
+    let dedupMapping: Any?
+    let registrationFingerprint: Any?
+    let packageFingerprint: Any?
+}
+
 class NativeGeofencePersistence {
     private static let persistentState: UserDefaults = .standard
     
@@ -72,6 +80,77 @@ class NativeGeofencePersistence {
             forKey: Constants.GEOFENCE_CALLBACK_CONTEXT_DICT_KEY
         )
     }
+
+    static func getSynchronizationFingerprint() -> String? {
+        persistentState.string(
+            forKey: Constants.SYNCHRONIZATION_REGISTRATION_FINGERPRINT_KEY
+        )
+    }
+
+    @discardableResult
+    static func setSynchronizationFingerprint(_ fingerprint: String) -> Bool {
+        persistentState.set(
+            fingerprint,
+            forKey: Constants.SYNCHRONIZATION_REGISTRATION_FINGERPRINT_KEY
+        )
+        return persistentState.synchronize()
+    }
+
+    static func getSynchronizedPackageFingerprint() -> String? {
+        persistentState.string(
+            forKey: Constants.SYNCHRONIZED_PACKAGE_FINGERPRINT_KEY
+        )
+    }
+
+    @discardableResult
+    static func setSynchronizedPackageFingerprint(_ fingerprint: String) -> Bool {
+        persistentState.set(
+            fingerprint,
+            forKey: Constants.SYNCHRONIZED_PACKAGE_FINGERPRINT_KEY
+        )
+        return persistentState.synchronize()
+    }
+
+    static func synchronizationSnapshot() -> IosSynchronizationPersistenceSnapshot {
+        IosSynchronizationPersistenceSnapshot(
+            callbackMapping: persistentState.object(
+                forKey: Constants.GEOFENCE_CALLBACK_DICT_KEY
+            ),
+            callbackContextMapping: persistentState.object(
+                forKey: Constants.GEOFENCE_CALLBACK_CONTEXT_DICT_KEY
+            ),
+            dedupMapping: persistentState.object(
+                forKey: Constants.GEOFENCE_LAST_EVENT_DICT_KEY
+            ),
+            registrationFingerprint: persistentState.object(
+                forKey: Constants.SYNCHRONIZATION_REGISTRATION_FINGERPRINT_KEY
+            ),
+            packageFingerprint: persistentState.object(
+                forKey: Constants.SYNCHRONIZED_PACKAGE_FINGERPRINT_KEY
+            )
+        )
+    }
+
+    @discardableResult
+    static func restoreSynchronizationSnapshot(
+        _ snapshot: IosSynchronizationPersistenceSnapshot
+    ) -> Bool {
+        restoreObject(snapshot.callbackMapping, key: Constants.GEOFENCE_CALLBACK_DICT_KEY)
+        restoreObject(
+            snapshot.callbackContextMapping,
+            key: Constants.GEOFENCE_CALLBACK_CONTEXT_DICT_KEY
+        )
+        restoreObject(snapshot.dedupMapping, key: Constants.GEOFENCE_LAST_EVENT_DICT_KEY)
+        restoreObject(
+            snapshot.registrationFingerprint,
+            key: Constants.SYNCHRONIZATION_REGISTRATION_FINGERPRINT_KEY
+        )
+        restoreObject(
+            snapshot.packageFingerprint,
+            key: Constants.SYNCHRONIZED_PACKAGE_FINGERPRINT_KEY
+        )
+        return persistentState.synchronize()
+    }
     
     private static func getRegionCallbackMapping() -> [String: Any] {
         var callbackDict = persistentState.dictionary(forKey: Constants.GEOFENCE_CALLBACK_DICT_KEY)
@@ -90,5 +169,13 @@ class NativeGeofencePersistence {
         persistentState.dictionary(
             forKey: Constants.GEOFENCE_CALLBACK_CONTEXT_DICT_KEY
         ) ?? [:]
+    }
+
+    private static func restoreObject(_ value: Any?, key: String) {
+        if let value {
+            persistentState.set(value, forKey: key)
+        } else {
+            persistentState.removeObject(forKey: key)
+        }
     }
 }

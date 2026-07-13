@@ -285,6 +285,50 @@ class GeofenceRegistrationStoreTest {
     }
 
     @Test
+    fun `successful synchronization atomically publishes fingerprint and clears refresh marker`() {
+        val backend = FakeGeofencePersistenceBackend().apply {
+            values[Constants.SYNCHRONIZATION_REGISTRATION_FINGERPRINT_KEY] = "old"
+            values[Constants.CALLBACK_REFRESH_REQUIRED_KEY] = true
+        }
+        val store = GeofenceRegistrationStore(backend) { 1_000L }
+
+        assertTrue(store.commitSynchronization("new"))
+
+        assertEquals("new", store.synchronizationFingerprint())
+        assertFalse(store.isCallbackRefreshRequired())
+        assertFalse(backend.values.containsKey(Constants.CALLBACK_REFRESH_REQUIRED_KEY))
+    }
+
+    @Test
+    fun `failed synchronization commit preserves fingerprint and refresh marker`() {
+        val backend = FakeGeofencePersistenceBackend().apply {
+            values[Constants.SYNCHRONIZATION_REGISTRATION_FINGERPRINT_KEY] = "old"
+            values[Constants.CALLBACK_REFRESH_REQUIRED_KEY] = true
+            failNextCommit = true
+        }
+        val store = GeofenceRegistrationStore(backend) { 1_000L }
+
+        assertFalse(store.commitSynchronization("new"))
+
+        assertEquals("old", store.synchronizationFingerprint())
+        assertTrue(store.isCallbackRefreshRequired())
+    }
+
+    @Test
+    fun `fingerprint rollback leaves refresh marker untouched`() {
+        val backend = FakeGeofencePersistenceBackend().apply {
+            values[Constants.SYNCHRONIZATION_REGISTRATION_FINGERPRINT_KEY] = "changed"
+            values[Constants.CALLBACK_REFRESH_REQUIRED_KEY] = true
+        }
+        val store = GeofenceRegistrationStore(backend) { 1_000L }
+
+        assertTrue(store.restoreSynchronizationFingerprint("old"))
+
+        assertEquals("old", store.synchronizationFingerprint())
+        assertTrue(store.isCallbackRefreshRequired())
+    }
+
+    @Test
     fun `finite to infinite replacement removes the deadline`() {
         var now = 1_000L
         val backend = FakeGeofencePersistenceBackend()
@@ -309,6 +353,43 @@ class GeofenceRegistrationStoreTest {
         assertEquals(
             Long.MAX_VALUE,
             GeofenceRegistrationStore.safeDeadline(Long.MAX_VALUE - 5, 10)
+        )
+    }
+
+    @Test
+    fun `synchronization metadata refresh preserves canonical finite deadline`() {
+        var now = 1_000L
+        val backend = FakeGeofencePersistenceBackend()
+        val store = GeofenceRegistrationStore(backend) { now }
+        assertTrue(
+            store.saveConfiguredGeofence(
+                geofence(callbackHandle = 1, callbackContext = 10, duration = 500),
+                callbackPackageFingerprint = "old"
+            )
+        )
+        now = 1_200L
+
+        val prepared = store.prepareSynchronizedGeofence(
+            geofence(callbackHandle = 2, callbackContext = 20, duration = 500)
+        )
+        assertEquals(1, store.getConfiguredGeofence("office")?.configuredGeofence?.callbackHandle)
+        assertEquals(10, store.getConfiguredGeofence("office")?.configuredGeofence?.callbackContext)
+        assertEquals(300L, prepared.platformGeofence?.androidSettings?.expirationDurationMillis)
+        assertTrue(store.commitSynchronizedGeofence(prepared, "current"))
+
+        assertEquals(1_500L, backend.values[expirationKey("office")])
+        assertEquals(
+            300L,
+            store.getRecoverableGeofence("office")
+                ?.androidSettings
+                ?.expirationDurationMillis
+        )
+        assertEquals(
+            500L,
+            store.getConfiguredGeofence("office")
+                ?.configuredGeofence
+                ?.androidSettings
+                ?.expirationDurationMillis
         )
     }
 

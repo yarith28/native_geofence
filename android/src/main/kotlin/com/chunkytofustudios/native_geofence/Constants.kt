@@ -18,6 +18,8 @@ class Constants {
 
         const val CALLBACK_HANDLE_KEY = "$PACKAGE_NAME.callback_handle"
         const val CALLBACK_DISPATCHER_HANDLE_KEY = "callback_dispatch_handler"
+        const val SYNCHRONIZATION_REGISTRATION_FINGERPRINT_KEY =
+            "synchronization_registration_fingerprint"
         const val CALLBACK_DISPATCHER_PACKAGE_FINGERPRINT_KEY =
             "$PACKAGE_NAME.callback_dispatcher_package_fingerprint"
         const val CALLBACK_REFRESH_REQUIRED_KEY = "$PACKAGE_NAME.callback_refresh_required"

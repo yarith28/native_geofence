@@ -14,10 +14,10 @@ enum GeofenceCreatePreflightFailure: Error, Equatable {
     }
 }
 
-/// Owns create completions only while their off-main Location Services check is
-/// outstanding. Flutter API calls and preflight continuations are serialized on
-/// the main thread, so handing an operation off to the registration coordinator
-/// is an atomic ownership transfer.
+/// Owns create admission while an off-main preflight or its handed-off Core
+/// Location registration is outstanding. Completion ownership transfers to the
+/// registration coordinator, but the token remains the same-ID duplicate
+/// authority until that one-shot completion resolves.
 final class GeofenceCreatePreflightRegistry {
     typealias Completion = (Result<Void, any Error>) -> Void
     typealias FailureFactory = (GeofenceCreatePreflightFailure) -> any Error
@@ -82,8 +82,11 @@ final class GeofenceCreatePreflightRegistry {
     /// The supplied completion remains one-shot after the transfer.
     @discardableResult
     func takeIfPending(_ token: Token) -> Completion? {
-        guard let operation = remove(token) else { return nil }
-        return { result in
+        guard let operation = removePending(token, endAdmission: false) else {
+            return nil
+        }
+        return { [weak self] result in
+            self?.endAdmission(token: token, id: operation.id)
             operation.completion.resolve(result)
         }
     }
@@ -91,7 +94,7 @@ final class GeofenceCreatePreflightRegistry {
     @discardableResult
     func cancel(id: String) -> Bool {
         guard let token = tokensById[id],
-              let operation = remove(token)
+              let operation = removePending(token, endAdmission: true)
         else {
             return false
         }
@@ -103,7 +106,9 @@ final class GeofenceCreatePreflightRegistry {
         // Stable ordering makes simultaneous cancellation deterministic and
         // keeps completion behavior reproducible in tests and diagnostics.
         let tokens = operationsByToken.keys.sorted { $0.sequence < $1.sequence }
-        let operations = tokens.compactMap(remove)
+        let operations = tokens.compactMap {
+            removePending($0, endAdmission: true)
+        }
         for operation in operations {
             operation.completion.resolve(
                 .failure(makeFailure(.removed(id: operation.id)))
@@ -111,13 +116,22 @@ final class GeofenceCreatePreflightRegistry {
         }
     }
 
-    private func remove(_ token: Token) -> PendingOperation? {
+    private func removePending(
+        _ token: Token,
+        endAdmission: Bool
+    ) -> PendingOperation? {
         guard let operation = operationsByToken.removeValue(forKey: token) else {
             return nil
         }
-        if tokensById[operation.id] == token {
-            tokensById.removeValue(forKey: operation.id)
+        if endAdmission {
+            self.endAdmission(token: token, id: operation.id)
         }
         return operation
+    }
+
+    private func endAdmission(token: Token, id: String) {
+        if tokensById[id] == token {
+            tokensById.removeValue(forKey: id)
+        }
     }
 }

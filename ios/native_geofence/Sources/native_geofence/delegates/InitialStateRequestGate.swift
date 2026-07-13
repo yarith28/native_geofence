@@ -21,6 +21,22 @@ final class InitialStateRequestGate {
         }
     }
 
+    /// Replaces only authority owned by one failed synchronization transaction.
+    /// Unrelated committed regions and their outstanding one-shot probes remain
+    /// valid. Responses for touched pre-transaction probes are stale after a
+    /// stop/restart and are deliberately invalidated.
+    func replaceCommittedRegions(
+        for identifiers: Set<String>,
+        with regions: [CLCircularRegion]
+    ) {
+        for identifier in identifiers {
+            remove(identifier)
+        }
+        restoreCommittedRegions(
+            regions.filter { identifiers.contains($0.identifier) }
+        )
+    }
+
     /// Applies a successfully committed registration and returns its optional
     /// one-shot state probe.
     func commit(

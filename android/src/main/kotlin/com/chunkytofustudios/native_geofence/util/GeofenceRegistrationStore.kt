@@ -77,6 +77,12 @@ internal data class GeofenceStatusInventoryEntry(
     val callbackPackageFingerprint: String?
 )
 
+internal data class PreparedSynchronizedGeofence(
+    val configuredGeofence: GeofenceWire,
+    val platformGeofence: GeofenceWire?,
+    val expirationDeadlineMillis: Long?
+)
+
 /**
  * Durable Android registration state with a deliberately small backend seam so
  * lifecycle and rollback behavior can be tested without Android framework IO.
@@ -113,6 +119,95 @@ internal class GeofenceRegistrationStore(
             } else {
                 putString(callbackPackageFingerprintKey(geofence.id), callbackPackageFingerprint)
             }
+        }
+    }
+
+    /**
+     * Prepares an app-owned synchronization update without publishing its new
+     * callback metadata or extending an existing finite lifetime. A new or
+     * already-expired desired registration receives a fresh explicit lifetime;
+     * an active replacement keeps its old deadline.
+     */
+    fun prepareSynchronizedGeofence(
+        geofence: GeofenceWire
+    ): PreparedSynchronizedGeofence {
+        val previous = load(geofence.id)
+        val durationMillis = geofence.androidSettings.expirationDurationMillis
+        val previousDuration = previous
+            ?.configuredGeofence
+            ?.androidSettings
+            ?.expirationDurationMillis
+        val previousDeadline = previous?.expirationDeadlineMillis
+        val now = nowMillis()
+        val deadlineMillis = if (
+            durationMillis != null &&
+            durationMillis == previousDuration &&
+            previousDeadline != null &&
+            previousDeadline > now
+        ) {
+            previousDeadline
+        } else {
+            durationMillis?.let { safeDeadline(now, it) }
+        }
+        val platformGeofence = deadlineMillis?.let { deadline ->
+            val remaining = deadline - now
+            if (remaining <= 0L) null else geofence.copy(
+                androidSettings = geofence.androidSettings.copy(
+                    expirationDurationMillis = remaining
+                )
+            )
+        } ?: if (durationMillis == null) geofence else null
+        return PreparedSynchronizedGeofence(
+            configuredGeofence = geofence,
+            platformGeofence = platformGeofence,
+            expirationDeadlineMillis = deadlineMillis
+        )
+    }
+
+    fun commitSynchronizedGeofence(
+        prepared: PreparedSynchronizedGeofence,
+        callbackPackageFingerprint: String
+    ): Boolean {
+        val geofence = prepared.configuredGeofence
+        val rawIds = rawIndex().toMutableSet().apply { add(geofence.id) }
+        val configuredIds = configuredIndex().toMutableSet().apply { add(geofence.id) }
+        val recordJson = Json.encodeToString(GeofenceStorage.fromWire(geofence))
+        return backend.edit {
+            putStringSet(Constants.PERSISTENT_GEOFENCES_IDS_KEY, rawIds)
+            putStringSet(Constants.PERSISTENT_CONFIGURED_GEOFENCES_IDS_KEY, configuredIds)
+            putString(recordKey(geofence.id), recordJson)
+            if (prepared.expirationDeadlineMillis == null) {
+                remove(expirationKey(geofence.id))
+            } else {
+                putLong(
+                    expirationKey(geofence.id),
+                    prepared.expirationDeadlineMillis
+                )
+            }
+            putBoolean(recoveryEligibleKey(geofence.id), true)
+            putBoolean(activeKey(geofence.id), true)
+            putString(
+                callbackPackageFingerprintKey(geofence.id),
+                callbackPackageFingerprint
+            )
+        }
+    }
+
+    fun updateCallbackMetadata(
+        id: String,
+        callbackHandle: Long,
+        callbackContext: Long?,
+        callbackPackageFingerprint: String
+    ): Boolean {
+        val stored = load(id) ?: return false
+        val updated = stored.configuredGeofence.copy(
+            callbackHandle = callbackHandle,
+            callbackContext = callbackContext
+        )
+        val recordJson = Json.encodeToString(GeofenceStorage.fromWire(updated))
+        return backend.edit {
+            putString(recordKey(id), recordJson)
+            putString(callbackPackageFingerprintKey(id), callbackPackageFingerprint)
         }
     }
 
@@ -208,6 +303,25 @@ internal class GeofenceRegistrationStore(
 
     fun markCallbackRefreshRequired(): Boolean = backend.edit {
         putBoolean(Constants.CALLBACK_REFRESH_REQUIRED_KEY, true)
+    }
+
+    fun synchronizationFingerprint(): String? = safeRead {
+        backend.getString(Constants.SYNCHRONIZATION_REGISTRATION_FINGERPRINT_KEY)
+    }
+
+    /** Restores only the transaction fingerprint; callback-refresh evidence is independent. */
+    fun restoreSynchronizationFingerprint(fingerprint: String?): Boolean = backend.edit {
+        if (fingerprint == null) {
+            remove(Constants.SYNCHRONIZATION_REGISTRATION_FINGERPRINT_KEY)
+        } else {
+            putString(Constants.SYNCHRONIZATION_REGISTRATION_FINGERPRINT_KEY, fingerprint)
+        }
+    }
+
+    /** Publishes successful synchronization and clears prior stale-callback evidence atomically. */
+    fun commitSynchronization(fingerprint: String): Boolean = backend.edit {
+        putString(Constants.SYNCHRONIZATION_REGISTRATION_FINGERPRINT_KEY, fingerprint)
+        remove(Constants.CALLBACK_REFRESH_REQUIRED_KEY)
     }
 
     fun getRecoverableGeofences(): List<GeofenceWire> =

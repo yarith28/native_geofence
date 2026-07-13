@@ -97,6 +97,26 @@ final class GeofenceCreatePreflightRegistryTests: XCTestCase {
         XCTAssertTrue(completion.failures.isEmpty)
         XCTAssertEqual(completion.count, 1)
     }
+
+    func testHandedOffRegistrationRetainsSameIdDuplicateAuthority() throws {
+        let registry = GeofenceCreatePreflightRegistry()
+        let first = CompletionRecorder()
+        let duplicate = CompletionRecorder()
+        let replacement = CompletionRecorder()
+        let token = try XCTUnwrap(
+            registry.begin(id: "office", completion: first.record)
+        )
+        let handedOff = try XCTUnwrap(registry.takeIfPending(token))
+
+        XCTAssertNil(registry.begin(id: "office", completion: duplicate.record))
+        XCTAssertEqual(duplicate.failures, [.duplicateRequest(id: "office")])
+
+        handedOff(.success(()))
+        XCTAssertNotNil(
+            registry.begin(id: "office", completion: replacement.record)
+        )
+        XCTAssertEqual(first.successes, 1)
+    }
 }
 
 private final class CompletionRecorder {
