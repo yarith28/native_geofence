@@ -103,7 +103,7 @@ If your app is using Objective-C you will need to migrate to Swift. [Here is a g
 <string>USER_VISIBLE_STRING__DESCRIBE_HOW_YOUR_APP_USES_BACKGROUND_LOCATION.</string>
 ```
 
-*Explanation: The in-use location permission is required to create geofences. The always location permission is [required](https://dwirandyh.medium.com/deep-dive-into-core-location-in-ios-geofencing-region-monitoring-7846802c968e) if you want to be notified of geofence events when your app isn't running.*
+*Explanation: iOS geofence monitoring in this plugin requires Always location authorization before calling `createGeofence()`. When-In-Use authorization is not enough because the plugin is designed for background and terminated-app geofence delivery.*
 
 3. Update your AppDelegate to call `NativeGeofencePlugin`:
 
@@ -182,7 +182,7 @@ This plugin does not deal with obtaining permissions from the user. Please use a
 As noted in the setup section you will need to obtain the following permissions:
 
 * `Permission.location`
-* `Permission.locationAlways`: if you want to be notified of geofence events when your app isn't running
+* `Permission.locationAlways`: required on iOS before `createGeofence()`
 
 ### Create geofence
 
@@ -277,6 +277,10 @@ try {
 } on NativeGeofenceException catch (e) {
   if (e.code == NativeGeofenceErrorCode.missingLocationPermission) {
     print('Did the user grant us the location permission yet?')
+    return
+  }
+  if (e.code == NativeGeofenceErrorCode.missingBackgroundLocationPermission) {
+    print('Background location permission is required for geofencing.')
     return
   }
   if (e.code == NativeGeofenceErrorCode.pluginInternal) {

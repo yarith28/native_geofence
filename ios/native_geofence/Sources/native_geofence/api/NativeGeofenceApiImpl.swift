@@ -1,10 +1,21 @@
 import CoreLocation
+import Foundation
 import Flutter
 import OSLog
 import UIKit
 
 public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
     private let log = Logger(subsystem: Constants.PACKAGE_NAME, category: "NativeGeofenceApiImpl")
+    private let locationServicesQueue = DispatchQueue(
+        label: "\(Constants.PACKAGE_NAME).location-services",
+        qos: .utility
+    )
+    private let createPreflightRegistry = GeofenceCreatePreflightRegistry { failure in
+        nativeGeofenceError(
+            .iosRegionMonitoringFailed,
+            message: failure.message
+        )
+    }
     
     private let locationManagerDelegate: LocationManagerDelegate
     
@@ -17,6 +28,35 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
     }
     
     func createGeofence(geofence: GeofenceWire, completion: @escaping (Result<Void, any Error>) -> Void) {
+        guard let preflightToken = createPreflightRegistry.begin(
+            id: geofence.id,
+            completion: completion
+        ) else {
+            return
+        }
+
+        locationServicesQueue.async { [self] in
+            let locationServicesEnabled = CLLocationManager.locationServicesEnabled()
+            DispatchQueue.main.async { [self] in
+                guard let completion = createPreflightRegistry.takeIfPending(
+                    preflightToken
+                ) else {
+                    return
+                }
+                createGeofence(
+                    geofence: geofence,
+                    locationServicesEnabled: locationServicesEnabled,
+                    completion: completion
+                )
+            }
+        }
+    }
+
+    private func createGeofence(
+        geofence: GeofenceWire,
+        locationServicesEnabled: Bool,
+        completion: @escaping (Result<Void, any Error>) -> Void
+    ) {
         guard CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self) else {
             completion(
                 .failure(
@@ -26,6 +66,14 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
                     )
                 )
             )
+            return
+        }
+
+        if let failure = IosGeofencePreflight.failure(
+            locationServicesEnabled: locationServicesEnabled,
+            authorizationStatus: locationManagerDelegate.locationManager.authorizationStatus
+        ) {
+            completion(.failure(nativeGeofenceError(failure)))
             return
         }
 
@@ -93,6 +141,7 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
     }
     
     func removeGeofenceById(id: String, completion: @escaping (Result<Void, any Error>) -> Void) {
+        createPreflightRegistry.cancel(id: id)
         // Snapshot ownership before cancellation removes callback metadata.
         let regions = ownedMonitoredRegions().filter { $0.identifier == id }
         locationManagerDelegate.cancelMonitoringStart(id: id)
@@ -106,6 +155,7 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
     }
     
     func removeAllGeofences(completion: @escaping (Result<Void, any Error>) -> Void) {
+        createPreflightRegistry.cancelAll()
         // CLLocationManager.monitoredRegions is app-wide. Snapshot only regions
         // backed by plugin callback metadata before clearing that metadata.
         let regions = ownedMonitoredRegions()
