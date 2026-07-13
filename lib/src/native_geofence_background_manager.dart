@@ -9,7 +9,9 @@ class NativeGeofenceBackgroundManager {
 
   /// The singleton instance of [NativeGeofenceBackgroundManager].
   ///
-  /// This is initialized by the plugin's background callback dispatcher.
+  /// This is initialized by the plugin's background callback dispatcher and by
+  /// `NativeGeofenceManager.initialize()` on iOS, where foreground delivery uses
+  /// the same process-wide callback runtime.
   /// Access before a geofence callback initializes it throws a
   /// [NativeGeofenceException].
   static NativeGeofenceBackgroundManager get instance {
@@ -17,7 +19,8 @@ class NativeGeofenceBackgroundManager {
     if (instance == null) {
       throw NativeGeofenceException.internal(
         message: 'NativeGeofenceBackgroundManager has not been initialized '
-            'yet; call this only from a geofence callback.',
+            'yet; initialize NativeGeofenceManager on iOS or access this only '
+            'from a geofence callback.',
       );
     }
     return instance;
@@ -49,8 +52,25 @@ class NativeGeofenceBackgroundManager {
 
 /// Private method internal to plugin, do not use.
 Future<void> createNativeGeofenceBackgroundManagerInstance() async {
-  final api = NativeGeofenceBackgroundApi();
+  final api = ensureNativeGeofenceBackgroundManagerInstance();
+  await api.triggerApiInitialized();
+}
+
+/// Private method internal to the plugin. Creates the singleton at most once
+/// and returns the exact background API owned by it.
+NativeGeofenceBackgroundApi ensureNativeGeofenceBackgroundManagerInstance({
+  NativeGeofenceBackgroundApi Function()? createApi,
+}) {
+  final existing = NativeGeofenceBackgroundManager._instance;
+  if (existing != null) return existing._api;
+
+  final api = (createApi ?? NativeGeofenceBackgroundApi.new)();
   NativeGeofenceBackgroundManager._instance =
       NativeGeofenceBackgroundManager._(api);
-  await api.triggerApiInitialized();
+  return api;
+}
+
+/// Test-only reset for isolate-local singleton state.
+void resetNativeGeofenceBackgroundManagerForTesting() {
+  NativeGeofenceBackgroundManager._instance = null;
 }

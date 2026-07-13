@@ -19,8 +19,8 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
     
     private let locationManagerDelegate: LocationManagerDelegate
     
-    init(registerPlugins: FlutterPluginRegistrantCallback) {
-        self.locationManagerDelegate = LocationManagerDelegate(flutterPluginRegistrantCallback: registerPlugins)
+    init(locationManagerDelegate: LocationManagerDelegate) {
+        self.locationManagerDelegate = locationManagerDelegate
     }
     
     func initialize(callbackDispatcherHandle: Int64) throws {

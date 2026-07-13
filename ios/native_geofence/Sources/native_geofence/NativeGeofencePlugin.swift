@@ -8,11 +8,15 @@ public class NativeGeofencePlugin: NSObject, FlutterPlugin {
     private static var registerPlugins: FlutterPluginRegistrantCallback? = nil
     private static var instance: NativeGeofencePlugin? = nil
     
-    private var nativeGeofenceApi: NativeGeofenceApiImpl? = nil
+    private var runtimeHost: IosGeofenceRuntimeHost?
     
     init(registrar: FlutterPluginRegistrar, registerPlugins: FlutterPluginRegistrantCallback) {
-        nativeGeofenceApi = NativeGeofenceApiImpl(registerPlugins: registerPlugins)
-        NativeGeofenceApiSetup.setUp(binaryMessenger: registrar.messenger(), api: nativeGeofenceApi)
+        let host = IosGeofenceRuntimeHost(
+            mainMessenger: registrar.messenger(),
+            registerPlugins: registerPlugins
+        )
+        runtimeHost = host
+        host.installMainHandlers()
         NativeGeofencePlugin.log.debug("NativeGeofenceApi initialized.")
     }
     
@@ -41,7 +45,9 @@ public class NativeGeofencePlugin: NSObject, FlutterPlugin {
     }
     
     public func detachFromEngine(for registrar: any FlutterPluginRegistrar) {
-        nativeGeofenceApi = nil
+        runtimeHost?.detachMainHandlers()
+        runtimeHost?.cleanupHeadlessRuntime()
+        runtimeHost = nil
         NativeGeofencePlugin.instance = nil
         NativeGeofencePlugin.log.debug("NativeGeofencePlugin detached.")
     }

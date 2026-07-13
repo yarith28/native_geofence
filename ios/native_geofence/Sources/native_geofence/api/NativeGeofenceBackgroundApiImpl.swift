@@ -10,6 +10,7 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
     private let binaryMessenger: FlutterBinaryMessenger
     private let stateLock = NSLock()
     private var cleanup: (() -> Void)?
+    private var deliveryCompletions: [String: (Bool) -> Void] = [:]
     private var closed = false
 
     private lazy var session = SerialCallbackSession<GeofenceCallbackParamsWire>(
@@ -39,13 +40,21 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
     /// Returns true once this open native session owns the delivery attempt.
     @discardableResult
     func geofenceTriggered(
-        params: GeofenceCallbackParamsWire
+        params: GeofenceCallbackParamsWire,
+        completion deliveryCompletion: @escaping (Bool) -> Void
     ) -> Bool {
+        guard let eventId = params.eventId else {
+            log.error("Background callback had no delivery-attempt ID; rejecting event.")
+            return false
+        }
         let canEnqueue = withStateLock {
             guard !closed else { return false }
+            guard deliveryCompletions[eventId] == nil else { return false }
+            deliveryCompletions[eventId] = deliveryCompletion
             return true
         }
         guard canEnqueue, session.enqueue(params) else {
+            _ = takeDeliveryCompletion(eventId: eventId)
             log.error("Background callback session is closed; rejecting event.")
             return false
         }
@@ -76,7 +85,9 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
                     )
                     return
                 }
+                let succeeded: Bool
                 if case .success = result {
+                    succeeded = true
                     NativeGeofenceDiagnostics.record(
                         .worker,
                         succeeded: true,
@@ -87,6 +98,7 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
                         "Dart callback for geofence IDs=[\(Self.geofenceIds(params))] completed."
                     )
                 } else {
+                    succeeded = false
                     NativeGeofenceDiagnostics.record(
                         .worker,
                         succeeded: false,
@@ -96,6 +108,9 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
                     self.log.error(
                         "Dart callback for geofence IDs=[\(Self.geofenceIds(params))] failed."
                     )
+                }
+                if let eventId = params.eventId {
+                    self.takeDeliveryCompletion(eventId: eventId)?(succeeded)
                 }
             }
         }
@@ -127,14 +142,17 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
     private func close(
         reason: SerialCallbackSession<GeofenceCallbackParamsWire>.CloseReason
     ) {
-        let cleanupToRun: (() -> Void)? = withStateLock {
+        let closeActions: (() -> (cleanup: (() -> Void)?, completions: [(Bool) -> Void]))? = withStateLock {
             guard !closed else { return nil }
             closed = true
             defer { cleanup = nil }
-            return cleanup
+            let completions = Array(deliveryCompletions.values)
+            deliveryCompletions.removeAll()
+            let cleanupToRun = cleanup
+            return { (cleanupToRun, completions) }
         }
-        guard let cleanupToRun else { return }
-
+        guard let closeActions else { return }
+        let actions = closeActions()
         switch reason {
         case .idle:
             log.debug("Background callback session is idle; cleaning up.")
@@ -164,7 +182,16 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
             )
             log.error("\(message)")
         }
-        runCleanupOnMain(cleanupToRun)
+        if let cleanupToRun = actions.cleanup {
+            runCleanupOnMain(cleanupToRun)
+        }
+        actions.completions.forEach { $0(false) }
+    }
+
+    private func takeDeliveryCompletion(eventId: String) -> ((Bool) -> Void)? {
+        withStateLock {
+            deliveryCompletions.removeValue(forKey: eventId)
+        }
     }
 
     private func withStateLock<T>(_ body: () -> T) -> T {
@@ -177,7 +204,7 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
         if Thread.isMainThread {
             cleanup()
         } else {
-            DispatchQueue.main.async(execute: cleanup)
+            DispatchQueue.main.sync(execute: cleanup)
         }
     }
 
