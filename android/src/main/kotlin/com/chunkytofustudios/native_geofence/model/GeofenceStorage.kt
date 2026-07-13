@@ -12,7 +12,9 @@ class GeofenceStorage(
     private val triggers: List<GeofenceEvent>,
     private val iosSettings: IosGeofenceSettingsStorage,
     private val androidSettings: AndroidGeofenceSettingsStorage,
-    private val callbackHandle: Long
+    private val callbackHandle: Long,
+    // Defaulted so records written before callback contexts still decode.
+    private val callbackContext: Long? = null
 ) {
     companion object {
         fun fromWire(e: GeofenceWire): GeofenceStorage {
@@ -23,7 +25,8 @@ class GeofenceStorage(
                 e.triggers,
                 IosGeofenceSettingsStorage.fromWire(e.iosSettings),
                 AndroidGeofenceSettingsStorage.fromWire(e.androidSettings),
-                e.callbackHandle
+                e.callbackHandle,
+                e.callbackContext
             )
         }
     }
@@ -36,7 +39,8 @@ class GeofenceStorage(
             triggers,
             iosSettings.toWire(),
             androidSettings.toWire(),
-            callbackHandle
+            callbackHandle,
+            callbackContext
         )
     }
 }

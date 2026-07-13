@@ -19,6 +19,7 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         getCallbackHandle: NativeGeofencePersistence.getRegionCallbackHandle,
         setCallbackHandle: NativeGeofencePersistence.setRegionCallbackHandle,
         removeCallbackHandle: NativeGeofencePersistence.removeRegionCallbackHandle,
+        setCallbackContext: NativeGeofencePersistence.setRegionCallbackContext,
         restoreCommittedRegion: { [weak self] region in
             self?.initialStateRequestGate.restoreCommittedRegions([region])
         },
@@ -65,12 +66,14 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
     func startMonitoring(
         region: CLCircularRegion,
         callbackHandle: Int64,
+        callbackContext: Int64?,
         initialTrigger: Bool,
         completion: @escaping (Result<Void, any Error>) -> Void
     ) {
         let committedRegistration = regionRegistrationCoordinator.start(
             region: region,
             callbackHandle: callbackHandle,
+            callbackContext: callbackContext,
             initialTrigger: initialTrigger
         ) { result in
             switch result {
@@ -210,7 +213,10 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
             event: event,
             eventAtMillis: eventAtMillis,
             callbackHandle: callbackHandle,
-            eventId: UUID().uuidString
+            eventId: UUID().uuidString,
+            callbackContextsByGeofenceId: NativeGeofencePersistence
+                .getRegionCallbackContext(id: activeGeofence.id)
+                .map { [activeGeofence.id: $0] }
         )
 
         deliverEvent(params) { [weak self] in

@@ -75,6 +75,12 @@ class GeofenceWire {
   final AndroidGeofenceSettingsWire androidSettings;
   final int callbackHandle;
 
+  /// Opaque caller-owned value persisted with this registration and returned
+  /// with callbacks. The plugin never interprets this value.
+  ///
+  /// This nullable trailing field preserves older wire construction sites.
+  final int? callbackContext;
+
   const GeofenceWire({
     required this.id,
     required this.location,
@@ -83,6 +89,7 @@ class GeofenceWire {
     required this.iosSettings,
     required this.androidSettings,
     required this.callbackHandle,
+    this.callbackContext,
   });
 }
 
@@ -110,12 +117,16 @@ class GeofenceCallbackParamsWire {
   final int? eventAtMillis;
   final int callbackHandle;
 
-  /// Unique ID for this native delivery attempt. Currently only set on iOS.
+  /// Unique ID for this native delivery attempt. Set on Android and iOS.
   ///
   /// This is not a durable business or physical-transition idempotency key.
-  /// It remains the last field for source compatibility with positional native
-  /// call sites generated before delivery IDs were added.
+  /// This nullable field retains its established wire position for compatibility;
+  /// newer nullable fields may follow it and fields must not be reordered.
   final String? eventId;
+
+  /// Opaque callback contexts keyed by triggering geofence ID.
+  /// Registrations without a context are absent from this map.
+  final Map<String, int>? callbackContextsByGeofenceId;
 
   const GeofenceCallbackParamsWire({
     required this.geofences,
@@ -124,6 +135,7 @@ class GeofenceCallbackParamsWire {
     this.eventAtMillis,
     required this.callbackHandle,
     this.eventId,
+    this.callbackContextsByGeofenceId,
   });
 }
 

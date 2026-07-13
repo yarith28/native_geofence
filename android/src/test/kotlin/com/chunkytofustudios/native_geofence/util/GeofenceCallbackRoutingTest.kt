@@ -41,6 +41,19 @@ class GeofenceCallbackRoutingTest {
     }
 
     @Test
+    fun `contexts remain keyed per geofence within a callback group`() {
+        val registrations = mapOf(
+            "a" to geofence("a", 10, callbackContext = 101),
+            "b" to geofence("b", 10),
+            "c" to geofence("c", 10, callbackContext = 303)
+        )
+
+        val routed = route(listOf("a", "b", "c"), registrations).callbackGroups.single()
+
+        assertEquals(mapOf("a" to 101L, "c" to 303L), routed.callbackContextsByGeofenceId)
+    }
+
+    @Test
     fun `missing registrations and zero callback handles are classified as orphans`() {
         val registrations = mapOf("zero" to geofence("zero", 0))
 
@@ -116,7 +129,11 @@ class GeofenceCallbackRoutingTest {
     private fun ids(params: com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWire) =
         params.geofences.map { it.id }
 
-    private fun geofence(id: String, callbackHandle: Long) = GeofenceWire(
+    private fun geofence(
+        id: String,
+        callbackHandle: Long,
+        callbackContext: Long? = null
+    ) = GeofenceWire(
         id = id,
         location = LocationWire(
             latitude = 11.0,
@@ -133,7 +150,8 @@ class GeofenceCallbackRoutingTest {
             loiteringDelayMillis = 0,
             notificationResponsivenessMillis = null
         ),
-        callbackHandle = callbackHandle
+        callbackHandle = callbackHandle,
+        callbackContext = callbackContext
     )
 }
 

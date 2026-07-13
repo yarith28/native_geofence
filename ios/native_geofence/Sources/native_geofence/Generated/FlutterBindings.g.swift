@@ -394,6 +394,11 @@ struct GeofenceWire: Hashable {
   var iosSettings: IosGeofenceSettingsWire
   var androidSettings: AndroidGeofenceSettingsWire
   var callbackHandle: Int64
+  /// Opaque caller-owned value persisted with this registration and returned
+  /// with callbacks. The plugin never interprets this value.
+  ///
+  /// This nullable trailing field preserves older wire construction sites.
+  var callbackContext: Int64? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -405,6 +410,7 @@ struct GeofenceWire: Hashable {
     let iosSettings = pigeonVar_list[4] as! IosGeofenceSettingsWire
     let androidSettings = pigeonVar_list[5] as! AndroidGeofenceSettingsWire
     let callbackHandle = pigeonVar_list[6] as! Int64
+    let callbackContext: Int64? = nilOrValue(pigeonVar_list[7])
 
     return GeofenceWire(
       id: id,
@@ -413,7 +419,8 @@ struct GeofenceWire: Hashable {
       triggers: triggers,
       iosSettings: iosSettings,
       androidSettings: androidSettings,
-      callbackHandle: callbackHandle
+      callbackHandle: callbackHandle,
+      callbackContext: callbackContext
     )
   }
   func toList() -> [Any?] {
@@ -425,13 +432,14 @@ struct GeofenceWire: Hashable {
       iosSettings,
       androidSettings,
       callbackHandle,
+      callbackContext,
     ]
   }
   static func == (lhs: GeofenceWire, rhs: GeofenceWire) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsFlutterBindings(lhs.id, rhs.id) && deepEqualsFlutterBindings(lhs.location, rhs.location) && deepEqualsFlutterBindings(lhs.radiusMeters, rhs.radiusMeters) && deepEqualsFlutterBindings(lhs.triggers, rhs.triggers) && deepEqualsFlutterBindings(lhs.iosSettings, rhs.iosSettings) && deepEqualsFlutterBindings(lhs.androidSettings, rhs.androidSettings) && deepEqualsFlutterBindings(lhs.callbackHandle, rhs.callbackHandle)
+    return deepEqualsFlutterBindings(lhs.id, rhs.id) && deepEqualsFlutterBindings(lhs.location, rhs.location) && deepEqualsFlutterBindings(lhs.radiusMeters, rhs.radiusMeters) && deepEqualsFlutterBindings(lhs.triggers, rhs.triggers) && deepEqualsFlutterBindings(lhs.iosSettings, rhs.iosSettings) && deepEqualsFlutterBindings(lhs.androidSettings, rhs.androidSettings) && deepEqualsFlutterBindings(lhs.callbackHandle, rhs.callbackHandle) && deepEqualsFlutterBindings(lhs.callbackContext, rhs.callbackContext)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -443,6 +451,7 @@ struct GeofenceWire: Hashable {
     deepHashFlutterBindings(value: iosSettings, hasher: &hasher)
     deepHashFlutterBindings(value: androidSettings, hasher: &hasher)
     deepHashFlutterBindings(value: callbackHandle, hasher: &hasher)
+    deepHashFlutterBindings(value: callbackContext, hasher: &hasher)
   }
 }
 
@@ -504,12 +513,15 @@ struct GeofenceCallbackParamsWire: Hashable {
   var location: LocationWire? = nil
   var eventAtMillis: Int64? = nil
   var callbackHandle: Int64
-  /// Unique ID for this native delivery attempt. Currently only set on iOS.
+  /// Unique ID for this native delivery attempt. Set on Android and iOS.
   ///
   /// This is not a durable business or physical-transition idempotency key.
-  /// It remains the last field for source compatibility with positional native
-  /// call sites generated before delivery IDs were added.
+  /// This nullable field retains its established wire position for compatibility;
+  /// newer nullable fields may follow it and fields must not be reordered.
   var eventId: String? = nil
+  /// Opaque callback contexts keyed by triggering geofence ID.
+  /// Registrations without a context are absent from this map.
+  var callbackContextsByGeofenceId: [String: Int64]? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -520,6 +532,7 @@ struct GeofenceCallbackParamsWire: Hashable {
     let eventAtMillis: Int64? = nilOrValue(pigeonVar_list[3])
     let callbackHandle = pigeonVar_list[4] as! Int64
     let eventId: String? = nilOrValue(pigeonVar_list[5])
+    let callbackContextsByGeofenceId: [String: Int64]? = nilOrValue(pigeonVar_list[6])
 
     return GeofenceCallbackParamsWire(
       geofences: geofences,
@@ -527,7 +540,8 @@ struct GeofenceCallbackParamsWire: Hashable {
       location: location,
       eventAtMillis: eventAtMillis,
       callbackHandle: callbackHandle,
-      eventId: eventId
+      eventId: eventId,
+      callbackContextsByGeofenceId: callbackContextsByGeofenceId
     )
   }
   func toList() -> [Any?] {
@@ -538,13 +552,14 @@ struct GeofenceCallbackParamsWire: Hashable {
       eventAtMillis,
       callbackHandle,
       eventId,
+      callbackContextsByGeofenceId,
     ]
   }
   static func == (lhs: GeofenceCallbackParamsWire, rhs: GeofenceCallbackParamsWire) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsFlutterBindings(lhs.geofences, rhs.geofences) && deepEqualsFlutterBindings(lhs.event, rhs.event) && deepEqualsFlutterBindings(lhs.location, rhs.location) && deepEqualsFlutterBindings(lhs.eventAtMillis, rhs.eventAtMillis) && deepEqualsFlutterBindings(lhs.callbackHandle, rhs.callbackHandle) && deepEqualsFlutterBindings(lhs.eventId, rhs.eventId)
+    return deepEqualsFlutterBindings(lhs.geofences, rhs.geofences) && deepEqualsFlutterBindings(lhs.event, rhs.event) && deepEqualsFlutterBindings(lhs.location, rhs.location) && deepEqualsFlutterBindings(lhs.eventAtMillis, rhs.eventAtMillis) && deepEqualsFlutterBindings(lhs.callbackHandle, rhs.callbackHandle) && deepEqualsFlutterBindings(lhs.eventId, rhs.eventId) && deepEqualsFlutterBindings(lhs.callbackContextsByGeofenceId, rhs.callbackContextsByGeofenceId)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -555,6 +570,7 @@ struct GeofenceCallbackParamsWire: Hashable {
     deepHashFlutterBindings(value: eventAtMillis, hasher: &hasher)
     deepHashFlutterBindings(value: callbackHandle, hasher: &hasher)
     deepHashFlutterBindings(value: eventId, hasher: &hasher)
+    deepHashFlutterBindings(value: callbackContextsByGeofenceId, hasher: &hasher)
   }
 }
 

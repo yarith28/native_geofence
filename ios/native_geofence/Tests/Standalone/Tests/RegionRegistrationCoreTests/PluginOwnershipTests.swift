@@ -5,14 +5,21 @@ import XCTest
 
 final class PluginOwnershipTests: XCTestCase {
     private var previousMapping: Any?
+    private var previousContextMapping: Any?
 
     override func setUp() {
         super.setUp()
         previousMapping = UserDefaults.standard.object(
             forKey: Constants.GEOFENCE_CALLBACK_DICT_KEY
         )
+        previousContextMapping = UserDefaults.standard.object(
+            forKey: Constants.GEOFENCE_CALLBACK_CONTEXT_DICT_KEY
+        )
         UserDefaults.standard.removeObject(
             forKey: Constants.GEOFENCE_CALLBACK_DICT_KEY
+        )
+        UserDefaults.standard.removeObject(
+            forKey: Constants.GEOFENCE_CALLBACK_CONTEXT_DICT_KEY
         )
     }
 
@@ -25,6 +32,16 @@ final class PluginOwnershipTests: XCTestCase {
         } else {
             UserDefaults.standard.removeObject(
                 forKey: Constants.GEOFENCE_CALLBACK_DICT_KEY
+            )
+        }
+        if let previousContextMapping {
+            UserDefaults.standard.set(
+                previousContextMapping,
+                forKey: Constants.GEOFENCE_CALLBACK_CONTEXT_DICT_KEY
+            )
+        } else {
+            UserDefaults.standard.removeObject(
+                forKey: Constants.GEOFENCE_CALLBACK_CONTEXT_DICT_KEY
             )
         }
         super.tearDown()
@@ -62,6 +79,21 @@ final class PluginOwnershipTests: XCTestCase {
             )?.count,
             0
         )
+    }
+
+    func testCallbackContextRoundTripsAndTerminalClearRemovesIt() {
+        NativeGeofencePersistence.setRegionCallbackContext(id: "office", context: 71)
+
+        XCTAssertEqual(
+            NativeGeofencePersistence.getRegionCallbackContext(id: "office"),
+            71
+        )
+        NativeGeofencePersistence.setRegionCallbackContext(id: "office", context: nil)
+        XCTAssertNil(NativeGeofencePersistence.getRegionCallbackContext(id: "office"))
+
+        NativeGeofencePersistence.setRegionCallbackContext(id: "home", context: 72)
+        NativeGeofencePersistence.removeAllRegionCallbackContexts()
+        XCTAssertNil(NativeGeofencePersistence.getRegionCallbackContext(id: "home"))
     }
 
     func testOwnedRegionsExcludeForeignAndNonCircularRegions() {
