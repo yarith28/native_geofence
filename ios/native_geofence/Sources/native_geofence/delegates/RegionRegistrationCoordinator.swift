@@ -86,6 +86,7 @@ private final class CancelledRegionRegistration {
 struct CommittedRegionRegistration {
     let region: CLCircularRegion
     let initialTrigger: Bool
+    let isNewMonitoringRegistration: Bool
 }
 
 final class RegionRegistrationCoordinator {
@@ -204,7 +205,8 @@ final class RegionRegistrationCoordinator {
             completion(.success(()))
             return CommittedRegionRegistration(
                 region: existingRegion,
-                initialTrigger: initialTrigger
+                initialTrigger: initialTrigger,
+                isNewMonitoringRegistration: false
             )
         }
 
@@ -258,7 +260,8 @@ final class RegionRegistrationCoordinator {
             pending.completion(.success(()))
             return CommittedRegionRegistration(
                 region: pending.requestedRegion,
-                initialTrigger: pending.initialTrigger
+                initialTrigger: pending.initialTrigger,
+                isNewMonitoringRegistration: true
             )
         }
 

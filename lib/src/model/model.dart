@@ -49,6 +49,12 @@ class IosGeofenceSettings {
   /// event if the user is already inside the geofence.
   /// Don't worry: This initial trigger only happens when the geofence is
   /// created and NOT every time the plugin is initialized.
+  ///
+  /// iOS suppresses best-effort same-direction duplicate bursts within 10
+  /// seconds. Removing and re-creating the geofence resets that baseline. If
+  /// only one direction is enabled, a genuine rapid leave and re-entry can be
+  /// indistinguishable from a duplicate, so business-level state still belongs
+  /// in the app or backend.
   final bool initialTrigger;
 
   const IosGeofenceSettings({
@@ -225,11 +231,19 @@ class GeofenceCallbackParams {
   /// This is diagnostic metadata, not a monotonic clock or unique event ID.
   final DateTime? eventAt;
 
+  /// Unique ID for this native delivery attempt.
+  ///
+  /// A later delivery for the same physical transition can have a different
+  /// ID, so this is not a durable business idempotency key. Apps and backends
+  /// should still enforce their own state rules. Currently only set on iOS.
+  final String? eventId;
+
   const GeofenceCallbackParams({
     required this.geofences,
     required this.event,
     required this.location,
     this.eventAt,
+    this.eventId,
   });
 
   @override
@@ -238,6 +252,7 @@ class GeofenceCallbackParams {
         'geofences: [${geofences.map((e) => e.toString()).join(', ')}], '
         'event: ${event.name}, '
         'location: $location, '
-        'eventAt: $eventAt)';
+        'eventAt: $eventAt, '
+        'eventId: $eventId)';
   }
 }

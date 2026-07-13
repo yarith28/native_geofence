@@ -125,6 +125,7 @@ extension GeofenceCallbackParamsWireMapper on GeofenceCallbackParamsWire {
       eventAt: eventAtMillis == null
           ? null
           : DateTime.fromMillisecondsSinceEpoch(eventAtMillis!),
+      eventId: eventId,
     );
   }
 }

@@ -21,11 +21,14 @@ void main() {
       event: GeofenceEvent.enter,
       eventAtMillis: 1720000000123,
       callbackHandle: 42,
+      eventId: 'delivery-123',
     );
 
     final params = wire.fromWire();
 
     expect(params.eventAt?.millisecondsSinceEpoch, 1720000000123);
+    expect(params.eventId, 'delivery-123');
+    expect(params.toString(), contains('eventId: delivery-123'));
   });
 
   test('callback mapper preserves an absent event creation time', () {
@@ -35,7 +38,10 @@ void main() {
       callbackHandle: 42,
     );
 
-    expect(wire.fromWire().eventAt, isNull);
+    final params = wire.fromWire();
+
+    expect(params.eventAt, isNull);
+    expect(params.eventId, isNull);
   });
 
   test('public callback parameters remain source compatible', () {
@@ -46,5 +52,6 @@ void main() {
     );
 
     expect(params.eventAt, isNull);
+    expect(params.eventId, isNull);
   });
 }
