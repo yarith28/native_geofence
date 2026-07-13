@@ -156,6 +156,13 @@ internal class GeofenceRegistrationStore(
     fun callbackPackageFingerprint(id: String): String? =
         getConfiguredGeofence(id)?.callbackPackageFingerprint
 
+    fun isCallbackRefreshRequired(): Boolean =
+        safeRead { backend.getBoolean(Constants.CALLBACK_REFRESH_REQUIRED_KEY, false) } ?: false
+
+    fun markCallbackRefreshRequired(): Boolean = backend.edit {
+        putBoolean(Constants.CALLBACK_REFRESH_REQUIRED_KEY, true)
+    }
+
     fun getRecoverableGeofences(): List<GeofenceWire> =
         recoveryInventory().mapNotNull(GeofenceRecoveryInventoryEntry::geofenceToRecover)
 

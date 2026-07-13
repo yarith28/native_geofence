@@ -236,6 +236,14 @@ repair, and explicit recreation use only the remaining lifetime; they never
 grant the geofence a fresh full duration. Lifecycle-critical registration state
 is written synchronously, and a failed durable write is reported as an error.
 
+Android splits each broadcast by its persisted callback handle, stores callback
+payloads in app-private files, and passes only a bounded reference through
+WorkManager. Infrastructure and Dart-delivery failures retry a bounded number
+of times; missing or invalid callbacks are terminally dropped without blocking
+later queued events. Each callback receives a non-null `eventId` identifying
+that delivery attempt. It is useful for tracing short-lived delivery attempts,
+but it is not a durable business idempotency key.
+
 #### [Android only] Foreground work
 
 If you need to access certain APIs or run a long job in your geofence callback you can promote the runner to a foreground service. You have access to the following functions when running within a geofence callback:
