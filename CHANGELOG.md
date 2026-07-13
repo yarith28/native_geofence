@@ -1,5 +1,6 @@
 ## Unreleased
 
+* Serializes iOS background callback delivery and protects callback execution with bounded cleanup
 * Exposes the native event-creation time on geofence callback parameters
 * Adds opt-in, bounded Android native log-file controls for collecting background diagnostics
 * Includes Android callback-location accuracy and mock-provider metadata for app policy and diagnostics

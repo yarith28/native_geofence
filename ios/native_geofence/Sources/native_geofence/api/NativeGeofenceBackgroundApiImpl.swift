@@ -1,101 +1,151 @@
-import CoreLocation
 import Flutter
+import Foundation
 import OSLog
 
 class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
-    private let log = Logger(subsystem: Constants.PACKAGE_NAME, category: "NativeGeofenceBackgroundApiImpl")
-    
+    private let log = Logger(
+        subsystem: Constants.PACKAGE_NAME,
+        category: "NativeGeofenceBackgroundApiImpl"
+    )
     private let binaryMessenger: FlutterBinaryMessenger
-    
-    private var eventQueue: [GeofenceCallbackParamsWire] = .init()
-    private var isClosed: Bool = false
-    private var nativeGeoFenceTriggerApi: NativeGeofenceTriggerApi? = nil
-    private var cleanup: (() -> Void)? = nil
-    
-    init(binaryMessenger: FlutterBinaryMessenger) {
+    private let stateLock = NSLock()
+    private var cleanup: (() -> Void)?
+    private var closed = false
+
+    private lazy var session = SerialCallbackSession<GeofenceCallbackParamsWire>(
+        startupTimeoutMillis: 30_000,
+        callbackTimeoutMillis: 30_000,
+        idleGraceMillis: 2_000,
+        describe: Self.geofenceIds,
+        schedule: { delayMillis, work in
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + .milliseconds(delayMillis),
+                execute: work
+            )
+        },
+        onClose: { [weak self] reason in
+            self?.close(reason: reason)
+        }
+    )
+
+    init(
+        binaryMessenger: FlutterBinaryMessenger,
+        cleanup: @escaping () -> Void
+    ) {
         self.binaryMessenger = binaryMessenger
-    }
-    
-    func geofenceTriggered(params: GeofenceCallbackParamsWire, cleanup: @escaping () -> Void) {
-        objc_sync_enter(self)
-        
-        eventQueue.append(params)
         self.cleanup = cleanup
-        
-        objc_sync_exit(self)
-        
-        guard let nativeGeoFenceTriggerApi else {
-            log.debug("Waiting for NativeGeofenceTriggerApi to become available...")
-            return
-        }
-        processQueue()
     }
-    
+
+    /// Returns true once this open native session owns the delivery attempt.
+    @discardableResult
+    func geofenceTriggered(
+        params: GeofenceCallbackParamsWire
+    ) -> Bool {
+        let canEnqueue = withStateLock {
+            guard !closed else { return false }
+            return true
+        }
+        guard canEnqueue, session.enqueue(params) else {
+            log.error("Background callback session is closed; rejecting event.")
+            return false
+        }
+        log.debug(
+            "Accepted geofence callback for IDs=[\(Self.geofenceIds(params))]."
+        )
+        return true
+    }
+
     func triggerApiInitialized() throws {
-        objc_sync_enter(self)
-        
-        if (nativeGeoFenceTriggerApi == nil) {
-            nativeGeoFenceTriggerApi = NativeGeofenceTriggerApi(binaryMessenger: binaryMessenger)
-            log.debug("NativeGeofenceTriggerApi setup complete.")
-        }
-        
-        objc_sync_exit(self)
-        
-       if eventQueue.isEmpty {
-            log.debug("Waiting for geofence event...")
+        guard withStateLock({ !closed }) else {
+            log.debug("Ignoring trigger API initialization for a closed session.")
             return
         }
-        processQueue()
+        let triggerApi = NativeGeofenceTriggerApi(binaryMessenger: binaryMessenger)
+        session.markReady { [weak self] params, completion in
+            guard let self else {
+                _ = completion()
+                return
+            }
+            self.log.debug(
+                "Calling Dart callback for geofence IDs=[\(Self.geofenceIds(params))] event=\(String(describing: params.event))."
+            )
+            triggerApi.geofenceTriggered(params: params) { result in
+                guard completion() else {
+                    self.log.debug(
+                        "Ignoring late Dart callback completion for geofence IDs=[\(Self.geofenceIds(params))]."
+                    )
+                    return
+                }
+                if case .success = result {
+                    self.log.debug(
+                        "Dart callback for geofence IDs=[\(Self.geofenceIds(params))] completed."
+                    )
+                } else {
+                    self.log.error(
+                        "Dart callback for geofence IDs=[\(Self.geofenceIds(params))] failed."
+                    )
+                }
+            }
+        }
     }
-    
+
     func promoteToForeground() throws {
         log.info("promoteToForeground called. iOS does not distinguish between foreground and background, nothing to do here.")
     }
-    
+
     func demoteToBackground() throws {
         log.info("demoteToBackground called. iOS does not distinguish between foreground and background, nothing to do here.")
     }
-    
-    private func processQueue() {
-        objc_sync_enter(self)
-        defer { objc_sync_exit(self) }
-        
-        if isClosed {
-            log.error("NativeGeofenceBackgroundApi already closed, ignoring additional events.")
-            return
-        }
-        
-        if !eventQueue.isEmpty {
-            let params = eventQueue.removeFirst()
-            log.debug("Queue dispatch: sending geofence trigger event for IDs=[\(NativeGeofenceBackgroundApiImpl.geofenceIds(params))].")
-            callGeofenceTriggerApi(params: params)
-            return
-        }
-        
-        // Now that the event queue is empty we can cleanup and de-allocate this class.
-        cleanup?()
-        isClosed = true
+
+    func forceCleanup(reason: String) {
+        session.forceClose(reason: reason)
     }
-    
-    private func callGeofenceTriggerApi(params: GeofenceCallbackParamsWire) {
-        guard let api = nativeGeoFenceTriggerApi else {
-            log.error("NativeGeofenceTriggerApi was nil, this should not happen.")
-            return
+
+    private func close(
+        reason: SerialCallbackSession<GeofenceCallbackParamsWire>.CloseReason
+    ) {
+        let cleanupToRun: (() -> Void)? = withStateLock {
+            guard !closed else { return nil }
+            closed = true
+            defer { cleanup = nil }
+            return cleanup
         }
-        log.debug("Calling Dart callback to process geofence trigger for IDs=[\(NativeGeofenceBackgroundApiImpl.geofenceIds(params))] event=\(String(describing: params.event)).")
-        api.geofenceTriggered(params: params, completion: { result in
-            if case .success = result {
-                self.log.debug("Geofence trigger event for IDs=[\(NativeGeofenceBackgroundApiImpl.geofenceIds(params))] processed successfully.")
-            } else {
-                self.log.error("Geofence trigger event for IDs=[\(NativeGeofenceBackgroundApiImpl.geofenceIds(params))] failed.")
-            }
-            // Now that the callback is complete we can process the next item in the queue, if any.
-            self.processQueue()
-        })
+        guard let cleanupToRun else { return }
+
+        switch reason {
+        case .idle:
+            log.debug("Background callback session is idle; cleaning up.")
+        case .startupTimeout(let ids):
+            log.error(
+                "Timed out waiting for Dart geofence API initialization; IDs=[\(ids)]."
+            )
+        case .callbackTimeout(let ids):
+            log.error(
+                "Timed out waiting for Dart geofence callback; IDs=[\(ids)]."
+            )
+        case .forced(let message):
+            log.error("\(message)")
+        }
+        runCleanupOnMain(cleanupToRun)
     }
-    
-    private static func geofenceIds(_ params: GeofenceCallbackParamsWire) -> String {
-        let ids: [String] = params.geofences.map(\.id)
-        return ids.joined(separator: ",")
+
+    private func withStateLock<T>(_ body: () -> T) -> T {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return body()
+    }
+
+    private func runCleanupOnMain(_ cleanup: @escaping () -> Void) {
+        if Thread.isMainThread {
+            cleanup()
+        } else {
+            DispatchQueue.main.async(execute: cleanup)
+        }
+    }
+
+    private static func geofenceIds(
+        _ params: GeofenceCallbackParamsWire
+    ) -> String {
+        params.geofences.map(\.id).joined(separator: ",")
     }
 }

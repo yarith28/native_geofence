@@ -1,6 +1,7 @@
 import CoreLocation
 import Flutter
 import OSLog
+import UIKit
 
 // Singleton class
 class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
@@ -8,6 +9,7 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
     private static var sharedLocationManager: CLLocationManager?
     
     private let log = Logger(subsystem: Constants.PACKAGE_NAME, category: "LocationManagerDelegate")
+    private let callbackBackgroundTaskName = "native_geofence.geofence_callback"
     
     private let flutterPluginRegistrantCallback: FlutterPluginRegistrantCallback?
     let locationManager: CLLocationManager
@@ -30,6 +32,8 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
     
     private var headlessFlutterEngine: FlutterEngine? = nil
     private var nativeGeofenceBackgroundApi: NativeGeofenceBackgroundApiImpl? = nil
+    private var headlessSessionId: UUID? = nil
+    private var callbackBackgroundTaskIdentifier: UIBackgroundTaskIdentifier = .invalid
     
     init(flutterPluginRegistrantCallback: FlutterPluginRegistrantCallback?) {
         self.flutterPluginRegistrantCallback = flutterPluginRegistrantCallback
@@ -155,16 +159,20 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         guard let backgroundApi = nativeGeofenceBackgroundApi ?? createFlutterEngine() else {
             return
         }
-        
-        // Shutdown the engine once the Geofence event is handled
-        func cleanup() {
-            nativeGeofenceBackgroundApi = nil
-            headlessFlutterEngine?.destroyContext()
-            headlessFlutterEngine = nil
-            log.debug("Flutter engine cleanup complete.")
+        guard headlessSessionId != nil else {
+            backgroundApi.forceCleanup(
+                reason: "Headless Flutter session identifier was unavailable."
+            )
+            return
         }
         
-        nativeGeofenceBackgroundApi!.geofenceTriggered(params: params, cleanup: cleanup)
+        guard backgroundApi.geofenceTriggered(params: params) else {
+            log.error("Background callback queue rejected geofence ID=\(activeGeofence.id).")
+            backgroundApi.forceCleanup(
+                reason: "Rejected geofence callback from an inactive session."
+            )
+            return
+        }
         log.debug("Geofence trigger event sent.")
     }
 
@@ -192,12 +200,57 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         ) else { return }
         manager.requestState(for: probe)
     }
-    
+
+    private func beginCallbackBackgroundTask(sessionId: UUID) {
+        guard headlessSessionId == sessionId,
+              callbackBackgroundTaskIdentifier == .invalid
+        else { return }
+        callbackBackgroundTaskIdentifier = UIApplication.shared.beginBackgroundTask(
+            withName: callbackBackgroundTaskName
+        ) { [weak self] in
+            guard let self, self.headlessSessionId == sessionId else { return }
+            let reason = "iOS expired the geofence callback background task."
+            if let backgroundApi = self.nativeGeofenceBackgroundApi {
+                backgroundApi.forceCleanup(reason: reason)
+            } else {
+                self.log.error("\(reason)")
+                self.cleanupHeadlessFlutterEngine(sessionId: sessionId)
+            }
+        }
+        if callbackBackgroundTaskIdentifier == .invalid {
+            log.error("Failed to begin iOS background task for geofence callback.")
+        } else {
+            log.debug("Began iOS background task for geofence callback.")
+        }
+    }
+
+    private func cleanupHeadlessFlutterEngine(sessionId: UUID) {
+        guard headlessSessionId == sessionId else {
+            log.debug("Ignoring cleanup from an inactive headless Flutter session.")
+            return
+        }
+        if let engine = headlessFlutterEngine {
+            NativeGeofenceBackgroundApiSetup.setUp(
+                binaryMessenger: engine.binaryMessenger,
+                api: nil
+            )
+        }
+        nativeGeofenceBackgroundApi = nil
+        headlessFlutterEngine?.destroyContext()
+        headlessFlutterEngine = nil
+        headlessSessionId = nil
+        endCallbackBackgroundTaskIfNeeded()
+        log.debug("Flutter engine cleanup complete.")
+    }
+
+    private func endCallbackBackgroundTaskIfNeeded() {
+        guard callbackBackgroundTaskIdentifier != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(callbackBackgroundTaskIdentifier)
+        callbackBackgroundTaskIdentifier = .invalid
+        log.debug("Ended iOS background task for geofence callback.")
+    }
+
     private func createFlutterEngine() -> NativeGeofenceBackgroundApiImpl? {
-        // Create a Flutter engine
-        headlessFlutterEngine = FlutterEngine(name: Constants.HEADLESS_FLUTTER_ENGINE_NAME, project: nil, allowHeadlessExecution: true)
-        log.debug("A new headless Flutter engine has been created.")
-        
         guard let callbackDispatcherHandle = NativeGeofencePersistence.getCallbackDispatcherHandle() else {
             log.error("Callback dispatcher not found in UserDefaults.")
             return nil
@@ -207,20 +260,48 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
             log.error("Callback dispatcher not found.")
             return nil
         }
-        
+
+        let sessionId = UUID()
+        let engine = FlutterEngine(
+            name: Constants.HEADLESS_FLUTTER_ENGINE_NAME,
+            project: nil,
+            allowHeadlessExecution: true
+        )
+        let backgroundApi = NativeGeofenceBackgroundApiImpl(
+            binaryMessenger: engine.binaryMessenger,
+            cleanup: { [weak self] in
+                self?.cleanupHeadlessFlutterEngine(sessionId: sessionId)
+            }
+        )
+        headlessSessionId = sessionId
+        headlessFlutterEngine = engine
+        nativeGeofenceBackgroundApi = backgroundApi
+        beginCallbackBackgroundTask(sessionId: sessionId)
+        guard headlessSessionId == sessionId else { return nil }
+
         // Start the engine at the specified callback method.
-        headlessFlutterEngine!.run(withEntrypoint: callbackDispatcherInfo.callbackName, libraryURI: callbackDispatcherInfo.callbackLibraryPath)
+        guard engine.run(
+            withEntrypoint: callbackDispatcherInfo.callbackName,
+            libraryURI: callbackDispatcherInfo.callbackLibraryPath
+        ) else {
+            log.error("Failed to start the headless Flutter engine.")
+            backgroundApi.forceCleanup(
+                reason: "Failed to start the headless Flutter engine."
+            )
+            return nil
+        }
         // Once our headless runner has been started, we need to register the application's plugins
         // with the runner in order for them to work on the background isolate.
         // `flutterPluginRegistrantCallback` is a callback set from AppDelegate in the main application.
         // This callback should register all relevant plugins (excluding those which require UI).
-        flutterPluginRegistrantCallback?(headlessFlutterEngine!)
+        flutterPluginRegistrantCallback?(engine)
         log.debug("Flutter engine started and plugins registered.")
-        
-        nativeGeofenceBackgroundApi = NativeGeofenceBackgroundApiImpl(binaryMessenger: headlessFlutterEngine!.binaryMessenger)
-        NativeGeofenceBackgroundApiSetup.setUp(binaryMessenger: headlessFlutterEngine!.binaryMessenger, api: nativeGeofenceBackgroundApi)
-        log.debug("NativeGeofenceBackgroundApi initialized.")
+        NativeGeofenceBackgroundApiSetup.setUp(
+            binaryMessenger: engine.binaryMessenger,
+            api: backgroundApi
+        )
+        log.debug("A new headless Flutter callback session has been created.")
 
-        return nativeGeofenceBackgroundApi
+        return backgroundApi
     }
 }
