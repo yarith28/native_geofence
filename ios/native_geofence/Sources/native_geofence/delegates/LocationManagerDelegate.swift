@@ -10,6 +10,8 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
     private let log = Logger(subsystem: Constants.PACKAGE_NAME, category: "LocationManagerDelegate")
     private let deliverEvent: (
         GeofenceCallbackParamsWire,
+        @escaping () -> Bool,
+        @escaping () -> Void,
         @escaping () -> Void
     ) -> Void
     private let eventDeduplicator: IosGeofenceEventDeduplicator
@@ -42,6 +44,8 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
     init(
         deliverEvent: @escaping (
             GeofenceCallbackParamsWire,
+            @escaping () -> Bool,
+            @escaping () -> Void,
             @escaping () -> Void
         ) -> Void,
         eventDeduplicator: IosGeofenceEventDeduplicator = IosGeofenceEventDeduplicator()
@@ -243,16 +247,11 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         
         let transition = IosGeofenceTransition(event)
         let eventAtMillis = Int64(Date().timeIntervalSince1970 * 1000)
-        if let ageMillis = eventDeduplicator.suppressedAgeMillis(
+        let admission = eventDeduplicator.admission(
             id: activeGeofence.id,
             transition: transition,
             eventAtMillis: eventAtMillis
-        ) {
-            log.info(
-                "Suppressed repeat \(String(describing: event)) for geofence ID=\(activeGeofence.id); same direction accepted \(ageMillis)ms ago."
-            )
-            return
-        }
+        )
 
         let params = GeofenceCallbackParamsWire(
             geofences: [activeGeofence],
@@ -265,13 +264,28 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
                 .map { [activeGeofence.id: $0] }
         )
 
-        deliverEvent(params) { [weak self] in
-            self?.eventDeduplicator.recordAccepted(
-                id: activeGeofence.id,
-                transition: transition,
-                eventAtMillis: eventAtMillis
-            )
-        }
+        deliverEvent(
+            params,
+            { [weak self] in
+                guard let self else {
+                    admission.cancel()
+                    return false
+                }
+                switch admission.attempt() {
+                case .admitted:
+                    return true
+                case .suppressed(let ageMillis):
+                    self.log.info(
+                        "Suppressed repeat \(String(describing: event)) for geofence ID=\(activeGeofence.id); same direction accepted \(ageMillis)ms ago."
+                    )
+                    return false
+                case .unavailable:
+                    return false
+                }
+            },
+            { admission.commit() },
+            { admission.cancel() }
+        )
         log.debug("Geofence trigger event handed to the shared delivery router.")
     }
 
