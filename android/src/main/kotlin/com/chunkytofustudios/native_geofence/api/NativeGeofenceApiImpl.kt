@@ -40,6 +40,7 @@ import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationTra
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceTransactionStepOutcome
 import com.chunkytofustudios.native_geofence.util.AndroidPackageFingerprint
 import com.chunkytofustudios.native_geofence.util.AndroidPackageManagerCompat
+import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRollbackRestorationOutcome
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceSynchronizationPlanner
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceSynchronizationReason
 import com.chunkytofustudios.native_geofence.util.AndroidNativeGeofenceStatusProvider
@@ -955,6 +956,9 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         )
         val cleanupIds = rollbackPlan.cleanupIds
         val platformRegistrationsToRestore = rollbackPlan.platformRegistrationsToRestore
+        val restorationOutcomes =
+            mutableMapOf<String, AndroidGeofenceRollbackRestorationOutcome>()
+        var cleanupFailed = false
 
         fun restorePersistence() {
             for (persisted in snapshot.persistence) {
@@ -974,8 +978,47 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         fun finish() {
             // Rearm temporarily marks registrations active. Reapply the exact
             // snapshot so deadlines, active flags, contexts, and fingerprints
-            // match the pre-transaction bytes.
+            // match the pre-transaction bytes, then overlay only the conservative
+            // ownership evidence learned while rollback was in flight.
             restorePersistence()
+            val evidencePlan = AndroidGeofenceSynchronizationPlanner.rollbackEvidencePlan(
+                cleanupFailed = cleanupFailed,
+                cleanupIds = cleanupIds,
+                previouslyActive = snapshot.activePlatformRegistrations,
+                restorationOutcomes = restorationOutcomes
+            )
+            for (id in evidencePlan.cleanupMarkerIds) {
+                if (!NativeGeofencePersistence.markGeofenceForPlatformCleanup(context, id)) {
+                    failures.add("failed to retain native cleanup ownership evidence")
+                }
+            }
+            for (id in evidencePlan.inactiveRecoveryIds) {
+                if (!NativeGeofencePersistence.markGeofenceForRecovery(context, id)) {
+                    failures.add("failed to retain inactive native recovery evidence")
+                }
+            }
+            if (evidencePlan.requiresRecovery) {
+                try {
+                    startAutomaticRecovery("synchronization_rollback") { result ->
+                        result.exceptionOrNull()?.let { error ->
+                            NativeGeofenceLogger.e(
+                                context,
+                                TAG,
+                                "Automatic recovery after synchronization rollback failed.",
+                                error
+                            )
+                        }
+                    }
+                } catch (error: Throwable) {
+                    failures.add("failed to start recovery after synchronization rollback")
+                    NativeGeofenceLogger.e(
+                        context,
+                        TAG,
+                        "Failed to start recovery after synchronization rollback.",
+                        error
+                    )
+                }
+            }
             completion(failures)
         }
 
@@ -994,17 +1037,26 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
             if (platformRegistration == null) {
                 // Its original absolute deadline elapsed while the transaction
                 // or rollback was in flight; never grant it a fresh duration.
+                restorationOutcomes[snapshotRegistration.configuredGeofence.id] =
+                    AndroidGeofenceRollbackRestorationOutcome.EXPIRED
                 rearmAt(index + 1)
                 return
             }
             try {
                 createGeofenceHelper(platformRegistration, cache = false) { result ->
-                    result.exceptionOrNull()?.let {
+                    if (result.isSuccess) {
+                        restorationOutcomes[snapshotRegistration.configuredGeofence.id] =
+                            AndroidGeofenceRollbackRestorationOutcome.RESTORED
+                    } else {
+                        restorationOutcomes[snapshotRegistration.configuredGeofence.id] =
+                            AndroidGeofenceRollbackRestorationOutcome.FAILED
                         failures.add("failed to rearm a previous native registration")
                     }
                     rearmAt(index + 1)
                 }
             } catch (_: Throwable) {
+                restorationOutcomes[snapshotRegistration.configuredGeofence.id] =
+                    AndroidGeofenceRollbackRestorationOutcome.FAILED
                 failures.add("failed to rearm a previous native registration")
                 rearmAt(index + 1)
             }
@@ -1022,6 +1074,7 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         val cleanupCompleted = AtomicBoolean(false)
         fun completeCleanup(failed: Boolean) {
             if (!cleanupCompleted.compareAndSet(false, true)) return
+            cleanupFailed = failed
             if (failed) {
                 failures.add("failed to clear transaction-owned native registrations")
             }
