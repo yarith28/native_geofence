@@ -90,6 +90,36 @@ class GeofenceRegistrationStoreTest {
     }
 
     @Test
+    fun `registered getters share the active canonical registration set`() {
+        var now = 1_000L
+        val backend = FakeGeofencePersistenceBackend()
+        val store = GeofenceRegistrationStore(backend) { now }
+        val alpha = geofence(id = "alpha")
+        val office = geofence(id = "office", duration = 500)
+
+        assertTrue(store.saveConfiguredGeofence(office))
+        assertTrue(store.saveConfiguredGeofence(alpha))
+        assertTrue(
+            store.saveConfiguredGeofence(
+                geofence(id = "inactive"),
+                recoveryEligible = true,
+                active = false,
+            )
+        )
+        assertTrue(store.saveConfiguredGeofence(geofence(id = "expired", duration = 50)))
+        assertTrue(store.saveConfiguredGeofence(geofence(id = "corrupt")))
+        backend.values[recordKey("corrupt")] = "not-json"
+        now = 1_100L
+
+        val registered = store.getRegisteredGeofences()
+
+        assertEquals(listOf(alpha, office), registered)
+        assertEquals(500L, registered.last().androidSettings.expirationDurationMillis)
+        assertEquals(registered.map(GeofenceWire::id), store.getRegisteredGeofenceIds())
+        assertFalse(assertNotNull(store.getConfiguredGeofence("expired")).active)
+    }
+
+    @Test
     fun `legacy finite registration receives one absolute deadline`() {
         var now = 2_000L
         val backend = FakeGeofencePersistenceBackend()
@@ -499,11 +529,12 @@ class GeofenceRegistrationStoreTest {
     }
 
     private fun geofence(
+        id: String = "office",
         callbackHandle: Long = 7,
         callbackContext: Long? = null,
         duration: Long? = null
     ) = GeofenceWire(
-        id = "office",
+        id = id,
         location = LocationWire(
             latitude = 11.0,
             longitude = 104.0,

@@ -330,6 +330,27 @@ internal class GeofenceRegistrationStore(
     fun getRecoverableGeofences(): List<GeofenceWire> =
         recoveryInventory().mapNotNull(GeofenceRecoveryInventoryEntry::geofenceToRecover)
 
+    /**
+     * Returns canonical configurations with durable evidence that the plugin
+     * currently considers them active. Play services does not expose a live
+     * geofence inventory, so uncertain, inactive, and cleanup-only records are
+     * deliberately excluded.
+     */
+    fun getRegisteredGeofences(): List<GeofenceWire> {
+        val configured = configuredIds().toSet()
+        return recoveryInventory().mapNotNull { entry ->
+            val stored = entry.storedRegistration ?: return@mapNotNull null
+            stored.configuredGeofence.takeIf {
+                entry.id in configured &&
+                    entry.disposition == GeofenceRecoveryDisposition.RECOVERABLE &&
+                    stored.active
+            }
+        }
+    }
+
+    fun getRegisteredGeofenceIds(): List<String> =
+        getRegisteredGeofences().map(GeofenceWire::id)
+
     fun configuredIds(): List<String> = configuredIndex().toList().sorted()
 
     fun rawIds(): List<String> {
