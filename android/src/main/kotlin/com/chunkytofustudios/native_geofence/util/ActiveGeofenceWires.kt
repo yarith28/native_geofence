@@ -28,7 +28,9 @@ class ActiveGeofenceWires {
         fun fromGeofenceWire(e: GeofenceWire): ActiveGeofenceWire {
             return ActiveGeofenceWire(
                 e.id,
-                e.location,
+                // Persisted registration input can contain device-fix metadata,
+                // but the active geofence exposes only the configured center.
+                LocationWire(e.location.latitude, e.location.longitude, null, false),
                 e.radiusMeters,
                 e.triggers,
                 e.androidSettings

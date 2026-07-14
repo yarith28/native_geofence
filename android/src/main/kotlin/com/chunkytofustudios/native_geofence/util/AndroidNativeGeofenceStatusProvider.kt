@@ -82,7 +82,7 @@ internal class AndroidNativeGeofenceStatusProvider(private val context: Context)
         return NativeGeofenceStatusWire(
             platform = NativeGeofencePlatform.ANDROID,
             osVersion = "API ${Build.VERSION.SDK_INT} (${Build.VERSION.RELEASE})",
-            persistedGeofenceIds = ids,
+            persistedGeofenceCount = ids.size.toLong(),
             locationPermissionGranted = locationPermission,
             backgroundLocationPermissionGranted = backgroundPermission,
             notificationPermissionGranted = notificationPermissionGranted(appContext),

@@ -196,7 +196,7 @@ extension NativeGeofenceStatusWireMapper on NativeGeofenceStatusWire {
   NativeGeofenceStatus fromWire() => NativeGeofenceStatus(
         platform: platform,
         osVersion: osVersion,
-        persistedGeofenceIds: List.unmodifiable(persistedGeofenceIds),
+        persistedGeofenceCount: persistedGeofenceCount,
         locationPermissionGranted: locationPermissionGranted,
         backgroundLocationPermissionGranted:
             backgroundLocationPermissionGranted,

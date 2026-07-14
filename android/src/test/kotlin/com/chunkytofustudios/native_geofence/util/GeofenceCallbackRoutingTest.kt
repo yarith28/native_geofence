@@ -54,6 +54,39 @@ class GeofenceCallbackRoutingTest {
     }
 
     @Test
+    fun `configured centers do not inherit device fix metadata`() {
+        val configured = geofence("a", 10).copy(
+            location = LocationWire(
+                latitude = 11.1,
+                longitude = 104.1,
+                accuracyMeters = 80.0,
+                isMock = true
+            )
+        )
+        val deviceFix = LocationWire(
+            latitude = 11.2,
+            longitude = 104.2,
+            accuracyMeters = 4.0,
+            isMock = true
+        )
+
+        val params = GeofenceCallbackRouting.route(
+            triggeredIds = listOf("a"),
+            event = GeofenceEvent.ENTER,
+            location = deviceFix,
+            eventAtMillis = 123L,
+            lookup = mapOf("a" to configured)::get
+        ).callbackGroups.single()
+
+        val center = params.geofences.single().location
+        assertEquals(11.1, center.latitude)
+        assertEquals(104.1, center.longitude)
+        assertEquals(null, center.accuracyMeters)
+        assertEquals(false, center.isMock)
+        assertEquals(deviceFix, params.location)
+    }
+
+    @Test
     fun `missing registrations and zero callback handles are classified as orphans`() {
         val registrations = mapOf("zero" to geofence("zero", 0))
 

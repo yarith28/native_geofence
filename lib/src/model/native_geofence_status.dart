@@ -35,7 +35,13 @@ class NativeGeofenceLifecycleFact {
 class NativeGeofenceStatus {
   final NativeGeofencePlatform platform;
   final String? osVersion;
-  final List<String> persistedGeofenceIds;
+
+  /// Number of plugin-owned registrations represented by durable native state.
+  ///
+  /// Registration IDs are intentionally excluded from this diagnostic
+  /// snapshot because they are app-owned values and may contain sensitive
+  /// information.
+  final int persistedGeofenceCount;
 
   /// Whether the platform's required foreground location authorization is
   /// granted.
@@ -68,7 +74,7 @@ class NativeGeofenceStatus {
   const NativeGeofenceStatus({
     required this.platform,
     this.osVersion,
-    required this.persistedGeofenceIds,
+    required this.persistedGeofenceCount,
     this.locationPermissionGranted,
     this.backgroundLocationPermissionGranted,
     this.notificationPermissionGranted,
@@ -94,7 +100,7 @@ class NativeGeofenceStatus {
   Map<String, Object?> toJson() => {
         'platform': platform.name,
         'osVersion': osVersion,
-        'persistedGeofenceIds': [...persistedGeofenceIds]..sort(),
+        'persistedGeofenceCount': persistedGeofenceCount,
         'locationPermissionGranted': locationPermissionGranted,
         'backgroundLocationPermissionGranted':
             backgroundLocationPermissionGranted,

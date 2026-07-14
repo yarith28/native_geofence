@@ -241,7 +241,7 @@ class NativeGeofenceLifecycleFactWire {
 class NativeGeofenceStatusWire {
   final NativeGeofencePlatform platform;
   final String? osVersion;
-  final List<String> persistedGeofenceIds;
+  final int persistedGeofenceCount;
 
   /// Whether the platform's required foreground location authorization is
   /// granted. This means fine location on Android and When In Use or Always
@@ -271,7 +271,7 @@ class NativeGeofenceStatusWire {
   const NativeGeofenceStatusWire({
     required this.platform,
     this.osVersion,
-    required this.persistedGeofenceIds,
+    required this.persistedGeofenceCount,
     this.locationPermissionGranted,
     this.backgroundLocationPermissionGranted,
     this.notificationPermissionGranted,
