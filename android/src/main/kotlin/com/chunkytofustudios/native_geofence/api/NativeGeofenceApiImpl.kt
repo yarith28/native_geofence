@@ -49,6 +49,7 @@ import com.chunkytofustudios.native_geofence.util.GeofenceMutationQueues
 import com.chunkytofustudios.native_geofence.util.GeofenceMutationRunner
 import com.chunkytofustudios.native_geofence.util.GeofencePersistenceSnapshot
 import com.chunkytofustudios.native_geofence.util.GeofenceWires
+import com.chunkytofustudios.native_geofence.util.PersistedValue
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 import com.chunkytofustudios.native_geofence.util.LocationState
 import com.chunkytofustudios.native_geofence.util.NativeGeofencePersistence
@@ -1291,13 +1292,23 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
     }
 
     private fun GeofencePersistenceSnapshot.containsEvidenceFor(id: String): Boolean =
-        recordJson.present ||
-            expirationDeadlineMillis.present ||
-            recoveryEligible.present ||
-            active.present ||
-            callbackPackageFingerprint.present ||
-            rawIds.value.orEmpty().contains(id) ||
-            configuredIds.value.orEmpty().contains(id)
+        recordJson.hasStoredEvidence ||
+            expirationDeadlineMillis.hasStoredEvidence ||
+            recoveryEligible.hasStoredEvidence ||
+            active.hasStoredEvidence ||
+            callbackPackageFingerprint.hasStoredEvidence ||
+            rawIds.containsOrMayContain(id) ||
+            configuredIds.containsOrMayContain(id)
+
+    private val PersistedValue<*>.hasStoredEvidence: Boolean
+        get() = this !is PersistedValue.Absent
+
+    private fun PersistedValue<Set<String>>.containsOrMayContain(id: String): Boolean =
+        when (this) {
+            PersistedValue.Absent -> false
+            is PersistedValue.Readable -> value.contains(id)
+            PersistedValue.Corrupt -> true
+        }
 }
 
 internal fun persistCallbackDispatcherHandle(
