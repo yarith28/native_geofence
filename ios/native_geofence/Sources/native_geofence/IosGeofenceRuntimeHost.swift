@@ -53,8 +53,17 @@ final class IosGeofenceRuntimeHost {
         }
     )
     private(set) lazy var locationManagerDelegate = LocationManagerDelegate(
-        deliverEvent: { [weak self] params, onAccepted in
-            self?.deliveryRouter.enqueue(params, onAccepted: onAccepted)
+        deliverEvent: { [weak self] params, shouldAttempt, onAccepted, onRejected in
+            guard let self else {
+                onRejected()
+                return
+            }
+            self.deliveryRouter.enqueue(
+                params,
+                shouldAttempt: shouldAttempt,
+                onAccepted: onAccepted,
+                onRejected: onRejected
+            )
         }
     )
     private(set) lazy var nativeApi = NativeGeofenceApiImpl(

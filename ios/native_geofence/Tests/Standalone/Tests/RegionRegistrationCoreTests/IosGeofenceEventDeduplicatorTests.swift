@@ -45,6 +45,56 @@ final class IosGeofenceEventDeduplicatorTests: XCTestCase {
         )
     }
 
+    func testPendingReservationSuppressesBurstBeforeRuntimeAcceptance() {
+        guard case .reserved(let reservation) = subject.reserve(
+            id: "office",
+            transition: .enter,
+            eventAtMillis: 1_000
+        ) else {
+            return XCTFail("The first event should reserve delivery admission.")
+        }
+
+        guard case .suppressed(let pendingAge) = subject.reserve(
+            id: "office",
+            transition: .enter,
+            eventAtMillis: 1_001
+        ) else {
+            return XCTFail("A duplicate must not pass a pending reservation.")
+        }
+        XCTAssertEqual(pendingAge, 1)
+
+        subject.commit(reservation)
+        XCTAssertEqual(
+            subject.suppressedAgeMillis(
+                id: "office",
+                transition: .enter,
+                eventAtMillis: 1_002
+            ),
+            2
+        )
+    }
+
+    func testRejectedReservationReleasesAdmissionWithoutPersisting() {
+        guard case .reserved(let rejected) = subject.reserve(
+            id: "office",
+            transition: .enter,
+            eventAtMillis: 1_000
+        ) else {
+            return XCTFail("The first event should reserve delivery admission.")
+        }
+
+        subject.cancel(rejected)
+
+        guard case .reserved(let retry) = subject.reserve(
+            id: "office",
+            transition: .enter,
+            eventAtMillis: 1_001
+        ) else {
+            return XCTFail("Rejected work must not poison the dedup baseline.")
+        }
+        subject.cancel(retry)
+    }
+
     func testOppositeTransitionsPassAndReplaceBaseline() {
         XCTAssertTrue(accept(id: "office", transition: .enter, atMillis: 1_000))
         XCTAssertTrue(accept(id: "office", transition: .exit, atMillis: 1_001))
