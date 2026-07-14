@@ -2,6 +2,33 @@ import XCTest
 @testable import RegionRegistrationCore
 
 final class IosCallbackDeliveryRouterTests: XCTestCase {
+    func testReattachableDeliveryRoutesEventsToReplacementAttachment() {
+        let subject = IosReattachableDelivery<(String) -> Void>()
+        var deliveries: [String] = []
+
+        subject.attach { deliveries.append("old:\($0)") }
+        XCTAssertNotNil(subject.withCurrent { $0("first") })
+
+        subject.attach { deliveries.append("new:\($0)") }
+        XCTAssertNotNil(subject.withCurrent { $0("second") })
+
+        XCTAssertEqual(deliveries, ["old:first", "new:second"])
+    }
+
+    func testStaleDetachCannotClearReplacementDelivery() {
+        let subject = IosReattachableDelivery<(String) -> Void>()
+        var deliveries: [String] = []
+        let oldAttachment = subject.attach { deliveries.append("old:\($0)") }
+        let newAttachment = subject.attach { deliveries.append("new:\($0)") }
+
+        subject.detach(oldAttachment)
+        XCTAssertNotNil(subject.withCurrent { $0("event") })
+        subject.detach(newAttachment)
+
+        XCTAssertEqual(deliveries, ["new:event"])
+        XCTAssertNil(subject.withCurrent { $0("unavailable") })
+    }
+
     func testMainRouteOwnsDeliveryAndPreservesFifo() {
         var delivered: [String] = []
         var accepted: [String] = []
