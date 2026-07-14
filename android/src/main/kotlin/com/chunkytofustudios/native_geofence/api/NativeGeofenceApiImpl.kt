@@ -87,23 +87,64 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
             error,
         )
     }
+    private val dispatcherRecoveryAdmission = CallbackDispatcherRecoveryAdmission()
 
     override fun initialize(callbackDispatcherHandle: Long) {
         val packageFingerprint = AndroidPackageFingerprint.current(context)
-        persistCallbackDispatcherHandle(callbackDispatcherHandle) { handle ->
-            context.getSharedPreferences(
-                Constants.SHARED_PREFERENCES_KEY,
-                Context.MODE_PRIVATE
-            )
-                .edit()
-                .putLong(Constants.CALLBACK_DISPATCHER_HANDLE_KEY, handle)
-                .putString(
-                    Constants.CALLBACK_DISPATCHER_PACKAGE_FINGERPRINT_KEY,
-                    packageFingerprint
+        initializeCallbackDispatcher(
+            callbackDispatcherHandle = callbackDispatcherHandle,
+            persist = { handle ->
+                context.getSharedPreferences(
+                    Constants.SHARED_PREFERENCES_KEY,
+                    Context.MODE_PRIVATE
                 )
-                .commit()
-        }
+                    .edit()
+                    .putLong(Constants.CALLBACK_DISPATCHER_HANDLE_KEY, handle)
+                    .putString(
+                        Constants.CALLBACK_DISPATCHER_PACKAGE_FINGERPRINT_KEY,
+                        packageFingerprint
+                    )
+                    .commit()
+            },
+            afterPersisted = ::retryRecoveryAfterDispatcherInitialization,
+        )
         NativeGeofenceLogger.d(context, TAG, "Initialized NativeGeofenceApi.")
+    }
+
+    private fun retryRecoveryAfterDispatcherInitialization() {
+        val hasRecoveryEvidence = try {
+            NativeGeofencePersistence.getAllRawGeofenceIds(context).isNotEmpty()
+        } catch (error: Throwable) {
+            NativeGeofenceLogger.w(
+                context,
+                TAG,
+                "Could not inspect geofence recovery evidence after dispatcher initialization.",
+                error,
+            )
+            return
+        }
+        if (!dispatcherRecoveryAdmission.tryAcquire(hasRecoveryEvidence)) return
+
+        try {
+            startAutomaticRecovery("callback_dispatcher_initialization") { result ->
+                result.exceptionOrNull()?.let { error ->
+                    NativeGeofenceLogger.w(
+                        context,
+                        TAG,
+                        "Dispatcher-initialization geofence recovery did not complete.",
+                        error,
+                    )
+                }
+            }
+        } catch (error: Throwable) {
+            dispatcherRecoveryAdmission.releaseAfterStartFailure()
+            NativeGeofenceLogger.w(
+                context,
+                TAG,
+                "Dispatcher-initialization geofence recovery could not start.",
+                error,
+            )
+        }
     }
 
     override fun createGeofence(
@@ -1373,5 +1414,25 @@ internal fun persistCallbackDispatcherHandle(
             NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
             "Failed to durably persist the callback dispatcher handle."
         )
+    }
+}
+
+internal fun initializeCallbackDispatcher(
+    callbackDispatcherHandle: Long,
+    persist: (Long) -> Boolean,
+    afterPersisted: () -> Unit,
+) {
+    persistCallbackDispatcherHandle(callbackDispatcherHandle, persist)
+    afterPersisted()
+}
+
+internal class CallbackDispatcherRecoveryAdmission {
+    private val admitted = AtomicBoolean(false)
+
+    fun tryAcquire(hasRecoveryEvidence: Boolean): Boolean =
+        hasRecoveryEvidence && admitted.compareAndSet(false, true)
+
+    fun releaseAfterStartFailure() {
+        admitted.set(false)
     }
 }
