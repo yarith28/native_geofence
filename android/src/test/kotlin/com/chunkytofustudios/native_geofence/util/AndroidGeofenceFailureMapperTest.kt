@@ -46,4 +46,15 @@ class AndroidGeofenceFailureMapperTest {
         assertTrue(result.message.contains("failed"))
         assertNull(result.details)
     }
+
+    @Test
+    fun `mutation timeout exposes a stable user-facing message without internal type names`() {
+        val result = AndroidGeofenceFailureMapper.from(
+            AndroidGeofenceMutationTimeoutException(AndroidGeofenceMutationKind.REMOVAL)
+        )
+
+        assertTrue(result.message.contains("did not confirm the geofence removal"))
+        assertTrue(!result.message.contains("TimeoutException"))
+        assertNull(result.details)
+    }
 }

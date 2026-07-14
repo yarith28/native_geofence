@@ -13,6 +13,7 @@ import com.chunkytofustudios.native_geofence.Constants
 import com.chunkytofustudios.native_geofence.NativeGeofenceBackgroundWorker
 import com.chunkytofustudios.native_geofence.api.NativeGeofenceApiImpl
 import com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWire
+import com.chunkytofustudios.native_geofence.util.AndroidGeofenceMutationKind
 import com.chunkytofustudios.native_geofence.util.AndroidPackageFingerprint
 import com.chunkytofustudios.native_geofence.util.BroadcastCompletionBarrier
 import com.chunkytofustudios.native_geofence.util.CallbackEnqueueOperation
@@ -32,6 +33,7 @@ import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnostics
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 import com.chunkytofustudios.native_geofence.util.NativeGeofencePersistence
 import com.chunkytofustudios.native_geofence.util.OrphanedGeofenceCleanupCoordinator
+import com.chunkytofustudios.native_geofence.util.attachWithGeofenceMutationDeadline
 import com.google.android.gms.location.GeofencingEvent
 import com.google.android.gms.location.GeofenceStatusCodes
 import com.google.android.gms.location.LocationServices
@@ -344,8 +346,11 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
             },
             removeFromPlatform = { id, complete ->
                 geofencingClient.removeGeofences(listOf(id))
-                    .addOnSuccessListener { complete(Result.success(Unit)) }
-                    .addOnFailureListener { complete(Result.failure(it)) }
+                    .attachWithGeofenceMutationDeadline(
+                        kind = AndroidGeofenceMutationKind.REMOVAL,
+                        onSuccess = { complete(Result.success(Unit)) },
+                        onFailure = { complete(Result.failure(it)) }
+                    )
             },
             clearDurableState = { id -> NativeGeofencePersistence.removeGeofence(context, id) }
         )

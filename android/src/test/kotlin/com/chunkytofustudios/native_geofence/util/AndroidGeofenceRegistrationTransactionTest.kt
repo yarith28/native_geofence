@@ -174,6 +174,27 @@ class AndroidGeofenceRegistrationTransactionTest {
         assertTrue(fixture.results.single().isSuccess)
         assertEquals(1, fixture.markActiveCalls)
     }
+
+    @Test
+    fun `registration timeout compensates unknown platform outcome and ignores late success`() {
+        val fixture = Fixture()
+
+        fixture.start()
+        fixture.current.fail(
+            AndroidGeofenceMutationTimeoutException(
+                AndroidGeofenceMutationKind.REGISTRATION
+            )
+        )
+        fixture.current.succeed()
+        fixture.compensation.succeed()
+
+        val failure = fixture.singleFailure()
+        assertEquals(AndroidGeofenceRegistrationFailureStage.PLATFORM_REGISTRATION, failure.stage)
+        assertEquals(AndroidGeofenceTransactionStepOutcome.SUCCEEDED, failure.compensation)
+        assertEquals(AndroidGeofenceTransactionStepOutcome.SUCCEEDED, failure.durableRestoration)
+        assertEquals(0, fixture.markActiveCalls)
+        assertEquals(1, fixture.results.size)
+    }
 }
 
 private class Fixture(
