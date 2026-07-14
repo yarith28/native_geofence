@@ -1,29 +1,18 @@
 package com.chunkytofustudios.native_geofence.util
 
 import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Build
+import androidx.core.content.pm.PackageInfoCompat
 import java.security.MessageDigest
 
 internal object AndroidPackageFingerprint {
     fun current(context: Context): String {
         val packageName = context.packageName
         val material = try {
-            val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                context.packageManager.getPackageInfo(
-                    packageName,
-                    PackageManager.PackageInfoFlags.of(0L)
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                context.packageManager.getPackageInfo(packageName, 0)
-            }
-            val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                packageInfo.longVersionCode
-            } else {
-                @Suppress("DEPRECATION")
-                packageInfo.versionCode.toLong()
-            }
+            val packageInfo = AndroidPackageManagerCompat.getPackageInfo(
+                context.packageManager,
+                packageName,
+            )
+            val versionCode = PackageInfoCompat.getLongVersionCode(packageInfo)
             "$packageName:$versionCode:${packageInfo.lastUpdateTime}"
         } catch (_: RuntimeException) {
             packageName

@@ -24,6 +24,7 @@
 * Registers Flutter plugins in the background callback isolate and throws a typed `NativeGeofenceException` when its manager is accessed before callback initialization, including in release builds
 * Reports Android geofence registration and removal failures with actionable Play Services status evidence instead of inferring `geofenceNotFound` from the local cache
 * Supports foreground callbacks on Android 6.0–7.1 by guarding newer service and notification APIs, providing a valid fallback notification icon, and declaring the AndroidX Core APIs used by the plugin directly
+* Centralizes Android package-manager compatibility calls and uses AndroidX helpers for package versions, mock locations, and foreground teardown without changing API-23 or location-only foreground behavior
 
 ## 1.3.1
 

@@ -132,15 +132,10 @@ internal class AndroidNativeGeofenceStatusProvider(private val context: Context)
     private fun callbackReceiverAvailable(context: Context): Boolean {
         val component = ComponentName(context, NativeGeofenceBroadcastReceiver::class.java)
         val info = try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                context.packageManager.getReceiverInfo(
-                    component,
-                    PackageManager.ComponentInfoFlags.of(0L)
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                context.packageManager.getReceiverInfo(component, 0)
-            }
+            AndroidPackageManagerCompat.getReceiverInfo(
+                context.packageManager,
+                component,
+            )
         } catch (_: PackageManager.NameNotFoundException) {
             return false
         }

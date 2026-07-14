@@ -39,6 +39,7 @@ import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationTra
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationTransactionException
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceTransactionStepOutcome
 import com.chunkytofustudios.native_geofence.util.AndroidPackageFingerprint
+import com.chunkytofustudios.native_geofence.util.AndroidPackageManagerCompat
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceSynchronizationPlanner
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceSynchronizationReason
 import com.chunkytofustudios.native_geofence.util.AndroidNativeGeofenceStatusProvider
@@ -1062,15 +1063,10 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
     private fun geofenceBroadcastReceiverDeclaredAndEnabled(context: Context): Boolean {
         val component = ComponentName(context, NativeGeofenceBroadcastReceiver::class.java)
         val receiverInfo = try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                context.packageManager.getReceiverInfo(
-                    component,
-                    PackageManager.ComponentInfoFlags.of(0L)
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                context.packageManager.getReceiverInfo(component, 0)
-            }
+            AndroidPackageManagerCompat.getReceiverInfo(
+                context.packageManager,
+                component,
+            )
         } catch (_: PackageManager.NameNotFoundException) {
             return false
         }
