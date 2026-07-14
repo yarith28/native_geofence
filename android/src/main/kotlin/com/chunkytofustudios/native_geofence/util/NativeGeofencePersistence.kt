@@ -18,13 +18,19 @@ class NativeGeofencePersistence {
             context: Context,
             geofence: GeofenceWire,
             recoveryEligible: Boolean = true,
-            active: Boolean = true
+            active: Boolean = true,
+            expirationDeadlineMillis: Long? = geofence.androidSettings
+                .expirationDurationMillis
+                ?.let {
+                    GeofenceRegistrationStore.safeDeadline(System.currentTimeMillis(), it)
+                },
         ): Boolean = synchronized(sharedPreferencesLock) {
             val saved = store(context).saveConfiguredGeofence(
                 geofence,
                 recoveryEligible = recoveryEligible,
                 active = active,
-                callbackPackageFingerprint = AndroidPackageFingerprint.current(context)
+                callbackPackageFingerprint = AndroidPackageFingerprint.current(context),
+                expirationDeadlineMillis = expirationDeadlineMillis,
             )
             if (saved) {
                 NativeGeofenceLogger.d(context, TAG, "Saved Geofence ID=${geofence.id}.")

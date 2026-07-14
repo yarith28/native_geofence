@@ -307,6 +307,9 @@ Android `notificationResponsiveness` defaults to fastest delivery (`0ms`) when
 unset. Larger values, such as two or five minutes, may reduce power use at the
 cost of latency. `Duration.zero` is useful when overriding a previously slower
 value. The OS may still adjust actual timing for battery and system health.
+When set, Android `expiration` must be at least one millisecond.
+`loiteringDelay` and `notificationResponsiveness` must be between `0` and
+`2147483647` milliseconds.
 
 iOS allows at most 20 monitored regions per app, including regions registered
 outside this plugin. Android allows at most 100 geofences per app. Background

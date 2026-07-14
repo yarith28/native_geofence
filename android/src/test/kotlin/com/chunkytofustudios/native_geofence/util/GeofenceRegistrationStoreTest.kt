@@ -52,6 +52,31 @@ class GeofenceRegistrationStoreTest {
     }
 
     @Test
+    fun `delayed replacement commit preserves its prepared absolute deadline`() {
+        var now = 1_000L
+        val backend = FakeGeofencePersistenceBackend()
+        val store = GeofenceRegistrationStore(backend) { now }
+        assertTrue(store.saveConfiguredGeofence(geofence(callbackHandle = 1, duration = 500)))
+        val preparedDeadline = GeofenceRegistrationStore.safeDeadline(now, 900)
+
+        now = 1_300L
+        assertTrue(
+            store.saveConfiguredGeofence(
+                geofence(callbackHandle = 2, duration = 900),
+                expirationDeadlineMillis = preparedDeadline,
+            )
+        )
+
+        assertEquals(1_900L, backend.values[expirationKey("office")])
+        assertEquals(
+            600L,
+            store.getRecoverableGeofence("office")
+                ?.androidSettings
+                ?.expirationDurationMillis,
+        )
+    }
+
+    @Test
     fun `new insertion rollback removes every newly persisted field`() {
         val backend = FakeGeofencePersistenceBackend()
         val store = GeofenceRegistrationStore(backend) { 1_000L }

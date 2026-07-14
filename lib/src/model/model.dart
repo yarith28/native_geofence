@@ -87,6 +87,7 @@ class AndroidGeofenceSettings {
 
   /// The geofence will be removed automatically after this period of time.
   /// If you don't set this the geofence will never expire.
+  /// When set, the duration must be at least one millisecond.
   final Duration? expiration;
 
   /// The delay between [GeofenceEvent.enter] and [GeofenceEvent.dwell].

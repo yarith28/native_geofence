@@ -37,6 +37,8 @@ import com.chunkytofustudios.native_geofence.util.AndroidGeofenceFailureMapper
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceMutationKind
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRecoveryPlanner
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationFailureStage
+import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationPersistence
+import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationPersistenceMode
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationTransaction
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationTransactionException
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRollbackRestorationOutcome
@@ -52,6 +54,7 @@ import com.chunkytofustudios.native_geofence.util.GeofenceMutationQueue
 import com.chunkytofustudios.native_geofence.util.GeofenceMutationQueues
 import com.chunkytofustudios.native_geofence.util.GeofenceMutationRunner
 import com.chunkytofustudios.native_geofence.util.GeofencePersistenceSnapshot
+import com.chunkytofustudios.native_geofence.util.GeofenceRegistrationStore
 import com.chunkytofustudios.native_geofence.util.GeofenceWires
 import com.chunkytofustudios.native_geofence.util.PersistedValue
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
@@ -62,6 +65,7 @@ import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnosticStage
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnostics
 import com.chunkytofustudios.native_geofence.util.StoredGeofenceRegistration
 import com.chunkytofustudios.native_geofence.util.attachWithGeofenceMutationDeadline
+import com.chunkytofustudios.native_geofence.util.runAndroidGeofenceAsyncOperation
 import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.LocationServices
 import java.util.concurrent.atomic.AtomicBoolean
@@ -526,8 +530,27 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
             return
         }
 
-        geofencingClient.removeGeofences(rawIds).attachWithGeofenceMutationDeadline(
-            kind = AndroidGeofenceMutationKind.REMOVAL,
+        fun fail(error: Throwable) {
+            val failure = AndroidGeofenceFailureMapper.from(error)
+            NativeGeofenceLogger.e(
+                context,
+                TAG,
+                "Failed to remove all geofences: $error",
+                error,
+            )
+            callback.invoke(
+                Result.failure(
+                    FlutterError(
+                        NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                        failure.message,
+                        failure.details
+                    )
+                )
+            )
+        }
+
+        runAndroidGeofenceAsyncOperation(
+            begin = { beginGeofenceRemoval(rawIds) },
             onSuccess = onSuccess@{
                 if (!NativeGeofencePersistence.removeAllGeofences(context)) {
                     callback.invoke(
@@ -544,24 +567,7 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                 NativeGeofenceLogger.d(context, TAG, "Removed all geofences (if any).")
                 callback.invoke(Result.success(Unit))
             },
-            onFailure = { error ->
-                val failure = AndroidGeofenceFailureMapper.from(error)
-                NativeGeofenceLogger.e(
-                    context,
-                    TAG,
-                    "Failed to remove all geofences: $error",
-                    error,
-                )
-                callback.invoke(
-                    Result.failure(
-                        FlutterError(
-                            NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
-                            failure.message,
-                            failure.details
-                        )
-                    )
-                )
-            }
+            onFailure = ::fail,
         )
     }
 
@@ -1264,19 +1270,35 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         val previousPlatformGeofence = previousRecoverable?.takeIf {
             previousStored?.active == true && previousStored.lifecycleMetadataDurable
         }
-
-        AndroidGeofenceRegistrationTransaction(
-            previousRegistrationExists = previousRegistrationExists,
-            previousPlatformRestorationRequired = previousPlatformGeofence != null,
-            saveProvisional = {
-                !cache || NativeGeofencePersistence.saveGeofence(
+        val expirationDeadlineMillis = geofence.androidSettings
+            .expirationDurationMillis
+            ?.let {
+                GeofenceRegistrationStore.safeDeadline(System.currentTimeMillis(), it)
+            }
+        val registrationPersistence = AndroidGeofenceRegistrationPersistence(
+            mode = AndroidGeofenceRegistrationPersistenceMode.select(
+                persistConfiguredRegistration = cache,
+                hasActivePreviousRegistration = previousPlatformGeofence != null,
+            ),
+            saveInactiveRegistration = {
+                NativeGeofencePersistence.saveGeofence(
                     context,
                     geofence,
                     recoveryEligible = true,
                     active = false,
+                    expirationDeadlineMillis = expirationDeadlineMillis,
                 )
             },
-            markActive = {
+            saveActiveRegistration = {
+                NativeGeofencePersistence.saveGeofence(
+                    context,
+                    geofence,
+                    recoveryEligible = true,
+                    active = true,
+                    expirationDeadlineMillis = expirationDeadlineMillis,
+                )
+            },
+            markExistingRegistrationActive = {
                 NativeGeofencePersistence.setLifecycleState(
                     context,
                     geofence.id,
@@ -1284,6 +1306,13 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                     active = true,
                 )
             },
+        )
+
+        AndroidGeofenceRegistrationTransaction(
+            previousRegistrationExists = previousRegistrationExists,
+            previousPlatformRestorationRequired = previousPlatformGeofence != null,
+            saveProvisional = registrationPersistence::saveProvisional,
+            markActive = registrationPersistence::commit,
             restoreDurableSnapshot = {
                 NativeGeofencePersistence.restore(context, previousSnapshot)
             },
@@ -1365,7 +1394,11 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
     }
 
     private fun beginGeofenceRemoval(id: String): AndroidGeofenceAsyncOperation {
-        val task = geofencingClient.removeGeofences(listOf(id))
+        return beginGeofenceRemoval(listOf(id))
+    }
+
+    private fun beginGeofenceRemoval(ids: List<String>): AndroidGeofenceAsyncOperation {
+        val task = geofencingClient.removeGeofences(ids)
         return AndroidGeofenceAsyncOperation { onSuccess, onFailure ->
             task.attachWithGeofenceMutationDeadline(
                 kind = AndroidGeofenceMutationKind.REMOVAL,

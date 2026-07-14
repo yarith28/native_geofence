@@ -269,6 +269,7 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
 
         XCTAssertNil(subject.didStartMonitoring(for: requested))
         XCTAssertEqual(completion.count, 1)
+        XCTAssertEqual(monitor.stopped.map(\.identifier), ["office", "office"])
     }
 
     func testFailedReplacementCompletesOnlyAfterExactPriorRegionIsRestored() {
@@ -656,6 +657,8 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
         XCTAssertNil(handles.values["office"])
         XCTAssertNil(subject.didStartMonitoring(for: previous))
         XCTAssertEqual(completion.count, 1)
+        XCTAssertEqual(monitor.stopped.count, 3)
+        XCTAssertTrue(monitor.stopped.last === previous)
     }
 
     func testLiveSameIdCollisionWithoutStoredHandleIsRejected() {
