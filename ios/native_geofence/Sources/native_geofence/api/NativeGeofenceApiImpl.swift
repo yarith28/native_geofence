@@ -28,7 +28,6 @@ private struct IosSynchronizationEvaluation {
     let allMonitoredRegions: Set<CLRegion>
     let ownedRegions: [CLCircularRegion]
     let packageFingerprint: String
-    let packageFingerprintCurrent: Bool
     let decision: IosGeofenceSynchronizationDecision
 }
 
@@ -186,6 +185,9 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
             registrationCount: persistedIds.count,
             storedPackageFingerprint: NativeGeofencePersistence
                 .getSynchronizedPackageFingerprint(),
+            registrationPackageFingerprints: persistedIds.map {
+                NativeGeofencePersistence.getRegionCallbackPackageFingerprint(id: $0)
+            },
             currentPackageFingerprint: currentPackageFingerprint()
         )
         let osVersion = UIDevice.current.systemVersion
@@ -270,6 +272,10 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
                     desiredRegistrations
                 )
                 let callbackIds = NativeGeofencePersistence.getRegionCallbackIds()
+                let scopedCallbackIds = callbackIds.intersection(
+                    desired.map { $0.wire.id }
+                )
+                let packageFingerprint = currentPackageFingerprint()
                 let regions = ownedMonitoredRegions()
                 let liveIds = Set(regions.map(\.identifier))
                 let registrations = regions.compactMap(synchronizationWire).sorted {
@@ -297,10 +303,11 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
                                     .desiredRegistrationFingerprint(
                                         desired.map(\.plannerRegistration)
                                     ),
-                            callbackFingerprintCurrent: callbackIds.isEmpty
-                                || NativeGeofencePersistence
-                                    .getSynchronizedPackageFingerprint()
-                                    == currentPackageFingerprint(),
+                            callbackFingerprintCurrent: NativeGeofencePersistence
+                                .callbackPackageFingerprintsCurrent(
+                                    ids: scopedCallbackIds,
+                                    currentFingerprint: packageFingerprint
+                                ),
                             iosMaximumRegionMonitoringDistance:
                                 normalizedMaximumDistance
                         )
@@ -493,9 +500,14 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
         )
         let liveIds = Set(ownedRegions.map(\.identifier))
         let packageFingerprint = currentPackageFingerprint()
-        let packageFingerprintCurrent = callbackIds.isEmpty
-            || NativeGeofencePersistence.getSynchronizedPackageFingerprint()
-                == packageFingerprint
+        let scopedCallbackIds = callbackIds.intersection(
+            desired.map { $0.wire.id }
+        )
+        let packageFingerprintCurrent = NativeGeofencePersistence
+            .callbackPackageFingerprintsCurrent(
+                ids: scopedCallbackIds,
+                currentFingerprint: packageFingerprint
+            )
         let currentRegistrations: [IosGeofenceSynchronizationRegistration] =
             ownedRegions.compactMap { region in
                 guard let callbackHandle = NativeGeofencePersistence
@@ -529,7 +541,6 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
             allMonitoredRegions: allMonitoredRegions,
             ownedRegions: ownedRegions,
             packageFingerprint: packageFingerprint,
-            packageFingerprintCurrent: packageFingerprintCurrent,
             decision: decision
         )
     }
@@ -672,7 +683,6 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
         }
 
         let packageFingerprint = evaluation.packageFingerprint
-        let packageFingerprintCurrent = evaluation.packageFingerprintCurrent
 
         func fail(_ error: Error) {
             rollbackSynchronization(
@@ -686,17 +696,21 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
 
         func synchronizeNext(_ index: Int) {
             guard index < desired.count else {
-                guard NativeGeofencePersistence
-                    .setSynchronizedPackageFingerprint(packageFingerprint),
-                    NativeGeofencePersistence
-                        .setSynchronizationFingerprint(
-                            evaluation.decision.desiredRegistrationFingerprint
-                        )
-                else {
+                let committed = evaluation.removeUnlisted
+                    ? NativeGeofencePersistence.commitAuthoritativeSynchronization(
+                        registrationFingerprint: evaluation.decision
+                            .desiredRegistrationFingerprint,
+                        packageFingerprint: packageFingerprint
+                    )
+                    : NativeGeofencePersistence.commitPartialSynchronization(
+                        ids: desiredIdSet,
+                        packageFingerprint: packageFingerprint
+                    )
+                guard committed else {
                     fail(
                         nativeGeofenceError(
                             .pluginInternal,
-                            message: "Failed to durably commit the iOS synchronization fingerprints."
+                            message: "Failed to durably commit iOS synchronization evidence."
                         )
                     )
                     return
@@ -718,7 +732,14 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
                 && NativeGeofencePersistence
                     .getRegionCallbackContext(id: value.wire.id)
                     == value.wire.callbackContext
-            if platformMatches && metadataMatches && packageFingerprintCurrent {
+            let registrationPackageFingerprintCurrent =
+                NativeGeofencePersistence.getRegionCallbackPackageFingerprint(
+                    id: value.wire.id
+                ) == packageFingerprint
+            if platformMatches
+                && metadataMatches
+                && registrationPackageFingerprintCurrent
+            {
                 synchronizeNext(index + 1)
                 return
             }
@@ -914,21 +935,7 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
     }
 
     private func currentPackageFingerprint() -> String {
-        let bundle = Bundle.main
-        let identifier = bundle.bundleIdentifier ?? "unknown"
-        let version = bundle.object(
-            forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "unknown"
-        let build = bundle.object(
-            forInfoDictionaryKey: "CFBundleVersion"
-        ) as? String ?? "unknown"
-        let executableAttributes = bundle.executableURL.flatMap {
-            try? FileManager.default.attributesOfItem(atPath: $0.path)
-        }
-        let modifiedAt = (executableAttributes?[.modificationDate] as? Date)?
-            .timeIntervalSince1970 ?? 0
-        let size = (executableAttributes?[.size] as? NSNumber)?.int64Value ?? 0
-        return "\(identifier):\(version):\(build):\(modifiedAt):\(size)"
+        NativeGeofencePersistence.currentPackageFingerprint()
     }
     
     func removeGeofenceById(id: String, completion: @escaping (Result<Void, any Error>) -> Void) {

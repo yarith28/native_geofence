@@ -341,9 +341,9 @@ and removes plugin-owned IDs it omits; pass `removeUnlisted: false` to manage a
 subset. An authoritative pass compares and refreshes the global registration
 fingerprint. A partial pass fingerprints exactly its supplied list, compares
 those registrations directly, and does not treat a different or absent global
-fingerprint as stale. On Android, callback-refresh evidence is attributed by
-registration ID, so a partial pass clears only its supplied scope and preserves
-evidence for other registrations. Unchanged registrations stay armed, and
+fingerprint as stale. Callback-refresh evidence is attributed by registration
+ID, so a partial pass clears only its supplied scope and preserves evidence for
+other registrations. Unchanged registrations stay armed, and
 callback/context-only changes update metadata without an unnecessary platform
 restart. Registration changes run as a native transaction; a partial failure
 restores the prior registrations, finite deadlines, callback metadata, iOS
