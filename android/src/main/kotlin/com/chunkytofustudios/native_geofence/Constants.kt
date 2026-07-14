@@ -23,6 +23,8 @@ class Constants {
         const val CALLBACK_DISPATCHER_PACKAGE_FINGERPRINT_KEY =
             "$PACKAGE_NAME.callback_dispatcher_package_fingerprint"
         const val CALLBACK_REFRESH_REQUIRED_KEY = "$PACKAGE_NAME.callback_refresh_required"
+        const val CALLBACK_REFRESH_REQUIRED_IDS_KEY =
+            "$PACKAGE_NAME.callback_refresh_required_ids"
 
         const val ACTION_PROMOTE_FOREGROUND = "$PACKAGE_NAME.action.PROMOTE_FOREGROUND"
         const val FOREGROUND_PROMOTION_TOKEN_KEY = "$PACKAGE_NAME.foreground_promotion_token"

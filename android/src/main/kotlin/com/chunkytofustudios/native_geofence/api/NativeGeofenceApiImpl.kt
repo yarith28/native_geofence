@@ -31,19 +31,21 @@ import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceRecoveryPol
 import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceRecoveryScheduler
 import com.chunkytofustudios.native_geofence.receivers.RecoveryScheduleOutcome
 import com.chunkytofustudios.native_geofence.util.ActiveGeofenceWires
+import com.chunkytofustudios.native_geofence.util.AndroidCallbackRefreshPolicy
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceAsyncOperation
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceFailureMapper
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRecoveryPlanner
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationFailureStage
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationTransaction
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationTransactionException
-import com.chunkytofustudios.native_geofence.util.AndroidGeofenceTransactionStepOutcome
-import com.chunkytofustudios.native_geofence.util.AndroidPackageFingerprint
-import com.chunkytofustudios.native_geofence.util.AndroidPackageManagerCompat
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRollbackRestorationOutcome
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceSynchronizationPlanner
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceSynchronizationReason
+import com.chunkytofustudios.native_geofence.util.AndroidGeofenceTransactionStepOutcome
 import com.chunkytofustudios.native_geofence.util.AndroidNativeGeofenceStatusProvider
+import com.chunkytofustudios.native_geofence.util.AndroidPackageFingerprint
+import com.chunkytofustudios.native_geofence.util.AndroidPackageManagerCompat
+import com.chunkytofustudios.native_geofence.util.CallbackRefreshScopeSnapshot
 import com.chunkytofustudios.native_geofence.util.GeofenceEvents
 import com.chunkytofustudios.native_geofence.util.GeofenceMutationQueue
 import com.chunkytofustudios.native_geofence.util.GeofenceMutationQueues
@@ -734,7 +736,8 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
     private data class SynchronizationSnapshot(
         val persistence: List<GeofencePersistenceSnapshot>,
         val activePlatformRegistrations: List<StoredGeofenceRegistration>,
-        val registrationFingerprint: String?
+        val registrationFingerprint: String?,
+        val callbackRefreshScope: CallbackRefreshScopeSnapshot
     )
 
     /** Reads synchronization evidence without migrating or repairing persistence. */
@@ -744,9 +747,23 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         val inspectedAtMillis = System.currentTimeMillis()
         val stored = NativeGeofencePersistence.inspectAllStoredConfiguredGeofences(context)
         val rawIds = NativeGeofencePersistence.getAllRawGeofenceIds(context)
-        val refreshState = AndroidNativeGeofenceStatusProvider(context)
-            .status()
-            .callbackRefreshState
+        val desiredIds = desired.map { it.id }.toSet()
+        val storedById = stored.associateBy { it.configuredGeofence.id }
+        val scopedRegistrations = desired.mapNotNull { storedById[it.id] }
+        val currentPackageFingerprint = AndroidPackageFingerprint.current(context)
+        val dispatcherPackageFingerprint = context.getSharedPreferences(
+            Constants.SHARED_PREFERENCES_KEY,
+            Context.MODE_PRIVATE
+        ).getString(Constants.CALLBACK_DISPATCHER_PACKAGE_FINGERPRINT_KEY, null)
+        val refreshState = AndroidCallbackRefreshPolicy.evaluate(
+            currentFingerprint = currentPackageFingerprint,
+            dispatcherFingerprint = dispatcherPackageFingerprint,
+            registrationFingerprints = scopedRegistrations.map {
+                it.callbackPackageFingerprint
+            },
+            callbackRefreshRequired = NativeGeofencePersistence
+                .isCallbackRefreshRequiredFor(context, desiredIds)
+        )
         val state = NativeGeofenceSynchronizationStateWire(
             platform = NativeGeofencePlatform.ANDROID,
             pluginOwnedIds = rawIds,
@@ -757,7 +774,7 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                 .getSynchronizationFingerprint(context),
             desiredRegistrationFingerprint = AndroidGeofenceSynchronizationPlanner
                 .desiredRegistrationFingerprint(desired),
-            callbackFingerprintCurrent = rawIds.isEmpty() ||
+            callbackFingerprintCurrent = scopedRegistrations.isEmpty() ||
                 refreshState == NativeGeofenceCallbackRefreshState.CURRENT,
             iosMaximumRegionMonitoringDistance = null,
         )
@@ -797,12 +814,13 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         val inspection = inspectSynchronizationState(desired)
         val current = inspection.storedRegistrations
         val rawIds = inspection.rawIds
+        val currentPackageFingerprint = AndroidPackageFingerprint.current(context)
         val decision = AndroidGeofenceSynchronizationPlanner.decide(
             current = current,
             rawIds = rawIds,
             desired = desired,
             removeUnlisted = removeUnlisted,
-            currentPackageFingerprint = AndroidPackageFingerprint.current(context),
+            currentPackageFingerprint = currentPackageFingerprint,
             currentRegistrationFingerprint = inspection.state.registrationFingerprint,
             callbackFingerprintCurrent = inspection.state.callbackFingerprintCurrent,
             nowMillis = inspection.inspectedAtMillis,
@@ -826,7 +844,9 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
             persistence = snapshotIds.map { NativeGeofencePersistence.snapshot(context, it) },
             activePlatformRegistrations = current.filter { it.active },
             registrationFingerprint = NativeGeofencePersistence
-                .getSynchronizationFingerprint(context)
+                .getSynchronizationFingerprint(context),
+            callbackRefreshScope = NativeGeofencePersistence
+                .snapshotCallbackRefreshScope(context)
         )
         val plan = decision.plan
         val platformTouchedIds = linkedSetOf<String>()
@@ -868,15 +888,22 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
 
         fun finishSynchronization() {
             if (terminalStarted.get()) return
-            if (!NativeGeofencePersistence.commitSynchronization(
+            val committed = if (removeUnlisted) {
+                NativeGeofencePersistence.commitSynchronization(
                     context,
                     decision.desiredRegistrationFingerprint
                 )
-            ) {
+            } else {
+                NativeGeofencePersistence.commitPartialSynchronization(
+                    context,
+                    desired.map { it.id }.toSet()
+                )
+            }
+            if (!committed) {
                 fail(
                     FlutterError(
                         NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
-                        "Failed to persist the synchronization fingerprint."
+                        "Failed to persist synchronization completion evidence."
                     )
                 )
                 return
@@ -1013,6 +1040,13 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                 )
             ) {
                 failures.add("failed to restore the synchronization fingerprint")
+            }
+            if (!NativeGeofencePersistence.restoreCallbackRefreshScope(
+                    context,
+                    snapshot.callbackRefreshScope
+                )
+            ) {
+                failures.add("failed to restore callback-refresh scope")
             }
         }
 

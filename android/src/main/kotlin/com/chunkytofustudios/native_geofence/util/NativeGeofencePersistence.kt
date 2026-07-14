@@ -150,6 +150,29 @@ class NativeGeofencePersistence {
         }
 
         @JvmStatic
+        internal fun commitPartialSynchronization(
+            context: Context,
+            refreshedIds: Set<String>
+        ): Boolean = synchronized(sharedPreferencesLock) {
+            store(context).commitPartialSynchronization(refreshedIds)
+        }
+
+        @JvmStatic
+        internal fun snapshotCallbackRefreshScope(
+            context: Context
+        ): CallbackRefreshScopeSnapshot = synchronized(sharedPreferencesLock) {
+            store(context).callbackRefreshScopeSnapshot()
+        }
+
+        @JvmStatic
+        internal fun restoreCallbackRefreshScope(
+            context: Context,
+            snapshot: CallbackRefreshScopeSnapshot
+        ): Boolean = synchronized(sharedPreferencesLock) {
+            store(context).restoreCallbackRefreshScope(snapshot)
+        }
+
+        @JvmStatic
         fun restoreSynchronizationFingerprint(
             context: Context,
             fingerprint: String?
@@ -178,9 +201,20 @@ class NativeGeofencePersistence {
             }
 
         @JvmStatic
-        fun markCallbackRefreshRequired(context: Context): Boolean =
+        internal fun isCallbackRefreshRequiredFor(
+            context: Context,
+            ids: Set<String>
+        ): Boolean = synchronized(sharedPreferencesLock) {
+            store(context).isCallbackRefreshRequiredFor(ids)
+        }
+
+        @JvmStatic
+        fun markCallbackRefreshRequired(
+            context: Context,
+            ids: Set<String> = emptySet()
+        ): Boolean =
             synchronized(sharedPreferencesLock) {
-                store(context).markCallbackRefreshRequired()
+                store(context).markCallbackRefreshRequired(ids)
             }
 
         @JvmStatic

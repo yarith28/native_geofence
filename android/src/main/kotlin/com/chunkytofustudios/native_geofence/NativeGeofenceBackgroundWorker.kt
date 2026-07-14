@@ -476,7 +476,10 @@ class NativeGeofenceBackgroundWorker(
         workerDiagnosticFailure = failure
         if (
             CallbackDeliveryPolicy.requiresCallbackRefresh(failure) &&
-            !NativeGeofencePersistence.markCallbackRefreshRequired(context)
+            !NativeGeofencePersistence.markCallbackRefreshRequired(
+                context,
+                callbackParams?.geofences?.map { it.id }?.toSet().orEmpty()
+            )
         ) {
             NativeGeofenceLogger.e(
                 context,
