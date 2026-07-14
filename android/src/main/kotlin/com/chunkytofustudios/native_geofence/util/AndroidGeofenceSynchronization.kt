@@ -35,6 +35,20 @@ internal data class AndroidGeofenceSynchronizationRollbackPlan(
     val platformRegistrationsToRestore: List<StoredGeofenceRegistration>
 )
 
+internal enum class AndroidGeofenceRollbackRestorationOutcome {
+    RESTORED,
+    FAILED,
+    EXPIRED
+}
+
+internal data class AndroidGeofenceRollbackEvidencePlan(
+    val cleanupMarkerIds: List<String>,
+    val inactiveRecoveryIds: List<String>
+) {
+    val requiresRecovery: Boolean
+        get() = cleanupMarkerIds.isNotEmpty() || inactiveRecoveryIds.isNotEmpty()
+}
+
 internal object AndroidGeofenceSynchronizationPlanner {
     fun decide(
         current: List<StoredGeofenceRegistration>,
@@ -234,6 +248,58 @@ internal object AndroidGeofenceSynchronizationPlanner {
             .filter { it.active && it.configuredGeofence.id in platformTouchedIds }
             .sortedBy { it.configuredGeofence.id }
     )
+
+    /**
+     * Derives the durable evidence that must remain after the exact pre-transaction
+     * snapshot is restored. A failed batch cleanup leaves every non-restored ID
+     * potentially platform-owned, while a failed rearm leaves a canonical previous
+     * registration recoverable but deliberately inactive.
+     */
+    fun rollbackEvidencePlan(
+        cleanupFailed: Boolean,
+        cleanupIds: List<String>,
+        previouslyActive: List<StoredGeofenceRegistration>,
+        restorationOutcomes: Map<String, AndroidGeofenceRollbackRestorationOutcome>
+    ): AndroidGeofenceRollbackEvidencePlan {
+        val cleanupMarkerIds = mutableSetOf<String>()
+        val inactiveRecoveryIds = mutableSetOf<String>()
+        val activeById = previouslyActive
+            .filter { it.active && it.configuredGeofence.id in cleanupIds }
+            .associateBy { it.configuredGeofence.id }
+
+        for ((id, registration) in activeById) {
+            when (restorationOutcomes[id]) {
+                AndroidGeofenceRollbackRestorationOutcome.RESTORED -> Unit
+                AndroidGeofenceRollbackRestorationOutcome.FAILED -> {
+                    if (registration.recoveryEligible) {
+                        inactiveRecoveryIds.add(id)
+                    } else {
+                        cleanupMarkerIds.add(id)
+                    }
+                }
+                AndroidGeofenceRollbackRestorationOutcome.EXPIRED,
+                null -> cleanupMarkerIds.add(id)
+            }
+        }
+
+        if (cleanupFailed) {
+            val restoredPreviousIds = activeById.keys.filterTo(mutableSetOf()) { id ->
+                restorationOutcomes[id] ==
+                    AndroidGeofenceRollbackRestorationOutcome.RESTORED
+            }
+            for (id in cleanupIds) {
+                if (id !in restoredPreviousIds && id !in inactiveRecoveryIds) {
+                    cleanupMarkerIds.add(id)
+                }
+            }
+        }
+
+        cleanupMarkerIds.removeAll(inactiveRecoveryIds)
+        return AndroidGeofenceRollbackEvidencePlan(
+            cleanupMarkerIds = cleanupMarkerIds.sorted(),
+            inactiveRecoveryIds = inactiveRecoveryIds.sorted()
+        )
+    }
 
     private fun JsonPrimitive?.orJsonNull() = this ?: JsonNull
 }

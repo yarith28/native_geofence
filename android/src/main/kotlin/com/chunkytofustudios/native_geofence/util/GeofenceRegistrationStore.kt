@@ -356,9 +356,22 @@ internal class GeofenceRegistrationStore(
      */
     fun markForPlatformCleanup(id: String): Boolean {
         val rawIds = rawIndex().toMutableSet().apply { add(id) }
-        return backend.edit {
+        return safeEdit {
             putStringSet(Constants.PERSISTENT_GEOFENCES_IDS_KEY, rawIds)
             putBoolean(recoveryEligibleKey(id), false)
+            putBoolean(activeKey(id), false)
+        }
+    }
+
+    /**
+     * Retains a canonical registration as positive ownership evidence while
+     * ensuring recovery cannot mistake an unconfirmed platform rearm for active.
+     */
+    fun markForRecovery(id: String): Boolean {
+        val rawIds = rawIndex().toMutableSet().apply { add(id) }
+        return safeEdit {
+            putStringSet(Constants.PERSISTENT_GEOFENCES_IDS_KEY, rawIds)
+            putBoolean(recoveryEligibleKey(id), true)
             putBoolean(activeKey(id), false)
         }
     }

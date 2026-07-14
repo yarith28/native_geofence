@@ -316,6 +316,81 @@ class AndroidGeofenceSynchronizationPlannerTest {
         )
     }
 
+    @Test
+    fun `failed rollback cleanup retains newly touched ownership evidence`() {
+        val evidence = AndroidGeofenceSynchronizationPlanner.rollbackEvidencePlan(
+            cleanupFailed = true,
+            cleanupIds = listOf("new"),
+            previouslyActive = emptyList(),
+            restorationOutcomes = emptyMap()
+        )
+
+        assertEquals(listOf("new"), evidence.cleanupMarkerIds)
+        assertTrue(evidence.inactiveRecoveryIds.isEmpty())
+        assertTrue(evidence.requiresRecovery)
+    }
+
+    @Test
+    fun `successful previous rearm remains active after ambiguous cleanup`() {
+        val office = stored(geofence("office", handle = 1, context = null))
+        val unrelated = stored(geofence("unrelated", handle = 2, context = null))
+
+        val evidence = AndroidGeofenceSynchronizationPlanner.rollbackEvidencePlan(
+            cleanupFailed = true,
+            cleanupIds = listOf("new", "office"),
+            previouslyActive = listOf(unrelated, office),
+            restorationOutcomes = mapOf(
+                "office" to AndroidGeofenceRollbackRestorationOutcome.RESTORED
+            )
+        )
+
+        assertEquals(listOf("new"), evidence.cleanupMarkerIds)
+        assertTrue(evidence.inactiveRecoveryIds.isEmpty())
+    }
+
+    @Test
+    fun `failed previous rearm is retained as inactive recovery evidence`() {
+        val office = stored(geofence("office", handle = 1, context = null))
+
+        val evidence = AndroidGeofenceSynchronizationPlanner.rollbackEvidencePlan(
+            cleanupFailed = false,
+            cleanupIds = listOf("office"),
+            previouslyActive = listOf(office),
+            restorationOutcomes = mapOf(
+                "office" to AndroidGeofenceRollbackRestorationOutcome.FAILED
+            )
+        )
+
+        assertTrue(evidence.cleanupMarkerIds.isEmpty())
+        assertEquals(listOf("office"), evidence.inactiveRecoveryIds)
+    }
+
+    @Test
+    fun `expired nonrecoverable and unknown rearms require cleanup evidence`() {
+        val expired = stored(geofence("expired", handle = 1, context = null))
+        val nonrecoverable = stored(
+            geofence("nonrecoverable", handle = 2, context = null),
+            recoveryEligible = false
+        )
+        val unknown = stored(geofence("unknown", handle = 3, context = null))
+
+        val evidence = AndroidGeofenceSynchronizationPlanner.rollbackEvidencePlan(
+            cleanupFailed = false,
+            cleanupIds = listOf("unknown", "nonrecoverable", "expired"),
+            previouslyActive = listOf(expired, nonrecoverable, unknown),
+            restorationOutcomes = mapOf(
+                "expired" to AndroidGeofenceRollbackRestorationOutcome.EXPIRED,
+                "nonrecoverable" to AndroidGeofenceRollbackRestorationOutcome.FAILED
+            )
+        )
+
+        assertEquals(
+            listOf("expired", "nonrecoverable", "unknown"),
+            evidence.cleanupMarkerIds
+        )
+        assertTrue(evidence.inactiveRecoveryIds.isEmpty())
+    }
+
     private fun stored(
         geofence: GeofenceWire,
         active: Boolean = true,

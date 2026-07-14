@@ -350,6 +350,21 @@ class GeofenceRegistrationStoreTest {
     }
 
     @Test
+    fun `recovery marker retains canonical bytes and adds missing raw id`() {
+        val backend = FakeGeofencePersistenceBackend()
+        val canonical = Json.encodeToString(GeofenceStorage.fromWire(geofence()))
+        backend.values[recordKey("office")] = canonical
+        val store = GeofenceRegistrationStore(backend) { 1_000L }
+
+        assertTrue(store.markForRecovery("office"))
+
+        assertEquals(listOf("office"), store.rawIds())
+        assertEquals(canonical, backend.values[recordKey("office")])
+        assertEquals(true, backend.values[recoveryEligibleKey("office")])
+        assertEquals(false, backend.values[activeKey("office")])
+    }
+
+    @Test
     fun `failed lifecycle write is reported and not treated as saved`() {
         val backend = FakeGeofencePersistenceBackend().apply { failNextCommit = true }
         val store = GeofenceRegistrationStore(backend) { 1_000L }
