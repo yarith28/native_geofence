@@ -420,10 +420,74 @@ class GeofenceRegistrationStoreTest {
     }
 
     @Test
+    fun `callback refresh evidence is scoped to affected registration ids`() {
+        val backend = FakeGeofencePersistenceBackend()
+        val store = GeofenceRegistrationStore(backend) { 1_000L }
+
+        assertTrue(store.markCallbackRefreshRequired(setOf("office", "warehouse")))
+
+        assertTrue(store.isCallbackRefreshRequired())
+        assertTrue(store.isCallbackRefreshRequiredFor(setOf("office")))
+        assertFalse(store.isCallbackRefreshRequiredFor(setOf("home")))
+        assertFalse(store.isCallbackRefreshRequiredFor(emptySet()))
+    }
+
+    @Test
+    fun `partial synchronization preserves authoritative and outside scope evidence`() {
+        val backend = FakeGeofencePersistenceBackend().apply {
+            values[Constants.SYNCHRONIZATION_REGISTRATION_FINGERPRINT_KEY] = "authoritative"
+        }
+        val store = GeofenceRegistrationStore(backend) { 1_000L }
+        assertTrue(store.markCallbackRefreshRequired(setOf("office", "warehouse")))
+
+        assertTrue(store.commitPartialSynchronization(setOf("office")))
+
+        assertEquals("authoritative", store.synchronizationFingerprint())
+        assertFalse(store.isCallbackRefreshRequiredFor(setOf("office")))
+        assertTrue(store.isCallbackRefreshRequiredFor(setOf("warehouse")))
+        assertEquals(
+            setOf("warehouse"),
+            backend.values[Constants.CALLBACK_REFRESH_REQUIRED_IDS_KEY]
+        )
+    }
+
+    @Test
+    fun `partial synchronization cannot consume unattributed legacy refresh evidence`() {
+        val backend = FakeGeofencePersistenceBackend().apply {
+            values[Constants.SYNCHRONIZATION_REGISTRATION_FINGERPRINT_KEY] = "authoritative"
+            values[Constants.CALLBACK_REFRESH_REQUIRED_KEY] = true
+        }
+        val store = GeofenceRegistrationStore(backend) { 1_000L }
+
+        assertTrue(store.commitPartialSynchronization(setOf("office")))
+
+        assertEquals("authoritative", store.synchronizationFingerprint())
+        assertTrue(store.isCallbackRefreshRequiredFor(setOf("office")))
+        assertEquals(true, backend.values[Constants.CALLBACK_REFRESH_REQUIRED_KEY])
+    }
+
+    @Test
+    fun `snapshot restores scoped callback refresh evidence`() {
+        val backend = FakeGeofencePersistenceBackend()
+        val store = GeofenceRegistrationStore(backend) { 1_000L }
+        assertTrue(store.markCallbackRefreshRequired(setOf("office")))
+        val snapshot = store.callbackRefreshScopeSnapshot()
+        assertTrue(store.commitPartialSynchronization(setOf("office")))
+        assertFalse(store.isCallbackRefreshRequiredFor(setOf("office")))
+        assertTrue(store.markCallbackRefreshRequired(setOf("warehouse")))
+
+        assertTrue(store.restoreCallbackRefreshScope(snapshot))
+
+        assertTrue(store.isCallbackRefreshRequiredFor(setOf("office")))
+        assertTrue(store.isCallbackRefreshRequiredFor(setOf("warehouse")))
+    }
+
+    @Test
     fun `successful synchronization atomically publishes fingerprint and clears refresh marker`() {
         val backend = FakeGeofencePersistenceBackend().apply {
             values[Constants.SYNCHRONIZATION_REGISTRATION_FINGERPRINT_KEY] = "old"
             values[Constants.CALLBACK_REFRESH_REQUIRED_KEY] = true
+            values[Constants.CALLBACK_REFRESH_REQUIRED_IDS_KEY] = setOf("office")
         }
         val store = GeofenceRegistrationStore(backend) { 1_000L }
 
@@ -432,6 +496,7 @@ class GeofenceRegistrationStoreTest {
         assertEquals("new", store.synchronizationFingerprint())
         assertFalse(store.isCallbackRefreshRequired())
         assertFalse(backend.values.containsKey(Constants.CALLBACK_REFRESH_REQUIRED_KEY))
+        assertFalse(backend.values.containsKey(Constants.CALLBACK_REFRESH_REQUIRED_IDS_KEY))
     }
 
     @Test
