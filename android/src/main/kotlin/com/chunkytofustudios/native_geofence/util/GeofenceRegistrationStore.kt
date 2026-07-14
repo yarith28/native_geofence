@@ -24,10 +24,13 @@ internal interface GeofencePersistenceBackend {
     fun edit(block: GeofencePersistenceEditor.() -> Unit): Boolean
 }
 
-internal data class PersistedValue<T>(
-    val present: Boolean,
-    val value: T?
-)
+internal sealed interface PersistedValue<out T> {
+    data object Absent : PersistedValue<Nothing>
+
+    data class Readable<T>(val value: T) : PersistedValue<T>
+
+    data object Corrupt : PersistedValue<Nothing>
+}
 
 internal data class GeofencePersistenceSnapshot(
     val id: String,
@@ -371,20 +374,27 @@ internal class GeofenceRegistrationStore(
         callbackPackageFingerprint = stringValue(callbackPackageFingerprintKey(id))
     )
 
-    fun restore(snapshot: GeofencePersistenceSnapshot): Boolean = backend.edit {
-        restoreStringSet(Constants.PERSISTENT_GEOFENCES_IDS_KEY, snapshot.rawIds)
-        restoreStringSet(
-            Constants.PERSISTENT_CONFIGURED_GEOFENCES_IDS_KEY,
-            snapshot.configuredIds
-        )
-        restoreString(recordKey(snapshot.id), snapshot.recordJson)
-        restoreLong(expirationKey(snapshot.id), snapshot.expirationDeadlineMillis)
-        restoreBoolean(recoveryEligibleKey(snapshot.id), snapshot.recoveryEligible)
-        restoreBoolean(activeKey(snapshot.id), snapshot.active)
-        restoreString(
-            callbackPackageFingerprintKey(snapshot.id),
-            snapshot.callbackPackageFingerprint
-        )
+    fun restore(snapshot: GeofencePersistenceSnapshot): Boolean {
+        if (snapshot.persistedValues().any { it is PersistedValue.Corrupt }) {
+            // An unreadable value cannot be reproduced through the typed editor.
+            // Preserve every current byte instead of applying a partial rollback.
+            return false
+        }
+        return safeEdit {
+            restoreStringSet(Constants.PERSISTENT_GEOFENCES_IDS_KEY, snapshot.rawIds)
+            restoreStringSet(
+                Constants.PERSISTENT_CONFIGURED_GEOFENCES_IDS_KEY,
+                snapshot.configuredIds
+            )
+            restoreString(recordKey(snapshot.id), snapshot.recordJson)
+            restoreLong(expirationKey(snapshot.id), snapshot.expirationDeadlineMillis)
+            restoreBoolean(recoveryEligibleKey(snapshot.id), snapshot.recoveryEligible)
+            restoreBoolean(activeKey(snapshot.id), snapshot.active)
+            restoreString(
+                callbackPackageFingerprintKey(snapshot.id),
+                snapshot.callbackPackageFingerprint
+            )
+        }
     }
 
     /** Call only after platform cleanup for [id] has succeeded. */
@@ -422,7 +432,11 @@ internal class GeofenceRegistrationStore(
         id: String,
         migrateLegacyMetadata: Boolean = true
     ): StoredGeofenceRegistration? {
-        val rawRecord = safeRead { backend.getString(recordKey(id)) } ?: return null
+        val rawRecord = when (val stored = stringValue(recordKey(id))) {
+            is PersistedValue.Readable -> stored.value
+            PersistedValue.Absent,
+            PersistedValue.Corrupt -> return null
+        }
         val geofence = try {
             Json.decodeFromString<GeofenceStorage>(rawRecord).toWire()
         } catch (_: Exception) {
@@ -432,31 +446,54 @@ internal class GeofenceRegistrationStore(
         }
 
         val durationMillis = geofence.androidSettings.expirationDurationMillis
-        val hasDeadline = safeRead { backend.contains(expirationKey(id)) } ?: false
-        var deadlineMillis =
-            if (hasDeadline) safeRead { backend.getLong(expirationKey(id), 0L) } else null
+        val deadline = longValue(expirationKey(id))
+        val storedRecoveryEligible = booleanValue(recoveryEligibleKey(id))
+        val storedActive = booleanValue(activeKey(id))
+        val rawIndex = stringSetValue(Constants.PERSISTENT_GEOFENCES_IDS_KEY)
+        val configuredIndex =
+            stringSetValue(Constants.PERSISTENT_CONFIGURED_GEOFENCES_IDS_KEY)
+        val lifecycleCorrupt = listOf<PersistedValue<*>>(
+            deadline,
+            storedRecoveryEligible,
+            storedActive,
+            rawIndex,
+            configuredIndex,
+        ).any { it is PersistedValue.Corrupt }
 
-        val hasRecoveryEligible =
-            safeRead { backend.contains(recoveryEligibleKey(id)) } ?: false
-        val hasActive = safeRead { backend.contains(activeKey(id)) } ?: false
-        val recoveryEligible =
-            if (hasRecoveryEligible) {
-                safeRead { backend.getBoolean(recoveryEligibleKey(id), true) } ?: true
-            } else {
-                true
-            }
-        val active =
-            if (hasActive) safeRead { backend.getBoolean(activeKey(id), true) } ?: true else true
-        val callbackPackageFingerprint =
-            safeRead { backend.getString(callbackPackageFingerprintKey(id)) }
+        var deadlineMillis: Long? = when (deadline) {
+            is PersistedValue.Readable -> deadline.value
+            PersistedValue.Absent,
+            PersistedValue.Corrupt -> null
+        }
+        val readableRecoveryEligible = when (storedRecoveryEligible) {
+            is PersistedValue.Readable -> storedRecoveryEligible.value
+            PersistedValue.Absent -> true
+            PersistedValue.Corrupt -> false
+        }
+        val readableActive = when (storedActive) {
+            is PersistedValue.Readable -> storedActive.value
+            PersistedValue.Absent -> true
+            PersistedValue.Corrupt -> false
+        }
+        val recoveryEligible = if (lifecycleCorrupt) false else readableRecoveryEligible
+        val active = if (lifecycleCorrupt) false else readableActive
+        val callbackPackageFingerprint = when (
+            val stored = stringValue(callbackPackageFingerprintKey(id))
+        ) {
+            is PersistedValue.Readable -> stored.value
+            PersistedValue.Absent,
+            PersistedValue.Corrupt -> null
+        }
 
-        val needsDeadlineMigration = durationMillis != null && !hasDeadline
-        val staleDeadline = durationMillis == null && hasDeadline
-        val needsStateMigration = !hasRecoveryEligible || !hasActive
-        val needsConfiguredIndexMigration =
-            !(safeRead {
-                backend.contains(Constants.PERSISTENT_CONFIGURED_GEOFENCES_IDS_KEY)
-            } ?: false)
+        val needsDeadlineMigration =
+            durationMillis != null && deadline is PersistedValue.Absent
+        val staleDeadline =
+            durationMillis == null && deadline is PersistedValue.Readable
+        val needsStateMigration =
+            storedRecoveryEligible is PersistedValue.Absent ||
+                storedActive is PersistedValue.Absent
+        val needsRawIndexMigration = rawIndex is PersistedValue.Absent
+        val needsConfiguredIndexMigration = configuredIndex is PersistedValue.Absent
 
         if (needsDeadlineMigration) {
             deadlineMillis = safeDeadline(nowMillis(), durationMillis!!)
@@ -464,9 +501,9 @@ internal class GeofenceRegistrationStore(
 
         val needsMigration =
             needsDeadlineMigration || staleDeadline || needsStateMigration ||
-                needsConfiguredIndexMigration
-        var metadataDurable = !needsMigration
-        if (needsMigration && migrateLegacyMetadata) {
+                needsRawIndexMigration || needsConfiguredIndexMigration
+        var metadataDurable = !lifecycleCorrupt && !needsMigration
+        if (!lifecycleCorrupt && needsMigration && migrateLegacyMetadata) {
             val rawIds = rawIndex().toMutableSet().apply { add(id) }
             val configuredIds = configuredIndex().toMutableSet().apply { add(id) }
             metadataDurable = safeEdit {
@@ -503,80 +540,100 @@ internal class GeofenceRegistrationStore(
         )
     }
 
-    private fun rawIndex(): Set<String> =
-        safeRead { backend.getStringSet(Constants.PERSISTENT_GEOFENCES_IDS_KEY) }
-            ?: emptySet()
+    private fun rawIndex(): Set<String> = when (
+        val stored = stringSetValue(Constants.PERSISTENT_GEOFENCES_IDS_KEY)
+    ) {
+        is PersistedValue.Readable -> stored.value
+        PersistedValue.Absent,
+        PersistedValue.Corrupt -> emptySet()
+    }
 
-    private fun configuredIndex(): Set<String> {
-        val hasConfiguredIndex =
-            safeRead {
-                backend.contains(Constants.PERSISTENT_CONFIGURED_GEOFENCES_IDS_KEY)
-            } ?: false
-        return if (hasConfiguredIndex) {
-            safeRead {
-                backend.getStringSet(Constants.PERSISTENT_CONFIGURED_GEOFENCES_IDS_KEY)
-            } ?: emptySet()
-        } else {
+    private fun configuredIndex(): Set<String> = when (
+        val stored = stringSetValue(Constants.PERSISTENT_CONFIGURED_GEOFENCES_IDS_KEY)
+    ) {
+        is PersistedValue.Readable -> stored.value
+        PersistedValue.Absent -> {
             // Legacy records used the raw index as their configured index.
             rawIndex()
         }
+        PersistedValue.Corrupt -> emptySet()
     }
 
-    private fun stringValue(key: String): PersistedValue<String> {
-        val present = safeRead { backend.contains(key) } ?: false
-        return PersistedValue(present, if (present) safeRead { backend.getString(key) } else null)
+    private fun stringValue(key: String): PersistedValue<String> =
+        persistedValue(key) { backend.getString(key) }
+
+    private fun stringSetValue(key: String): PersistedValue<Set<String>> =
+        persistedValue(key) { backend.getStringSet(key)?.toSet() }
+
+    private fun longValue(key: String): PersistedValue<Long> =
+        persistedValue(key) { backend.getLong(key, 0L) }
+
+    private fun booleanValue(key: String): PersistedValue<Boolean> =
+        persistedValue(key) { backend.getBoolean(key, false) }
+
+    private inline fun <T : Any> persistedValue(
+        key: String,
+        read: () -> T?,
+    ): PersistedValue<T> {
+        val present = safeRead { backend.contains(key) } ?: return PersistedValue.Corrupt
+        if (!present) return PersistedValue.Absent
+        val value = safeRead(read) ?: return PersistedValue.Corrupt
+        return PersistedValue.Readable(value)
     }
 
-    private fun stringSetValue(key: String): PersistedValue<Set<String>> {
-        val present = safeRead { backend.contains(key) } ?: false
-        return PersistedValue(
-            present,
-            if (present) safeRead { backend.getStringSet(key)?.toSet() } else null
+    private fun GeofencePersistenceSnapshot.persistedValues(): List<PersistedValue<*>> =
+        listOf(
+            rawIds,
+            configuredIds,
+            recordJson,
+            expirationDeadlineMillis,
+            recoveryEligible,
+            active,
+            callbackPackageFingerprint,
         )
-    }
-
-    private fun longValue(key: String): PersistedValue<Long> {
-        val present = safeRead { backend.contains(key) } ?: false
-        return PersistedValue(
-            present,
-            if (present) safeRead { backend.getLong(key, 0L) } else null
-        )
-    }
-
-    private fun booleanValue(key: String): PersistedValue<Boolean> {
-        val present = safeRead { backend.contains(key) } ?: false
-        return PersistedValue(
-            present,
-            if (present) safeRead { backend.getBoolean(key, false) } else null
-        )
-    }
 
     private fun GeofencePersistenceEditor.restoreStringSet(
         key: String,
         value: PersistedValue<Set<String>>
     ) {
-        if (value.present) putStringSet(key, requireNotNull(value.value)) else remove(key)
+        when (value) {
+            PersistedValue.Absent -> remove(key)
+            is PersistedValue.Readable -> putStringSet(key, value.value)
+            PersistedValue.Corrupt -> Unit
+        }
     }
 
     private fun GeofencePersistenceEditor.restoreString(
         key: String,
         value: PersistedValue<String>
     ) {
-        if (value.present) putString(key, requireNotNull(value.value)) else remove(key)
+        when (value) {
+            PersistedValue.Absent -> remove(key)
+            is PersistedValue.Readable -> putString(key, value.value)
+            PersistedValue.Corrupt -> Unit
+        }
     }
 
     private fun GeofencePersistenceEditor.restoreLong(
         key: String,
         value: PersistedValue<Long>
     ) {
-        if (value.present) putLong(key, requireNotNull(value.value)) else remove(key)
+        when (value) {
+            PersistedValue.Absent -> remove(key)
+            is PersistedValue.Readable -> putLong(key, value.value)
+            PersistedValue.Corrupt -> Unit
+        }
     }
 
     private fun GeofencePersistenceEditor.restoreBoolean(
         key: String,
         value: PersistedValue<Boolean>
     ) {
-        if (value.present) putBoolean(key, requireNotNull(value.value)) else remove(key)
+        when (value) {
+            PersistedValue.Absent -> remove(key)
+            is PersistedValue.Readable -> putBoolean(key, value.value)
+            PersistedValue.Corrupt -> Unit
+        }
     }
 
     private inline fun <T> safeRead(block: () -> T): T? = try {

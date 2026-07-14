@@ -263,6 +263,76 @@ class GeofenceRegistrationStoreTest {
     }
 
     @Test
+    fun `wrong typed finite deadline stays unknown and never receives a fresh lifetime`() {
+        val backend = FakeGeofencePersistenceBackend()
+        val store = GeofenceRegistrationStore(backend) { 2_000L }
+        assertTrue(store.saveConfiguredGeofence(geofence(duration = 500)))
+        backend.values[expirationKey("office")] = "not-a-long"
+        backend.editCalls = 0
+
+        val entry = store.recoveryInventory().single()
+
+        assertEquals(GeofenceRecoveryDisposition.UNKNOWN_LIFECYCLE, entry.disposition)
+        assertNull(entry.geofenceToRecover)
+        assertFalse(assertNotNull(entry.storedRegistration).recoveryEligible)
+        assertFalse(assertNotNull(entry.storedRegistration).active)
+        assertEquals("not-a-long", backend.values[expirationKey("office")])
+        assertEquals(0, backend.editCalls)
+        assertEquals(
+            GeofenceStatusDisposition.UNKNOWN_LIFECYCLE,
+            store.statusInventory().single().disposition,
+        )
+    }
+
+    @Test
+    fun `wrong typed lifecycle flags stay unknown and inactive`() {
+        val backend = FakeGeofencePersistenceBackend()
+        val store = GeofenceRegistrationStore(backend) { 1_000L }
+        assertTrue(store.saveConfiguredGeofence(geofence()))
+        backend.values[recoveryEligibleKey("office")] = "not-a-boolean"
+        backend.values[activeKey("office")] = 1L
+        backend.editCalls = 0
+
+        val entry = store.recoveryInventory().single()
+
+        assertEquals(GeofenceRecoveryDisposition.UNKNOWN_LIFECYCLE, entry.disposition)
+        assertNull(entry.geofenceToRecover)
+        assertFalse(assertNotNull(entry.storedRegistration).recoveryEligible)
+        assertFalse(assertNotNull(entry.storedRegistration).active)
+        assertEquals("not-a-boolean", backend.values[recoveryEligibleKey("office")])
+        assertEquals(1L, backend.values[activeKey("office")])
+        assertEquals(0, backend.editCalls)
+    }
+
+    @Test
+    fun `corrupt snapshot restoration fails without editing or throwing`() {
+        val backend = FakeGeofencePersistenceBackend()
+        val store = GeofenceRegistrationStore(backend) { 1_000L }
+        assertTrue(store.saveConfiguredGeofence(geofence(duration = 500)))
+        backend.values[expirationKey("office")] = "not-a-long"
+        val snapshot = store.snapshot("office")
+        backend.values[activeKey("office")] = false
+        backend.editCalls = 0
+        val beforeRestore = backend.values.toMap()
+
+        assertFalse(store.restore(snapshot))
+
+        assertEquals(beforeRestore, backend.values)
+        assertEquals(0, backend.editCalls)
+    }
+
+    @Test
+    fun `snapshot restoration reports an editor exception without throwing`() {
+        val backend = FakeGeofencePersistenceBackend()
+        val store = GeofenceRegistrationStore(backend) { 1_000L }
+        assertTrue(store.saveConfiguredGeofence(geofence(duration = 500)))
+        val snapshot = store.snapshot("office")
+        backend.throwOnNextEdit = true
+
+        assertFalse(store.restore(snapshot))
+    }
+
+    @Test
     fun `cleanup marker retains corrupt bytes and adds missing raw ids`() {
         val backend = FakeGeofencePersistenceBackend()
         backend.values[recordKey("corrupt")] = "not-json"
@@ -459,25 +529,45 @@ class GeofenceRegistrationStoreTest {
 private class FakeGeofencePersistenceBackend : GeofencePersistenceBackend {
     val values = mutableMapOf<String, Any>()
     var failNextCommit = false
+    var throwOnNextEdit = false
     var editCalls = 0
 
     override fun keys(): Set<String> = values.keys.toSet()
 
     override fun contains(key: String): Boolean = values.containsKey(key)
 
-    override fun getString(key: String): String? = values[key] as? String
+    override fun getString(key: String): String? {
+        val value = values[key] ?: return null
+        return value as? String
+            ?: throw ClassCastException("Value for $key is not a String")
+    }
 
-    @Suppress("UNCHECKED_CAST")
-    override fun getStringSet(key: String): Set<String>? = values[key] as? Set<String>
+    override fun getStringSet(key: String): Set<String>? {
+        val value = values[key] ?: return null
+        if (value !is Set<*> || value.any { it !is String }) {
+            throw ClassCastException("Value for $key is not a String set")
+        }
+        return value.filterIsInstance<String>().toSet()
+    }
 
-    override fun getLong(key: String, defaultValue: Long): Long =
-        values[key] as? Long ?: defaultValue
+    override fun getLong(key: String, defaultValue: Long): Long {
+        val value = values[key] ?: return defaultValue
+        return value as? Long
+            ?: throw ClassCastException("Value for $key is not a Long")
+    }
 
-    override fun getBoolean(key: String, defaultValue: Boolean): Boolean =
-        values[key] as? Boolean ?: defaultValue
+    override fun getBoolean(key: String, defaultValue: Boolean): Boolean {
+        val value = values[key] ?: return defaultValue
+        return value as? Boolean
+            ?: throw ClassCastException("Value for $key is not a Boolean")
+    }
 
     override fun edit(block: GeofencePersistenceEditor.() -> Unit): Boolean {
         editCalls += 1
+        if (throwOnNextEdit) {
+            throwOnNextEdit = false
+            throw IllegalStateException("Injected editor failure")
+        }
         val pending = values.toMutableMap()
         val editor = object : GeofencePersistenceEditor {
             override fun putString(key: String, value: String) {
