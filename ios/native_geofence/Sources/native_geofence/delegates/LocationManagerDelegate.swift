@@ -2,7 +2,8 @@ import CoreLocation
 import Foundation
 import OSLog
 
-// Singleton class
+/// Process-stable Core Location delegate owned by
+/// `IosGeofenceMutationAuthority`.
 class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
     // Prevent multiple instances of CLLocationManager to avoid duplicate triggers.
     private static var sharedLocationManager: CLLocationManager?
