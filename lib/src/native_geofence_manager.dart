@@ -22,6 +22,7 @@ class _PreparedRegistration {
 }
 
 class _SynchronizationDecision {
+  final NativeGeofenceSynchronizationScope scope;
   final Set<NativeGeofenceSynchronizationReason> reasons;
   final List<String> desiredIds;
   final List<String> currentIds;
@@ -34,6 +35,7 @@ class _SynchronizationDecision {
   final String? currentFingerprint;
 
   const _SynchronizationDecision({
+    required this.scope,
     required this.reasons,
     required this.desiredIds,
     required this.currentIds,
@@ -50,6 +52,7 @@ class _SynchronizationDecision {
 
   NativeGeofenceSynchronizationInspection toInspection() =>
       NativeGeofenceSynchronizationInspection(
+        scope: scope,
         matchesDesired: matchesDesired,
         reasons: Set.unmodifiable(reasons),
         desiredIds: List.unmodifiable(desiredIds),
@@ -101,8 +104,11 @@ _SynchronizationDecision _decideSynchronization(
       .toList()
     ..sort();
   final desiredFingerprint = state.desiredRegistrationFingerprint;
+  final scope = removeUnlisted
+      ? NativeGeofenceSynchronizationScope.authoritative
+      : NativeGeofenceSynchronizationScope.partial;
   final reasons = <NativeGeofenceSynchronizationReason>{};
-  if (state.registrationFingerprint == null) {
+  if (removeUnlisted && state.registrationFingerprint == null) {
     reasons.add(NativeGeofenceSynchronizationReason.firstRun);
   }
   if (!state.callbackFingerprintCurrent || metadataChangedIds.isNotEmpty) {
@@ -110,7 +116,7 @@ _SynchronizationDecision _decideSynchronization(
       NativeGeofenceSynchronizationReason.callbackFingerprintChanged,
     );
   }
-  if (state.registrationFingerprint != desiredFingerprint ||
+  if ((removeUnlisted && state.registrationFingerprint != desiredFingerprint) ||
       missingIds.isNotEmpty ||
       unlistedIds.isNotEmpty ||
       driftedIds.isNotEmpty ||
@@ -118,6 +124,7 @@ _SynchronizationDecision _decideSynchronization(
     reasons.add(NativeGeofenceSynchronizationReason.registrationDrift);
   }
   return _SynchronizationDecision(
+    scope: scope,
     reasons: reasons,
     desiredIds: desiredIds,
     currentIds: currentIds,
@@ -365,7 +372,9 @@ class NativeGeofenceManager {
   ///
   /// With the default [removeUnlisted] value, IDs omitted from [registrations]
   /// are reported as drift. Set it to false when the desired list intentionally
-  /// manages only a subset of plugin-owned registrations.
+  /// manages only a subset of plugin-owned registrations. Partial inspection
+  /// compares the supplied IDs directly and does not compare its subset
+  /// fingerprint with the last authoritative fingerprint.
   ///
   /// Throws [NativeGeofenceException].
   Future<NativeGeofenceSynchronizationInspection> inspectSynchronization(
@@ -393,7 +402,7 @@ class NativeGeofenceManager {
   /// Unchanged registrations stay armed. Callback/context-only changes refresh
   /// durable metadata without an unnecessary platform stop/start.
   ///
-  /// Each invocation is one native-authoritative inspect-and-mutate pass,
+  /// Each invocation is one native-owned inspect-and-mutate transaction,
   /// serialized with create, remove, and other synchronization work across
   /// foreground and headless paths. Native code re-reads state at that boundary
   /// and owns the no-op decision and report, so two isolates cannot act on the
@@ -431,6 +440,9 @@ class NativeGeofenceManager {
                 .catchError<NativeGeofenceSynchronizationResultWire>,
           );
       return NativeGeofenceSynchronizationReport(
+        scope: removeUnlisted
+            ? NativeGeofenceSynchronizationScope.authoritative
+            : NativeGeofenceSynchronizationScope.partial,
         didSynchronize: result.didSynchronize,
         reasons: Set<NativeGeofenceSynchronizationReason>.unmodifiable(
           result.reasons.map(_synchronizationReasonFromWire),

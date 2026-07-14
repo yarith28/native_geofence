@@ -77,7 +77,9 @@ void main() {
 
     expect(inspection.desiredCount, 2);
     expect(inspection.currentCount, 1);
+    expect(inspection.registrationFingerprintCurrent, isFalse);
     expect(inspection.toJson(), {
+      'scope': 'authoritative',
       'matchesDesired': false,
       'reasons': ['firstRun', 'registrationDrift'],
       'desiredCount': 2,
@@ -91,8 +93,10 @@ void main() {
       'inactiveIds': ['home'],
       'desiredRegistrationFingerprint': 'desired',
       'currentRegistrationFingerprint': null,
+      'registrationFingerprintCurrent': false,
     });
     expect(report.toJson(), {
+      'scope': 'authoritative',
       'didSynchronize': true,
       'reasons': ['registrationDrift'],
       'desiredCount': 2,

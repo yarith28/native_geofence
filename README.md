@@ -338,14 +338,17 @@ decision if native state changes first.
 `ensureSynchronized()` resolves callback handles from the live functions in the
 desired list. By default, `removeUnlisted: true` makes that list authoritative
 and removes plugin-owned IDs it omits; pass `removeUnlisted: false` to manage a
-subset. Unchanged registrations stay armed, and callback/context-only changes
-update metadata without an unnecessary platform restart. Registration changes
-run as a native transaction; a partial failure restores the prior registrations,
-finite deadlines, callback metadata, iOS duplicate baseline, and fingerprint.
-Rollback failures are reported explicitly.
+subset. An authoritative pass compares and refreshes the global registration
+fingerprint. A partial pass fingerprints exactly its supplied list, compares
+those registrations directly, and does not treat a different or absent global
+fingerprint as stale. Unchanged registrations stay armed, and
+callback/context-only changes update metadata without an unnecessary platform
+restart. Registration changes run as a native transaction; a partial failure
+restores the prior registrations, finite deadlines, callback metadata, iOS
+duplicate baseline, and fingerprint. Rollback failures are reported explicitly.
 
-Every `ensureSynchronized()` call is one native-authoritative
-inspect-and-mutate pass, serialized with create, remove, and other
+Every `ensureSynchronized()` call is one native-owned inspect-and-mutate
+transaction, serialized with create, remove, and other
 synchronization mutations across foreground and headless engine paths. Native
 code owns the no-op decision, reasons, counts, fingerprint, and rollback
 snapshot.
@@ -354,8 +357,10 @@ Rollback and automatic recovery suppress initial triggers. Synchronization does
 not re-arm unchanged regions. A new or platform-changed Android registration
 still applies its configured `initialTriggers`; iOS synchronization does not
 request an initial-state callback. The fingerprints exposed by inspection and
-reports are opaque comparison tokens that may contain registration and callback
-metadata—do not treat them as privacy-safe log values.
+reports identify exactly the supplied desired list. The current authoritative
+fingerprint is comparable to that desired fingerprint only for an authoritative
+scope. These opaque tokens may contain registration and callback metadata—do
+not treat them as privacy-safe log values.
 
 Call `ensureSynchronized()` after initialization and permissions whenever the
 app has its canonical desired list. This is distinct from recovery: reboot,
