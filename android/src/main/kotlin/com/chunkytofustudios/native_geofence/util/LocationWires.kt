@@ -1,7 +1,7 @@
 package com.chunkytofustudios.native_geofence.util
 
 import android.location.Location
-import android.os.Build
+import androidx.core.location.LocationCompat
 import com.chunkytofustudios.native_geofence.generated.LocationWire
 
 class LocationWires {
@@ -11,13 +11,8 @@ class LocationWires {
                 e.latitude,
                 e.longitude,
                 if (e.hasAccuracy()) e.accuracy.toDouble() else null,
-                isMock(e),
+                LocationCompat.isMock(e),
             )
         }
-
-        @Suppress("DEPRECATION")
-        private fun isMock(e: Location): Boolean =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) e.isMock
-            else e.isFromMockProvider
     }
 }

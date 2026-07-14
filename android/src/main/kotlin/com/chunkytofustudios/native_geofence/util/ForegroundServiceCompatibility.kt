@@ -10,6 +10,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.chunkytofustudios.native_geofence.NativeGeofenceForegroundService
 import com.chunkytofustudios.native_geofence.generated.FlutterError
@@ -127,12 +128,7 @@ internal object ForegroundServiceCompatibility {
     }
 
     fun stopForeground(service: Service) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
-        } else {
-            @Suppress("DEPRECATION")
-            service.stopForeground(true)
-        }
+        ServiceCompat.stopForeground(service, ServiceCompat.STOP_FOREGROUND_REMOVE)
     }
 
     fun mapStartError(error: Throwable): FlutterError = when {
@@ -153,15 +149,10 @@ internal object ForegroundServiceCompatibility {
 
     private fun serviceInfo(context: Context): ServiceInfo? = try {
         val component = ComponentName(context, NativeGeofenceForegroundService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.packageManager.getServiceInfo(
-                component,
-                PackageManager.ComponentInfoFlags.of(0L)
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            context.packageManager.getServiceInfo(component, 0)
-        }
+        AndroidPackageManagerCompat.getServiceInfo(
+            context.packageManager,
+            component,
+        )
     } catch (_: PackageManager.NameNotFoundException) {
         null
     }
