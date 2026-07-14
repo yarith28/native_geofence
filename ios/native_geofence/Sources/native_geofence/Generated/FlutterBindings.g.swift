@@ -630,7 +630,7 @@ struct NativeGeofenceLifecycleFactWire: Hashable {
 struct NativeGeofenceStatusWire: Hashable {
   var platform: NativeGeofencePlatform
   var osVersion: String? = nil
-  var persistedGeofenceIds: [String]
+  var persistedGeofenceCount: Int64
   /// Whether the platform's required foreground location authorization is
   /// granted. This means fine location on Android and When In Use or Always
   /// authorization on iOS.
@@ -660,7 +660,7 @@ struct NativeGeofenceStatusWire: Hashable {
   static func fromList(_ pigeonVar_list: [Any?]) -> NativeGeofenceStatusWire? {
     let platform = pigeonVar_list[0] as! NativeGeofencePlatform
     let osVersion: String? = nilOrValue(pigeonVar_list[1])
-    let persistedGeofenceIds = pigeonVar_list[2] as! [String]
+    let persistedGeofenceCount = pigeonVar_list[2] as! Int64
     let locationPermissionGranted: Bool? = nilOrValue(pigeonVar_list[3])
     let backgroundLocationPermissionGranted: Bool? = nilOrValue(pigeonVar_list[4])
     let notificationPermissionGranted: Bool? = nilOrValue(pigeonVar_list[5])
@@ -685,7 +685,7 @@ struct NativeGeofenceStatusWire: Hashable {
     return NativeGeofenceStatusWire(
       platform: platform,
       osVersion: osVersion,
-      persistedGeofenceIds: persistedGeofenceIds,
+      persistedGeofenceCount: persistedGeofenceCount,
       locationPermissionGranted: locationPermissionGranted,
       backgroundLocationPermissionGranted: backgroundLocationPermissionGranted,
       notificationPermissionGranted: notificationPermissionGranted,
@@ -712,7 +712,7 @@ struct NativeGeofenceStatusWire: Hashable {
     return [
       platform,
       osVersion,
-      persistedGeofenceIds,
+      persistedGeofenceCount,
       locationPermissionGranted,
       backgroundLocationPermissionGranted,
       notificationPermissionGranted,
@@ -739,14 +739,14 @@ struct NativeGeofenceStatusWire: Hashable {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsFlutterBindings(lhs.platform, rhs.platform) && deepEqualsFlutterBindings(lhs.osVersion, rhs.osVersion) && deepEqualsFlutterBindings(lhs.persistedGeofenceIds, rhs.persistedGeofenceIds) && deepEqualsFlutterBindings(lhs.locationPermissionGranted, rhs.locationPermissionGranted) && deepEqualsFlutterBindings(lhs.backgroundLocationPermissionGranted, rhs.backgroundLocationPermissionGranted) && deepEqualsFlutterBindings(lhs.notificationPermissionGranted, rhs.notificationPermissionGranted) && deepEqualsFlutterBindings(lhs.locationServicesEnabled, rhs.locationServicesEnabled) && deepEqualsFlutterBindings(lhs.monitoringAvailable, rhs.monitoringAvailable) && deepEqualsFlutterBindings(lhs.playServicesAvailable, rhs.playServicesAvailable) && deepEqualsFlutterBindings(lhs.callbackPendingIntentAvailable, rhs.callbackPendingIntentAvailable) && deepEqualsFlutterBindings(lhs.callbackReceiverAvailable, rhs.callbackReceiverAvailable) && deepEqualsFlutterBindings(lhs.canEnumerateLivePlatformRegistrations, rhs.canEnumerateLivePlatformRegistrations) && deepEqualsFlutterBindings(lhs.pluginOwnedMonitoringCount, rhs.pluginOwnedMonitoringCount) && deepEqualsFlutterBindings(lhs.callbackDispatcherRegistered, rhs.callbackDispatcherRegistered) && deepEqualsFlutterBindings(lhs.callbackRefreshState, rhs.callbackRefreshState) && deepEqualsFlutterBindings(lhs.registrationHealth, rhs.registrationHealth) && deepEqualsFlutterBindings(lhs.lastRegistrationFact, rhs.lastRegistrationFact) && deepEqualsFlutterBindings(lhs.lastRemovalFact, rhs.lastRemovalFact) && deepEqualsFlutterBindings(lhs.lastBroadcastFact, rhs.lastBroadcastFact) && deepEqualsFlutterBindings(lhs.lastEnqueueFact, rhs.lastEnqueueFact) && deepEqualsFlutterBindings(lhs.lastWorkerFact, rhs.lastWorkerFact) && deepEqualsFlutterBindings(lhs.lastRecoveryFact, rhs.lastRecoveryFact) && deepEqualsFlutterBindings(lhs.lastForegroundFact, rhs.lastForegroundFact)
+    return deepEqualsFlutterBindings(lhs.platform, rhs.platform) && deepEqualsFlutterBindings(lhs.osVersion, rhs.osVersion) && deepEqualsFlutterBindings(lhs.persistedGeofenceCount, rhs.persistedGeofenceCount) && deepEqualsFlutterBindings(lhs.locationPermissionGranted, rhs.locationPermissionGranted) && deepEqualsFlutterBindings(lhs.backgroundLocationPermissionGranted, rhs.backgroundLocationPermissionGranted) && deepEqualsFlutterBindings(lhs.notificationPermissionGranted, rhs.notificationPermissionGranted) && deepEqualsFlutterBindings(lhs.locationServicesEnabled, rhs.locationServicesEnabled) && deepEqualsFlutterBindings(lhs.monitoringAvailable, rhs.monitoringAvailable) && deepEqualsFlutterBindings(lhs.playServicesAvailable, rhs.playServicesAvailable) && deepEqualsFlutterBindings(lhs.callbackPendingIntentAvailable, rhs.callbackPendingIntentAvailable) && deepEqualsFlutterBindings(lhs.callbackReceiverAvailable, rhs.callbackReceiverAvailable) && deepEqualsFlutterBindings(lhs.canEnumerateLivePlatformRegistrations, rhs.canEnumerateLivePlatformRegistrations) && deepEqualsFlutterBindings(lhs.pluginOwnedMonitoringCount, rhs.pluginOwnedMonitoringCount) && deepEqualsFlutterBindings(lhs.callbackDispatcherRegistered, rhs.callbackDispatcherRegistered) && deepEqualsFlutterBindings(lhs.callbackRefreshState, rhs.callbackRefreshState) && deepEqualsFlutterBindings(lhs.registrationHealth, rhs.registrationHealth) && deepEqualsFlutterBindings(lhs.lastRegistrationFact, rhs.lastRegistrationFact) && deepEqualsFlutterBindings(lhs.lastRemovalFact, rhs.lastRemovalFact) && deepEqualsFlutterBindings(lhs.lastBroadcastFact, rhs.lastBroadcastFact) && deepEqualsFlutterBindings(lhs.lastEnqueueFact, rhs.lastEnqueueFact) && deepEqualsFlutterBindings(lhs.lastWorkerFact, rhs.lastWorkerFact) && deepEqualsFlutterBindings(lhs.lastRecoveryFact, rhs.lastRecoveryFact) && deepEqualsFlutterBindings(lhs.lastForegroundFact, rhs.lastForegroundFact)
   }
 
   func hash(into hasher: inout Hasher) {
     hasher.combine("NativeGeofenceStatusWire")
     deepHashFlutterBindings(value: platform, hasher: &hasher)
     deepHashFlutterBindings(value: osVersion, hasher: &hasher)
-    deepHashFlutterBindings(value: persistedGeofenceIds, hasher: &hasher)
+    deepHashFlutterBindings(value: persistedGeofenceCount, hasher: &hasher)
     deepHashFlutterBindings(value: locationPermissionGranted, hasher: &hasher)
     deepHashFlutterBindings(value: backgroundLocationPermissionGranted, hasher: &hasher)
     deepHashFlutterBindings(value: notificationPermissionGranted, hasher: &hasher)

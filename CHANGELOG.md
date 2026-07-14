@@ -9,7 +9,7 @@
 * Moves Android callback payloads out of WorkManager `Data`, continues already-enqueued legacy file payloads across plugin upgrades, confirms enqueue acceptance before releasing one callback-and-orphan broadcast lease, adds non-null delivery IDs, bounded retries, proven-stale callback evidence, and exact-once startup/API/callback watchdog cleanup
 * Makes Android foreground promotion token-confirmed and time-bounded, owns the wake lock, stops on every worker outcome, maps start restrictions to typed errors, and supports host string-resource overrides for its notification
 * Adds an optional Android native event processor with accept/validated-transform/decline decisions, a main-looper-independent hard ownership timeout, exact-once completion, shrinker-safe metadata discovery, safe Dart fallback, and shared durable payload cleanup
-* Adds an asynchronous, read-only `NativeGeofenceStatus` API with privacy-safe prerequisite evidence, plugin-owned IDs, computed health, callback refresh state, platform-specific monitoring evidence, and structured authoritative lifecycle facts
+* Adds an asynchronous, read-only `NativeGeofenceStatus` API with privacy-safe prerequisite evidence, plugin-owned registration counts, computed health, callback refresh state, platform-specific monitoring evidence, and structured authoritative lifecycle facts without raw registration IDs
 * Fails Android initialization when the callback dispatcher handle cannot be durably persisted
 * Shares one FIFO iOS callback runtime across foreground and headless delivery, with bounded startup/execution and exact cleanup
 * Adds iOS delivery IDs and suppresses same-direction duplicate bursts within 10 seconds
@@ -29,6 +29,9 @@
 * Reports Android geofence registration and removal failures with actionable Play Services status evidence instead of inferring `geofenceNotFound` from the local cache
 * Supports foreground callbacks on Android 6.0–7.1 by guarding newer service and notification APIs, providing a valid fallback notification icon, and declaring the AndroidX Core APIs used by the plugin directly
 * Centralizes Android package-manager compatibility calls and uses AndroidX helpers for package versions, mock locations, and foreground teardown without changing API-23 or location-only foreground behavior
+* Bounds every Android Play Services geofence mutation to 30 seconds, compensates registration timeouts with durable recovery evidence, and ignores late task callbacks
+* Keeps iOS Core Location mutation authority process-stable across Flutter engine detach and reattach while replacing only the event-delivery route
+* Keeps configured Android fence centers separate from device-fix accuracy/mock metadata and makes callback summaries and the example privacy-conscious by default
 
 ## 1.3.1
 

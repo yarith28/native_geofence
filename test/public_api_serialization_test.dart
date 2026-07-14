@@ -114,7 +114,7 @@ void main() {
     );
     final status = NativeGeofenceStatus(
       platform: NativeGeofencePlatform.android,
-      persistedGeofenceIds: const ['b', 'a'],
+      persistedGeofenceCount: 2,
       canEnumerateLivePlatformRegistrations: false,
       callbackRefreshState: NativeGeofenceCallbackRefreshState.current,
       registrationHealth: NativeGeofenceRegistrationHealth.healthy,
@@ -128,10 +128,40 @@ void main() {
       'geofenceCount': 1,
     });
     expect(status.toJson(), containsPair('platform', 'android'));
-    expect(status.toJson(), containsPair('persistedGeofenceIds', ['a', 'b']));
+    expect(status.toJson(), containsPair('persistedGeofenceCount', 2));
+    expect(status.toJson(), isNot(contains('persistedGeofenceIds')));
     expect(
       status.toJson(),
       containsPair('lastRegistrationFact', fact.toJson()),
     );
+  });
+
+  test('callback parameter summary omits sensitive delivery details', () {
+    final params = GeofenceCallbackParams(
+      geofences: [
+        ActiveGeofence(
+          id: 'private-office-id',
+          location: Location(latitude: 11.5, longitude: 104.9),
+          radiusMeters: 150,
+          triggers: {GeofenceEvent.enter},
+          androidSettings: AndroidGeofenceSettings(initialTriggers: {}),
+        ),
+      ],
+      event: GeofenceEvent.enter,
+      location: Location(latitude: 11.6, longitude: 104.8),
+      eventAt: null,
+      eventId: 'private-delivery-id',
+      callbackContextsByGeofenceId: {'private-office-id': 1001},
+    );
+
+    final summary = params.toString();
+
+    expect(summary, contains('geofenceCount: 1'));
+    expect(summary, contains('event: enter'));
+    expect(summary, contains('hasLocation: true'));
+    expect(summary, isNot(contains('private-office-id')));
+    expect(summary, isNot(contains('private-delivery-id')));
+    expect(summary, isNot(contains('11.')));
+    expect(summary, isNot(contains('1001')));
   });
 }

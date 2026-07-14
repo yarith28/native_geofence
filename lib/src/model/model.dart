@@ -304,14 +304,16 @@ class GeofenceCallbackParams {
     this.callbackContextsByGeofenceId = const {},
   });
 
+  /// Returns a bounded summary that intentionally omits registration IDs,
+  /// coordinates, callback contexts, timestamps, and delivery IDs.
   @override
   String toString() {
     return 'GeofenceCallbackParams('
-        'geofences: [${geofences.map((e) => e.toString()).join(', ')}], '
+        'geofenceCount: ${geofences.length}, '
         'event: ${event.name}, '
-        'location: $location, '
-        'eventAt: $eventAt, '
-        'eventId: $eventId, '
-        'callbackContextsByGeofenceId: $callbackContextsByGeofenceId)';
+        'hasLocation: ${location != null}, '
+        'hasEventAt: ${eventAt != null}, '
+        'hasEventId: ${eventId != null}, '
+        'callbackContextCount: ${callbackContextsByGeofenceId.length})';
   }
 }

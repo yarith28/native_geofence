@@ -28,7 +28,8 @@ void main() {
 
     expect(params.eventAt?.millisecondsSinceEpoch, 1720000000123);
     expect(params.eventId, 'delivery-123');
-    expect(params.toString(), contains('eventId: delivery-123'));
+    expect(params.toString(), contains('hasEventId: true'));
+    expect(params.toString(), isNot(contains('delivery-123')));
   });
 
   test('callback mapper preserves an absent event creation time', () {

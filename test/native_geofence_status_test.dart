@@ -8,7 +8,7 @@ void main() {
     final wire = NativeGeofenceStatusWire(
       platform: NativeGeofencePlatform.android,
       osVersion: '35',
-      persistedGeofenceIds: const <String>['a'],
+      persistedGeofenceCount: 1,
       locationPermissionGranted: true,
       backgroundLocationPermissionGranted: false,
       notificationPermissionGranted: null,
@@ -39,7 +39,7 @@ void main() {
     final status = wire.fromWire();
 
     expect(status.platform, NativeGeofencePlatform.android);
-    expect(status.persistedGeofenceIds, const <String>['a']);
+    expect(status.persistedGeofenceCount, 1);
     expect(status.locationPermissionGranted, isTrue);
     expect(status.notificationPermissionGranted, isNull);
     expect(status.canEnumerateLivePlatformRegistrations, isFalse);
@@ -47,9 +47,6 @@ void main() {
     expect(status.lastRegistrationFact?.outcome, 'registered');
     expect(status.toJson()['locationPermissionGranted'], isTrue);
     expect(status.toJson(), isNot(contains('fineLocationPermissionGranted')));
-    expect(
-      () => status.persistedGeofenceIds.add('mutate'),
-      throwsUnsupportedError,
-    );
+    expect(status.toJson(), isNot(contains('persistedGeofenceIds')));
   });
 }

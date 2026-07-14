@@ -219,7 +219,7 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
                         NativeGeofenceStatusWire(
                             platform: .ios,
                             osVersion: osVersion,
-                            persistedGeofenceIds: persistedIds,
+                            persistedGeofenceCount: Int64(persistedIds.count),
                             locationPermissionGranted: permission.locationPermissionGranted,
                             backgroundLocationPermissionGranted:
                                 permission.backgroundLocationPermissionGranted,
