@@ -35,9 +35,9 @@ object NativeGeofenceBridge {
     }
 
     private fun loadMetadataProcessor(context: Context): NativeGeofenceEventProcessor? {
-        val className = NativeGeofenceBridgeCompatibility.processorClassName(context)
-            ?: return null
         return try {
+            val className = NativeGeofenceBridgeCompatibility.processorClassName(context)
+                ?: return null
             Class.forName(className, false, context.classLoader)
                 .asSubclass(NativeGeofenceEventProcessor::class.java)
                 .getDeclaredConstructor()
