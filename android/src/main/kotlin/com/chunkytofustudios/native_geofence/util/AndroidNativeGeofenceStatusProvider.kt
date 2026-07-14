@@ -53,7 +53,7 @@ internal class AndroidNativeGeofenceStatusProvider(private val context: Context)
         val appContext = context.applicationContext
         val registrationInventory = NativeGeofencePersistence.inspectStatusInventory(appContext)
         val ids = registrationInventory.map(GeofenceStatusInventoryEntry::id)
-        val finePermission = LocationState.hasFinePermission(appContext)
+        val locationPermission = LocationState.hasFinePermission(appContext)
         val backgroundPermission = LocationState.hasBackgroundPermission(appContext)
         val locationServicesEnabled = LocationState.isEnabled(appContext)
         val playServicesAvailable =
@@ -66,7 +66,7 @@ internal class AndroidNativeGeofenceStatusProvider(private val context: Context)
         val health = NativeGeofenceStatusHealth.compute(
             NativeGeofenceHealthEvidence(
                 persistedRegistrationCount = ids.size,
-                fineLocationPermissionGranted = finePermission,
+                locationPermissionGranted = locationPermission,
                 backgroundLocationPermissionGranted = backgroundPermission,
                 locationServicesEnabled = locationServicesEnabled,
                 platformMonitoringAvailable = playServicesAvailable,
@@ -83,7 +83,7 @@ internal class AndroidNativeGeofenceStatusProvider(private val context: Context)
             platform = NativeGeofencePlatform.ANDROID,
             osVersion = "API ${Build.VERSION.SDK_INT} (${Build.VERSION.RELEASE})",
             persistedGeofenceIds = ids,
-            fineLocationPermissionGranted = finePermission,
+            locationPermissionGranted = locationPermission,
             backgroundLocationPermissionGranted = backgroundPermission,
             notificationPermissionGranted = notificationPermissionGranted(appContext),
             locationServicesEnabled = locationServicesEnabled,
