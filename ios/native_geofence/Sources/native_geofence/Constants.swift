@@ -6,6 +6,8 @@ class Constants {
     static let CALLBACK_DISPATCHER_KEY = "callback_dispatcher_handler"
     static let GEOFENCE_CALLBACK_DICT_KEY = "geofence_callback_dict"
     static let GEOFENCE_CALLBACK_CONTEXT_DICT_KEY = "geofence_callback_context_dict"
+    static let GEOFENCE_CALLBACK_PACKAGE_FINGERPRINT_DICT_KEY =
+        "geofence_callback_package_fingerprint_dict"
     static let GEOFENCE_LAST_EVENT_DICT_KEY = "geofence_last_event_dict"
     static let SYNCHRONIZATION_REGISTRATION_FINGERPRINT_KEY =
         "geofence_synchronization_registration_fingerprint"
