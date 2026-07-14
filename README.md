@@ -397,10 +397,21 @@ NativeGeofenceBridge.setProcessor { context, event, completion ->
 }
 ```
 
-For cold-process delivery, the processor may instead be a public no-argument
-class named in application metadata using the key
-`com.chunkytofustudios.native_geofence.native_event_processor`. `Accept` marks
-the event handled and suppresses Dart delivery. `Transform` may select a
+For cold-process delivery, the processor may instead be a public class with a
+public no-argument constructor named in application metadata:
+
+```xml
+<application ...>
+    <meta-data
+        android:name="com.chunkytofustudios.native_geofence.native_event_processor"
+        android:value="com.example.MyNativeGeofenceProcessor" />
+</application>
+```
+
+The plugin's consumer shrinker rules preserve implementations of
+`NativeGeofenceEventProcessor`, including their class names and required entry
+points, in minified release builds. `Accept` marks the event handled and
+suppresses Dart delivery. `Transform` may select a
 non-empty subset of the originally triggered IDs and alter the transition or
 trigger location; invalid transformations fall back unchanged. `Decline`, a
 processor exception/failure, or the three-second ownership timeout all continue
