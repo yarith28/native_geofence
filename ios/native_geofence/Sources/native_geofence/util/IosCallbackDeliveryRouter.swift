@@ -1,5 +1,43 @@
 import Foundation
 
+/// Keeps one replaceable delivery route without letting an older attachment
+/// detach the route installed by a newer engine.
+final class IosReattachableDelivery<Delivery> {
+    struct Attachment: Equatable {
+        fileprivate let token: UUID
+    }
+
+    private let lock = NSLock()
+    private var current: (attachment: Attachment, delivery: Delivery)?
+
+    @discardableResult
+    func attach(_ delivery: Delivery) -> Attachment {
+        let attachment = Attachment(token: UUID())
+        withLock {
+            current = (attachment, delivery)
+        }
+        return attachment
+    }
+
+    func detach(_ attachment: Attachment) {
+        withLock {
+            guard current?.attachment == attachment else { return }
+            current = nil
+        }
+    }
+
+    func withCurrent<Result>(_ body: (Delivery) -> Result) -> Result? {
+        let delivery = withLock { current?.delivery }
+        return delivery.map(body)
+    }
+
+    private func withLock<Result>(_ body: () -> Result) -> Result {
+        lock.lock()
+        defer { lock.unlock() }
+        return body()
+    }
+}
+
 private final class IosCallbackDeliveryCompletionGate {
     private let lock = NSLock()
     private var accepted: Bool?

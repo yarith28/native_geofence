@@ -3,9 +3,9 @@ import Foundation
 import OSLog
 import UIKit
 
-/// Owns the Flutter runtime surfaces for one shared Core Location authority.
-/// Main and headless messengers install the same `NativeGeofenceApiImpl`, so a
-/// callback cannot accidentally create a second delegate or transaction state.
+/// Owns the Flutter runtime surfaces attached to the process-stable Core
+/// Location mutation authority. Engine detach replaces only event delivery;
+/// pending native mutations and their callback delegate remain authoritative.
 final class IosGeofenceRuntimeHost {
     private struct MainDelivery {
         let token: UUID
@@ -25,6 +25,7 @@ final class IosGeofenceRuntimeHost {
     private let callbackBackgroundTaskName = "native_geofence.geofence_callback"
     private let mainMessenger: FlutterBinaryMessenger
     private let registerPlugins: FlutterPluginRegistrantCallback
+    private let mutationAuthority = IosGeofenceMutationAuthority.shared
     private let stateLock = NSRecursiveLock()
 
     private var mainTriggerReady = false
@@ -33,6 +34,7 @@ final class IosGeofenceRuntimeHost {
     private var headlessBackgroundApi: NativeGeofenceBackgroundApiImpl?
     private var headlessSessionId: UUID?
     private var callbackBackgroundTask: CallbackBackgroundTask?
+    private var deliveryAttachment: IosGeofenceMutationAuthority.DeliveryAttachment?
     private var detached = false
 
     private lazy var mainTriggerApi = NativeGeofenceTriggerApi(
@@ -52,23 +54,9 @@ final class IosGeofenceRuntimeHost {
             }
         }
     )
-    private(set) lazy var locationManagerDelegate = LocationManagerDelegate(
-        deliverEvent: { [weak self] params, shouldAttempt, onAccepted, onRejected in
-            guard let self else {
-                onRejected()
-                return
-            }
-            self.deliveryRouter.enqueue(
-                params,
-                shouldAttempt: shouldAttempt,
-                onAccepted: onAccepted,
-                onRejected: onRejected
-            )
-        }
-    )
-    private(set) lazy var nativeApi = NativeGeofenceApiImpl(
-        locationManagerDelegate: locationManagerDelegate
-    )
+    private var nativeApi: NativeGeofenceApiImpl {
+        mutationAuthority.nativeApi
+    }
     private lazy var mainBackgroundApi = NativeGeofenceMainBackgroundApiImpl(
         runtimeHost: self
     )
@@ -82,6 +70,19 @@ final class IosGeofenceRuntimeHost {
     }
 
     func installMainHandlers() {
+        deliveryAttachment = mutationAuthority.attachEventDelivery {
+            [weak self] params, shouldAttempt, onAccepted, onRejected in
+            guard let self else {
+                onRejected()
+                return
+            }
+            self.deliveryRouter.enqueue(
+                params,
+                shouldAttempt: shouldAttempt,
+                onAccepted: onAccepted,
+                onRejected: onRejected
+            )
+        }
         NativeGeofenceApiSetup.setUp(binaryMessenger: mainMessenger, api: nativeApi)
         NativeGeofenceBackgroundApiSetup.setUp(
             binaryMessenger: mainMessenger,
@@ -93,6 +94,10 @@ final class IosGeofenceRuntimeHost {
         withStateLock {
             detached = true
             mainTriggerReady = false
+        }
+        if let deliveryAttachment {
+            mutationAuthority.detachEventDelivery(deliveryAttachment)
+            self.deliveryAttachment = nil
         }
         deliveryRouter.close()
         cancelActiveMainDelivery()
