@@ -125,7 +125,7 @@ internal class AndroidNativeGeofenceStatusProvider(private val context: Context)
                 GeofenceStatusInventoryEntry::callbackPackageFingerprint
             ),
             callbackRefreshRequired = NativeGeofencePersistence
-                .isCallbackRefreshRequired(context)
+                .isCallbackRefreshRequiredFor(context, inventory.map { it.id }.toSet())
         )
     }
 

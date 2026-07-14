@@ -43,6 +43,10 @@ internal data class GeofencePersistenceSnapshot(
     val callbackPackageFingerprint: PersistedValue<String>
 )
 
+internal data class CallbackRefreshScopeSnapshot(
+    val requiredIds: PersistedValue<Set<String>>
+)
+
 internal data class StoredGeofenceRegistration(
     val configuredGeofence: GeofenceWire,
     val expirationDeadlineMillis: Long?,
@@ -301,11 +305,52 @@ internal class GeofenceRegistrationStore(
     fun callbackPackageFingerprint(id: String): String? =
         safeRead { backend.getString(callbackPackageFingerprintKey(id)) }
 
+    /** Whether any durable callback-refresh evidence remains. */
     fun isCallbackRefreshRequired(): Boolean =
-        safeRead { backend.getBoolean(Constants.CALLBACK_REFRESH_REQUIRED_KEY, false) } ?: false
+        globalCallbackRefreshRequired() || when (
+            val scoped = callbackRefreshRequiredIds()
+        ) {
+            is PersistedValue.Readable -> scoped.value.isNotEmpty()
+            PersistedValue.Corrupt -> true
+            PersistedValue.Absent -> false
+        }
 
-    fun markCallbackRefreshRequired(): Boolean = backend.edit {
-        putBoolean(Constants.CALLBACK_REFRESH_REQUIRED_KEY, true)
+    /** Whether refresh evidence can apply to at least one of [ids]. */
+    fun isCallbackRefreshRequiredFor(ids: Set<String>): Boolean {
+        if (ids.isEmpty()) return false
+        if (globalCallbackRefreshRequired()) return true
+        return when (val scoped = callbackRefreshRequiredIds()) {
+            is PersistedValue.Readable -> scoped.value.any(ids::contains)
+            PersistedValue.Corrupt -> true
+            PersistedValue.Absent -> false
+        }
+    }
+
+    /**
+     * Records refresh evidence for the affected registrations. An empty scope
+     * retains the legacy global marker because no safe ID attribution exists.
+     */
+    fun markCallbackRefreshRequired(ids: Set<String> = emptySet()): Boolean {
+        if (ids.isEmpty()) {
+            return safeEdit {
+                putBoolean(Constants.CALLBACK_REFRESH_REQUIRED_KEY, true)
+            }
+        }
+        if (globalCallbackRefreshRequired()) return true
+        val scoped = callbackRefreshRequiredIds()
+        if (scoped is PersistedValue.Corrupt) {
+            return safeEdit {
+                putBoolean(Constants.CALLBACK_REFRESH_REQUIRED_KEY, true)
+            }
+        }
+        val updated = when (scoped) {
+            is PersistedValue.Readable -> scoped.value + ids
+            PersistedValue.Absent -> ids
+            PersistedValue.Corrupt -> error("Handled above.")
+        }
+        return safeEdit {
+            putStringSet(Constants.CALLBACK_REFRESH_REQUIRED_IDS_KEY, updated)
+        }
     }
 
     fun synchronizationFingerprint(): String? = safeRead {
@@ -321,10 +366,57 @@ internal class GeofenceRegistrationStore(
         }
     }
 
-    /** Publishes successful synchronization and clears prior stale-callback evidence atomically. */
+    /** Publishes an authoritative synchronization and clears all callback evidence atomically. */
     fun commitSynchronization(fingerprint: String): Boolean = backend.edit {
         putString(Constants.SYNCHRONIZATION_REGISTRATION_FINGERPRINT_KEY, fingerprint)
         remove(Constants.CALLBACK_REFRESH_REQUIRED_KEY)
+        remove(Constants.CALLBACK_REFRESH_REQUIRED_IDS_KEY)
+    }
+
+    /**
+     * Completes a partial synchronization without replacing the authoritative
+     * fingerprint or consuming callback evidence outside [refreshedIds].
+     */
+    fun commitPartialSynchronization(refreshedIds: Set<String>): Boolean {
+        if (refreshedIds.isEmpty()) return true
+        return when (val scoped = callbackRefreshRequiredIds()) {
+            PersistedValue.Absent -> true
+            PersistedValue.Corrupt -> false
+            is PersistedValue.Readable -> {
+                val remaining = scoped.value - refreshedIds
+                if (remaining == scoped.value) return true
+                safeEdit {
+                    if (remaining.isEmpty()) {
+                        remove(Constants.CALLBACK_REFRESH_REQUIRED_IDS_KEY)
+                    } else {
+                        putStringSet(Constants.CALLBACK_REFRESH_REQUIRED_IDS_KEY, remaining)
+                    }
+                }
+            }
+        }
+    }
+
+    fun callbackRefreshScopeSnapshot(): CallbackRefreshScopeSnapshot =
+        CallbackRefreshScopeSnapshot(callbackRefreshRequiredIds())
+
+    fun restoreCallbackRefreshScope(snapshot: CallbackRefreshScopeSnapshot): Boolean {
+        val original = when (val requiredIds = snapshot.requiredIds) {
+            is PersistedValue.Readable -> requiredIds.value
+            // An absent or corrupt marker is left untouched by scoped removal.
+            PersistedValue.Absent,
+            PersistedValue.Corrupt -> return true
+        }
+        val current = when (val requiredIds = callbackRefreshRequiredIds()) {
+            is PersistedValue.Readable -> requiredIds.value
+            PersistedValue.Absent -> emptySet()
+            // Preserve unreadable evidence rather than overwriting it.
+            PersistedValue.Corrupt -> return true
+        }
+        val restored = original + current
+        if (restored == current) return true
+        return safeEdit {
+            putStringSet(Constants.CALLBACK_REFRESH_REQUIRED_IDS_KEY, restored)
+        }
     }
 
     fun getRecoverableGeofences(): List<GeofenceWire> =
@@ -435,6 +527,11 @@ internal class GeofenceRegistrationStore(
     fun removeAfterPlatformCleanup(id: String): Boolean {
         val rawIds = rawIndex().toMutableSet().apply { remove(id) }
         val configuredIds = configuredIndex().toMutableSet().apply { remove(id) }
+        val refreshIds = when (val scoped = callbackRefreshRequiredIds()) {
+            is PersistedValue.Readable -> scoped.value - id
+            PersistedValue.Absent,
+            PersistedValue.Corrupt -> null
+        }
         return backend.edit {
             putStringSet(Constants.PERSISTENT_GEOFENCES_IDS_KEY, rawIds)
             putStringSet(Constants.PERSISTENT_CONFIGURED_GEOFENCES_IDS_KEY, configuredIds)
@@ -443,6 +540,16 @@ internal class GeofenceRegistrationStore(
             remove(recoveryEligibleKey(id))
             remove(activeKey(id))
             remove(callbackPackageFingerprintKey(id))
+            if (rawIds.isEmpty()) {
+                remove(Constants.CALLBACK_REFRESH_REQUIRED_KEY)
+                remove(Constants.CALLBACK_REFRESH_REQUIRED_IDS_KEY)
+            } else if (refreshIds != null) {
+                if (refreshIds.isEmpty()) {
+                    remove(Constants.CALLBACK_REFRESH_REQUIRED_IDS_KEY)
+                } else {
+                    putStringSet(Constants.CALLBACK_REFRESH_REQUIRED_IDS_KEY, refreshIds)
+                }
+            }
         }
     }
 
@@ -452,6 +559,8 @@ internal class GeofenceRegistrationStore(
         return backend.edit {
             remove(Constants.PERSISTENT_GEOFENCES_IDS_KEY)
             remove(Constants.PERSISTENT_CONFIGURED_GEOFENCES_IDS_KEY)
+            remove(Constants.CALLBACK_REFRESH_REQUIRED_KEY)
+            remove(Constants.CALLBACK_REFRESH_REQUIRED_IDS_KEY)
             for (id in ids) {
                 remove(recordKey(id))
                 remove(expirationKey(id))
@@ -598,6 +707,17 @@ internal class GeofenceRegistrationStore(
 
     private fun stringSetValue(key: String): PersistedValue<Set<String>> =
         persistedValue(key) { backend.getStringSet(key)?.toSet() }
+
+    private fun callbackRefreshRequiredIds(): PersistedValue<Set<String>> =
+        stringSetValue(Constants.CALLBACK_REFRESH_REQUIRED_IDS_KEY)
+
+    private fun globalCallbackRefreshRequired(): Boolean = when (
+        val global = booleanValue(Constants.CALLBACK_REFRESH_REQUIRED_KEY)
+    ) {
+        is PersistedValue.Readable -> global.value
+        PersistedValue.Corrupt -> true
+        PersistedValue.Absent -> false
+    }
 
     private fun longValue(key: String): PersistedValue<Long> =
         persistedValue(key) { backend.getLong(key, 0L) }
