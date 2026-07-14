@@ -61,7 +61,7 @@ class NativeGeofencePersistence {
         @JvmStatic
         fun getAllGeofenceIds(context: Context): List<String> =
             synchronized(sharedPreferencesLock) {
-                store(context).configuredIds()
+                store(context).getRegisteredGeofenceIds()
             }
 
         @JvmStatic
@@ -73,7 +73,7 @@ class NativeGeofencePersistence {
         @JvmStatic
         fun getAllGeofences(context: Context): List<GeofenceWire> =
             synchronized(sharedPreferencesLock) {
-                store(context).getRecoverableGeofences()
+                store(context).getRegisteredGeofences()
             }
 
         @JvmStatic
