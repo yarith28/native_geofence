@@ -40,6 +40,24 @@ final class IosGeofenceSynchronizationPlannerTests: XCTestCase {
         XCTAssertEqual(decision.previousCount, 1)
     }
 
+    func testPartialDecisionIgnoresTheUnrelatedAuthoritativeFingerprint() {
+        let desired = [registration(id: "office")]
+        let decision = IosGeofenceSynchronizationPlanner.decide(
+            current: IosGeofenceSynchronizationInventory(
+                pluginOwnedIds: ["office", "outside-scope"],
+                registrations: desired,
+                inactiveRegistrationIds: [],
+                registrationFingerprint: "authoritative-other-state",
+                callbackFingerprintCurrent: true
+            ),
+            desired: desired,
+            removeUnlisted: false
+        )
+
+        XCTAssertFalse(decision.requiresSynchronization)
+        XCTAssertTrue(decision.reasons.isEmpty)
+    }
+
     func testFreshDecisionReportsEveryAuthoritativeReason() {
         let desired = [registration(id: "office")]
         let decision = IosGeofenceSynchronizationPlanner.decide(

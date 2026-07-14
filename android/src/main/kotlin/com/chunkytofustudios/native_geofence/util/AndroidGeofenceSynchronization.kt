@@ -78,14 +78,14 @@ internal object AndroidGeofenceSynchronizationPlanner {
                 )
         }
         val reasons = buildList {
-            if (currentRegistrationFingerprint == null) {
+            if (removeUnlisted && currentRegistrationFingerprint == null) {
                 add(AndroidGeofenceSynchronizationReason.FIRST_RUN)
             }
             if (!callbackFingerprintCurrent || callbackMetadataChanged) {
                 add(AndroidGeofenceSynchronizationReason.CALLBACK_FINGERPRINT_CHANGED)
             }
             if (
-                currentRegistrationFingerprint != desiredFingerprint ||
+                (removeUnlisted && currentRegistrationFingerprint != desiredFingerprint) ||
                 plan.removeIds.isNotEmpty() ||
                 plan.platformUpserts.isNotEmpty()
             ) {

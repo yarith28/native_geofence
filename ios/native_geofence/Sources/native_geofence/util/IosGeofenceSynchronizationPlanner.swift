@@ -72,13 +72,13 @@ enum IosGeofenceSynchronizationPlanner {
 
         let desiredFingerprint = desiredRegistrationFingerprint(desired)
         var reasons: [IosGeofenceSynchronizationReason] = []
-        if current.registrationFingerprint == nil {
+        if removeUnlisted && current.registrationFingerprint == nil {
             reasons.append(.firstRun)
         }
         if !current.callbackFingerprintCurrent || !metadataChangedIds.isEmpty {
             reasons.append(.callbackFingerprintChanged)
         }
-        if current.registrationFingerprint != desiredFingerprint
+        if (removeUnlisted && current.registrationFingerprint != desiredFingerprint)
             || !missingIds.isEmpty
             || !unlistedIds.isEmpty
             || !driftedIds.isEmpty

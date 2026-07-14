@@ -38,7 +38,8 @@ class GeofenceRegistration {
 
 /// Why native state differs from the app-owned desired registrations.
 enum NativeGeofenceSynchronizationReason {
-  /// No successful synchronization fingerprint has been committed yet.
+  /// No successful authoritative synchronization fingerprint has been
+  /// committed yet.
   firstRun,
 
   /// Stored callback metadata may not match the current application build or
@@ -46,8 +47,18 @@ enum NativeGeofenceSynchronizationReason {
   callbackFingerprintChanged,
 
   /// Plugin-owned IDs, geometry, trigger semantics, settings, active state, or
-  /// registration fingerprint differ from the desired list.
+  /// authoritative registration fingerprint differ from the desired list.
   registrationDrift,
+}
+
+/// How a desired registration list relates to all plugin-owned registrations.
+enum NativeGeofenceSynchronizationScope {
+  /// The desired list is the complete source of truth; omitted IDs are removed.
+  authoritative,
+
+  /// The desired list manages only its own IDs; registrations outside it are
+  /// preserved and cannot make this scope stale.
+  partial,
 }
 
 /// Read-only comparison of desired registrations with plugin-owned state.
@@ -56,6 +67,10 @@ enum NativeGeofenceSynchronizationReason {
 /// are opaque comparison tokens and can contain registration and callback
 /// metadata; do not log or persist them as privacy-safe diagnostics.
 class NativeGeofenceSynchronizationInspection {
+  /// Whether this comparison covers all plugin-owned IDs or only the supplied
+  /// subset.
+  final NativeGeofenceSynchronizationScope scope;
+
   /// Whether the point-in-time native snapshot matched the desired state.
   ///
   /// A later `NativeGeofenceManager.ensureSynchronized` call revalidates and
@@ -86,14 +101,18 @@ class NativeGeofenceSynchronizationInspection {
   /// Desired IDs whose durable/platform-active state is incomplete.
   final List<String> inactiveIds;
 
-  /// Opaque platform-normalized fingerprint calculated natively from the
-  /// desired registrations.
+  /// Opaque platform-normalized fingerprint calculated natively from exactly
+  /// the desired registrations in this [scope].
   final String desiredRegistrationFingerprint;
 
-  /// Last successfully committed fingerprint, when one exists.
+  /// Last successfully committed authoritative fingerprint, when one exists.
+  ///
+  /// It is comparable with [desiredRegistrationFingerprint] only when [scope]
+  /// is [NativeGeofenceSynchronizationScope.authoritative].
   final String? currentRegistrationFingerprint;
 
   const NativeGeofenceSynchronizationInspection({
+    this.scope = NativeGeofenceSynchronizationScope.authoritative,
     required this.matchesDesired,
     required this.reasons,
     required this.desiredIds,
@@ -111,7 +130,15 @@ class NativeGeofenceSynchronizationInspection {
 
   int get currentCount => currentIds.length;
 
+  /// Whether the authoritative fingerprint is current, or `null` when a
+  /// partial desired list makes the global fingerprint inapplicable.
+  bool? get registrationFingerprintCurrent =>
+      scope == NativeGeofenceSynchronizationScope.authoritative
+          ? currentRegistrationFingerprint == desiredRegistrationFingerprint
+          : null;
+
   Map<String, Object?> toJson() => {
+        'scope': scope.name,
         'matchesDesired': matchesDesired,
         'reasons': reasons.map((reason) => reason.name).toList()..sort(),
         'desiredCount': desiredCount,
@@ -125,13 +152,17 @@ class NativeGeofenceSynchronizationInspection {
         'inactiveIds': [...inactiveIds]..sort(),
         'desiredRegistrationFingerprint': desiredRegistrationFingerprint,
         'currentRegistrationFingerprint': currentRegistrationFingerprint,
+        'registrationFingerprintCurrent': registrationFingerprintCurrent,
       };
 }
 
 /// Result of a successful conditional synchronization pass.
 class NativeGeofenceSynchronizationReport {
-  /// Whether the authoritative native pass changed registration or
-  /// synchronization metadata; false is a native-confirmed no-op.
+  /// Whether this pass treated the desired list as complete or as a subset.
+  final NativeGeofenceSynchronizationScope scope;
+
+  /// Whether the native transaction changed registration or synchronization
+  /// metadata; false is a native-confirmed no-op.
   final bool didSynchronize;
 
   /// Reasons observed natively immediately before reconciliation, or an empty
@@ -144,11 +175,13 @@ class NativeGeofenceSynchronizationReport {
   /// Number of plugin-owned IDs observed before reconciliation.
   final int previousCount;
 
-  /// Opaque desired fingerprint returned by the native pass; committed for a
-  /// mutating pass and already matching for a no-op.
+  /// Opaque fingerprint of exactly the desired list returned by the native
+  /// pass. An authoritative mutating pass commits it as the global
+  /// fingerprint; a partial pass must not replace that global fingerprint.
   final String registrationFingerprint;
 
   const NativeGeofenceSynchronizationReport({
+    this.scope = NativeGeofenceSynchronizationScope.authoritative,
     required this.didSynchronize,
     required this.reasons,
     required this.desiredCount,
@@ -157,6 +190,7 @@ class NativeGeofenceSynchronizationReport {
   });
 
   Map<String, Object?> toJson() => {
+        'scope': scope.name,
         'didSynchronize': didSynchronize,
         'reasons': reasons.map((reason) => reason.name).toList()..sort(),
         'desiredCount': desiredCount,

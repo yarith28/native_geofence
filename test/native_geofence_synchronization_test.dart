@@ -81,9 +81,53 @@ void main() {
     expect(
         first.reasons, contains(NativeGeofenceSynchronizationReason.firstRun));
     expect(current.matchesDesired, isTrue);
+    expect(
+      current.scope,
+      NativeGeofenceSynchronizationScope.authoritative,
+    );
+    expect(current.registrationFingerprintCurrent, isTrue);
     expect(current.driftedIds, isEmpty);
     expect(current.metadataChangedIds, isEmpty);
     expect(synchronizationCalls, 0);
+  });
+
+  test('partial inspection ignores the unrelated authoritative fingerprint',
+      () async {
+    final callbackHandle =
+        PluginUtilities.getCallbackHandle(synchronizationCallback)!
+            .toRawHandle();
+    messenger.setMockDecodedMessageHandler<Object?>(stateChannel, (_) async {
+      return <Object?>[
+        _state(
+          platform: NativeGeofencePlatform.ios,
+          registrations: [
+            _wire(radius: 100, callbackHandle: callbackHandle),
+          ],
+          pluginOwnedIds: const ['office', 'outside-scope'],
+          registrationFingerprint: 'authoritative-other-state',
+          desiredRegistrationFingerprint: 'partial-office-state',
+        ),
+      ];
+    });
+    final desired = [
+      GeofenceRegistration(
+        geofence: _geofence(),
+        callback: synchronizationCallback,
+      ),
+    ];
+
+    final inspection = await NativeGeofenceManager.instance
+        .inspectSynchronization(desired, removeUnlisted: false);
+
+    expect(inspection.scope, NativeGeofenceSynchronizationScope.partial);
+    expect(inspection.matchesDesired, isTrue);
+    expect(inspection.reasons, isEmpty);
+    expect(inspection.unlistedIds, isEmpty);
+    expect(inspection.registrationFingerprintCurrent, isNull);
+    expect(
+      inspection.currentRegistrationFingerprint,
+      'authoritative-other-state',
+    );
   });
 
   test('overlapping synchronization calls are FIFO serialized', () async {
@@ -227,6 +271,32 @@ void main() {
     expect(report.desiredCount, 1);
     expect(report.previousCount, 1);
     expect(report.registrationFingerprint, 'already-current');
+  });
+
+  test('ensure reports whether the requested scope was partial', () async {
+    messenger.setMockDecodedMessageHandler<Object?>(synchronizeChannel,
+        (_) async {
+      return <Object?>[
+        _result(
+          didSynchronize: false,
+          reasons: const [],
+          registrationFingerprint: 'partial-office-state',
+        ),
+      ];
+    });
+
+    final report = await NativeGeofenceManager.instance.ensureSynchronized(
+      [
+        GeofenceRegistration(
+          geofence: _geofence(),
+          callback: synchronizationCallback,
+        ),
+      ],
+      removeUnlisted: false,
+    );
+
+    expect(report.scope, NativeGeofenceSynchronizationScope.partial);
+    expect(report.registrationFingerprint, 'partial-office-state');
   });
 
   test('incomplete plugin-owned state remains drift after fingerprint match',

@@ -35,6 +35,26 @@ class AndroidGeofenceSynchronizationPlannerTest {
     }
 
     @Test
+    fun `partial decision ignores the unrelated authoritative fingerprint`() {
+        val desired = listOf(geofence("office", handle = 1, context = 10))
+
+        val decision = AndroidGeofenceSynchronizationPlanner.decide(
+            current = listOf(stored(desired.single())),
+            rawIds = listOf("office", "outside-scope"),
+            desired = desired,
+            removeUnlisted = false,
+            currentPackageFingerprint = "current",
+            currentRegistrationFingerprint = "authoritative-other-state",
+            callbackFingerprintCurrent = true,
+            nowMillis = 1_000
+        )
+
+        assertFalse(decision.requiresSynchronization)
+        assertTrue(decision.reasons.isEmpty())
+        assertTrue(decision.plan.removeIds.isEmpty())
+    }
+
+    @Test
     fun `authoritative decision reports current state after another caller wins`() {
         val current = geofence("office", handle = 1, context = 10)
         val desired = listOf(current)
