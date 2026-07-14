@@ -47,4 +47,40 @@ final class IosCallbackRefreshPolicyTests: XCTestCase {
             .unknown
         )
     }
+
+    func testCurrentPerRegistrationEvidenceSupersedesStaleGlobalFingerprint() {
+        XCTAssertEqual(
+            IosCallbackRefreshPolicy.evaluate(
+                registrationCount: 2,
+                storedPackageFingerprint: "global-old",
+                registrationPackageFingerprints: ["current", "current"],
+                currentPackageFingerprint: "current"
+            ),
+            .unknown
+        )
+    }
+
+    func testAnyStalePerRegistrationEvidenceRequiresRefresh() {
+        XCTAssertEqual(
+            IosCallbackRefreshPolicy.evaluate(
+                registrationCount: 2,
+                storedPackageFingerprint: "current",
+                registrationPackageFingerprints: ["current", "old"],
+                currentPackageFingerprint: "current"
+            ),
+            .refreshRequired
+        )
+    }
+
+    func testMissingPerRegistrationEvidenceKeepsLegacyMismatchRelevant() {
+        XCTAssertEqual(
+            IosCallbackRefreshPolicy.evaluate(
+                registrationCount: 2,
+                storedPackageFingerprint: "global-old",
+                registrationPackageFingerprints: ["current", nil],
+                currentPackageFingerprint: "current"
+            ),
+            .refreshRequired
+        )
+    }
 }

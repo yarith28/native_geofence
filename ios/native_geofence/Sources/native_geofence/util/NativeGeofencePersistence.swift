@@ -3,6 +3,7 @@ import Foundation
 struct IosSynchronizationPersistenceSnapshot {
     let callbackMapping: Any?
     let callbackContextMapping: Any?
+    let callbackPackageFingerprintMapping: Any?
     let dedupMapping: Any?
     let registrationFingerprint: Any?
     let packageFingerprint: Any?
@@ -27,6 +28,10 @@ class NativeGeofencePersistence {
         var mapping = getRegionCallbackMapping()
         mapping[id] = NSNumber(value: handle)
         setRegionCallbackMapping(mapping)
+        setRegionCallbackPackageFingerprint(
+            id: id,
+            fingerprint: currentPackageFingerprint()
+        )
     }
     
     static func getRegionCallbackHandle(id: String) -> Int64? {
@@ -50,10 +55,14 @@ class NativeGeofencePersistence {
         var mapping = getRegionCallbackMapping()
         mapping.removeValue(forKey: id)
         setRegionCallbackMapping(mapping)
+        var fingerprintMapping = getRegionCallbackPackageFingerprintMapping()
+        fingerprintMapping.removeValue(forKey: id)
+        setRegionCallbackPackageFingerprintMapping(fingerprintMapping)
     }
 
     static func removeAllRegionCallbackHandles() {
         setRegionCallbackMapping([:])
+        setRegionCallbackPackageFingerprintMapping([:])
     }
 
     static func setRegionCallbackContext(id: String, context: Int64?) {
@@ -111,6 +120,82 @@ class NativeGeofencePersistence {
         return persistentState.synchronize()
     }
 
+    static func setRegionCallbackPackageFingerprint(
+        id: String,
+        fingerprint: String
+    ) {
+        var mapping = getRegionCallbackPackageFingerprintMapping()
+        mapping[id] = fingerprint
+        setRegionCallbackPackageFingerprintMapping(mapping)
+    }
+
+    static func getRegionCallbackPackageFingerprint(id: String) -> String? {
+        getRegionCallbackPackageFingerprintMapping()[id] as? String
+    }
+
+    static func callbackPackageFingerprintsCurrent(
+        ids: Set<String>,
+        currentFingerprint: String
+    ) -> Bool {
+        ids.allSatisfy {
+            getRegionCallbackPackageFingerprint(id: $0) == currentFingerprint
+        }
+    }
+
+    @discardableResult
+    static func commitPartialSynchronization(
+        ids: Set<String>,
+        packageFingerprint: String
+    ) -> Bool {
+        var mapping = getRegionCallbackPackageFingerprintMapping()
+        let callbackIds = getRegionCallbackIds()
+        for id in ids.intersection(callbackIds) {
+            mapping[id] = packageFingerprint
+        }
+        setRegionCallbackPackageFingerprintMapping(mapping)
+        return persistentState.synchronize()
+    }
+
+    @discardableResult
+    static func commitAuthoritativeSynchronization(
+        registrationFingerprint: String,
+        packageFingerprint: String
+    ) -> Bool {
+        let callbackIds = getRegionCallbackIds()
+        setRegionCallbackPackageFingerprintMapping(
+            Dictionary(uniqueKeysWithValues: callbackIds.map {
+                ($0, packageFingerprint as Any)
+            })
+        )
+        persistentState.set(
+            registrationFingerprint,
+            forKey: Constants.SYNCHRONIZATION_REGISTRATION_FINGERPRINT_KEY
+        )
+        persistentState.set(
+            packageFingerprint,
+            forKey: Constants.SYNCHRONIZED_PACKAGE_FINGERPRINT_KEY
+        )
+        return persistentState.synchronize()
+    }
+
+    static func currentPackageFingerprint() -> String {
+        let bundle = Bundle.main
+        let identifier = bundle.bundleIdentifier ?? "unknown"
+        let version = bundle.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString"
+        ) as? String ?? "unknown"
+        let build = bundle.object(
+            forInfoDictionaryKey: "CFBundleVersion"
+        ) as? String ?? "unknown"
+        let executableAttributes = bundle.executableURL.flatMap {
+            try? FileManager.default.attributesOfItem(atPath: $0.path)
+        }
+        let modifiedAt = (executableAttributes?[.modificationDate] as? Date)?
+            .timeIntervalSince1970 ?? 0
+        let size = (executableAttributes?[.size] as? NSNumber)?.int64Value ?? 0
+        return "\(identifier):\(version):\(build):\(modifiedAt):\(size)"
+    }
+
     static func synchronizationSnapshot() -> IosSynchronizationPersistenceSnapshot {
         IosSynchronizationPersistenceSnapshot(
             callbackMapping: persistentState.object(
@@ -118,6 +203,9 @@ class NativeGeofencePersistence {
             ),
             callbackContextMapping: persistentState.object(
                 forKey: Constants.GEOFENCE_CALLBACK_CONTEXT_DICT_KEY
+            ),
+            callbackPackageFingerprintMapping: persistentState.object(
+                forKey: Constants.GEOFENCE_CALLBACK_PACKAGE_FINGERPRINT_DICT_KEY
             ),
             dedupMapping: persistentState.object(
                 forKey: Constants.GEOFENCE_LAST_EVENT_DICT_KEY
@@ -139,6 +227,10 @@ class NativeGeofencePersistence {
         restoreObject(
             snapshot.callbackContextMapping,
             key: Constants.GEOFENCE_CALLBACK_CONTEXT_DICT_KEY
+        )
+        restoreObject(
+            snapshot.callbackPackageFingerprintMapping,
+            key: Constants.GEOFENCE_CALLBACK_PACKAGE_FINGERPRINT_DICT_KEY
         )
         restoreObject(snapshot.dedupMapping, key: Constants.GEOFENCE_LAST_EVENT_DICT_KEY)
         restoreObject(
@@ -169,6 +261,21 @@ class NativeGeofencePersistence {
         persistentState.dictionary(
             forKey: Constants.GEOFENCE_CALLBACK_CONTEXT_DICT_KEY
         ) ?? [:]
+    }
+
+    private static func getRegionCallbackPackageFingerprintMapping() -> [String: Any] {
+        persistentState.dictionary(
+            forKey: Constants.GEOFENCE_CALLBACK_PACKAGE_FINGERPRINT_DICT_KEY
+        ) ?? [:]
+    }
+
+    private static func setRegionCallbackPackageFingerprintMapping(
+        _ mapping: [String: Any]
+    ) {
+        persistentState.set(
+            mapping,
+            forKey: Constants.GEOFENCE_CALLBACK_PACKAGE_FINGERPRINT_DICT_KEY
+        )
     }
 
     private static func restoreObject(_ value: Any?, key: String) {

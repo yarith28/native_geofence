@@ -6,6 +6,7 @@ import XCTest
 final class PluginOwnershipTests: XCTestCase {
     private var previousMapping: Any?
     private var previousContextMapping: Any?
+    private var previousCallbackPackageFingerprintMapping: Any?
     private var previousDedupMapping: Any?
     private var previousRegistrationFingerprint: Any?
     private var previousPackageFingerprint: Any?
@@ -17,6 +18,9 @@ final class PluginOwnershipTests: XCTestCase {
         )
         previousContextMapping = UserDefaults.standard.object(
             forKey: Constants.GEOFENCE_CALLBACK_CONTEXT_DICT_KEY
+        )
+        previousCallbackPackageFingerprintMapping = UserDefaults.standard.object(
+            forKey: Constants.GEOFENCE_CALLBACK_PACKAGE_FINGERPRINT_DICT_KEY
         )
         previousDedupMapping = UserDefaults.standard.object(
             forKey: Constants.GEOFENCE_LAST_EVENT_DICT_KEY
@@ -32,6 +36,9 @@ final class PluginOwnershipTests: XCTestCase {
         )
         UserDefaults.standard.removeObject(
             forKey: Constants.GEOFENCE_CALLBACK_CONTEXT_DICT_KEY
+        )
+        UserDefaults.standard.removeObject(
+            forKey: Constants.GEOFENCE_CALLBACK_PACKAGE_FINGERPRINT_DICT_KEY
         )
         UserDefaults.standard.removeObject(
             forKey: Constants.GEOFENCE_LAST_EVENT_DICT_KEY
@@ -65,6 +72,10 @@ final class PluginOwnershipTests: XCTestCase {
                 forKey: Constants.GEOFENCE_CALLBACK_CONTEXT_DICT_KEY
             )
         }
+        restore(
+            previousCallbackPackageFingerprintMapping,
+            key: Constants.GEOFENCE_CALLBACK_PACKAGE_FINGERPRINT_DICT_KEY
+        )
         restore(previousDedupMapping, key: Constants.GEOFENCE_LAST_EVENT_DICT_KEY)
         restore(
             previousRegistrationFingerprint,
@@ -99,6 +110,10 @@ final class PluginOwnershipTests: XCTestCase {
             ],
             forKey: Constants.GEOFENCE_CALLBACK_DICT_KEY
         )
+        UserDefaults.standard.set(
+            ["valid": "package"],
+            forKey: Constants.GEOFENCE_CALLBACK_PACKAGE_FINGERPRINT_DICT_KEY
+        )
 
         NativeGeofencePersistence.removeAllRegionCallbackHandles()
 
@@ -106,6 +121,12 @@ final class PluginOwnershipTests: XCTestCase {
         XCTAssertEqual(
             UserDefaults.standard.dictionary(
                 forKey: Constants.GEOFENCE_CALLBACK_DICT_KEY
+            )?.count,
+            0
+        )
+        XCTAssertEqual(
+            UserDefaults.standard.dictionary(
+                forKey: Constants.GEOFENCE_CALLBACK_PACKAGE_FINGERPRINT_DICT_KEY
             )?.count,
             0
         )
@@ -129,6 +150,10 @@ final class PluginOwnershipTests: XCTestCase {
     func testSynchronizationSnapshotRestoresMetadataDedupAndFingerprints() {
         NativeGeofencePersistence.setRegionCallbackHandle(id: "office", handle: 41)
         NativeGeofencePersistence.setRegionCallbackContext(id: "office", context: 71)
+        NativeGeofencePersistence.setRegionCallbackPackageFingerprint(
+            id: "office",
+            fingerprint: "old-office-package"
+        )
         UserDefaults.standard.set(
             ["office": ["event": "enter", "atMillis": NSNumber(value: 1_000)]],
             forKey: Constants.GEOFENCE_LAST_EVENT_DICT_KEY
@@ -139,6 +164,10 @@ final class PluginOwnershipTests: XCTestCase {
 
         NativeGeofencePersistence.setRegionCallbackHandle(id: "office", handle: 99)
         NativeGeofencePersistence.setRegionCallbackContext(id: "office", context: 100)
+        NativeGeofencePersistence.setRegionCallbackPackageFingerprint(
+            id: "office",
+            fingerprint: "new-office-package"
+        )
         UserDefaults.standard.set([:], forKey: Constants.GEOFENCE_LAST_EVENT_DICT_KEY)
         XCTAssertTrue(NativeGeofencePersistence.setSynchronizationFingerprint("new-registration"))
         XCTAssertTrue(NativeGeofencePersistence.setSynchronizedPackageFingerprint("new-package"))
@@ -146,12 +175,98 @@ final class PluginOwnershipTests: XCTestCase {
         XCTAssertTrue(NativeGeofencePersistence.restoreSynchronizationSnapshot(snapshot))
         XCTAssertEqual(NativeGeofencePersistence.getRegionCallbackHandle(id: "office"), 41)
         XCTAssertEqual(NativeGeofencePersistence.getRegionCallbackContext(id: "office"), 71)
+        XCTAssertEqual(
+            NativeGeofencePersistence.getRegionCallbackPackageFingerprint(id: "office"),
+            "old-office-package"
+        )
         XCTAssertEqual(NativeGeofencePersistence.getSynchronizationFingerprint(), "old-registration")
         XCTAssertEqual(NativeGeofencePersistence.getSynchronizedPackageFingerprint(), "old-package")
         let restoredDedup = UserDefaults.standard.dictionary(
             forKey: Constants.GEOFENCE_LAST_EVENT_DICT_KEY
         )?["office"] as? [String: Any]
         XCTAssertEqual((restoredDedup?["atMillis"] as? NSNumber)?.int64Value, 1_000)
+    }
+
+    func testPartialSynchronizationPreservesAuthoritativeAndOutsideScopeEvidence() {
+        NativeGeofencePersistence.setRegionCallbackHandle(id: "office", handle: 41)
+        NativeGeofencePersistence.setRegionCallbackHandle(id: "warehouse", handle: 42)
+        NativeGeofencePersistence.setRegionCallbackPackageFingerprint(
+            id: "office",
+            fingerprint: "old-office-package"
+        )
+        NativeGeofencePersistence.setRegionCallbackPackageFingerprint(
+            id: "warehouse",
+            fingerprint: "old-warehouse-package"
+        )
+        XCTAssertTrue(
+            NativeGeofencePersistence.setSynchronizationFingerprint("authoritative")
+        )
+        XCTAssertTrue(
+            NativeGeofencePersistence.setSynchronizedPackageFingerprint("global-old")
+        )
+
+        XCTAssertTrue(
+            NativeGeofencePersistence.commitPartialSynchronization(
+                ids: ["office"],
+                packageFingerprint: "current"
+            )
+        )
+
+        XCTAssertEqual(
+            NativeGeofencePersistence.getSynchronizationFingerprint(),
+            "authoritative"
+        )
+        XCTAssertEqual(
+            NativeGeofencePersistence.getSynchronizedPackageFingerprint(),
+            "global-old"
+        )
+        XCTAssertEqual(
+            NativeGeofencePersistence.getRegionCallbackPackageFingerprint(id: "office"),
+            "current"
+        )
+        XCTAssertEqual(
+            NativeGeofencePersistence.getRegionCallbackPackageFingerprint(id: "warehouse"),
+            "old-warehouse-package"
+        )
+        XCTAssertTrue(
+            NativeGeofencePersistence.callbackPackageFingerprintsCurrent(
+                ids: ["office"],
+                currentFingerprint: "current"
+            )
+        )
+        XCTAssertFalse(
+            NativeGeofencePersistence.callbackPackageFingerprintsCurrent(
+                ids: ["warehouse"],
+                currentFingerprint: "current"
+            )
+        )
+    }
+
+    func testAuthoritativeSynchronizationPublishesGlobalAndPerRegistrationEvidence() {
+        NativeGeofencePersistence.setRegionCallbackHandle(id: "office", handle: 41)
+        NativeGeofencePersistence.setRegionCallbackHandle(id: "warehouse", handle: 42)
+
+        XCTAssertTrue(
+            NativeGeofencePersistence.commitAuthoritativeSynchronization(
+                registrationFingerprint: "authoritative",
+                packageFingerprint: "current"
+            )
+        )
+
+        XCTAssertEqual(
+            NativeGeofencePersistence.getSynchronizationFingerprint(),
+            "authoritative"
+        )
+        XCTAssertEqual(
+            NativeGeofencePersistence.getSynchronizedPackageFingerprint(),
+            "current"
+        )
+        XCTAssertTrue(
+            NativeGeofencePersistence.callbackPackageFingerprintsCurrent(
+                ids: ["office", "warehouse"],
+                currentFingerprint: "current"
+            )
+        )
     }
 
     func testOwnedRegionsExcludeForeignAndNonCircularRegions() {
