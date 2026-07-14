@@ -292,7 +292,8 @@ final class RegionRegistrationCoordinator {
                 matching: region,
                 failure: .monitoringFailed(
                     "Timed out waiting for iOS to confirm region monitoring for geofence ID=\(id)."
-                )
+                ),
+                installLateStartBarrier: true
             )
         }
         pending.timeoutWorkItem = timeoutWorkItem
@@ -447,7 +448,8 @@ final class RegionRegistrationCoordinator {
     private func finishRegistrationWithFailure(
         id: String,
         matching region: CLRegion?,
-        failure: RegionRegistrationFailure
+        failure: RegionRegistrationFailure,
+        installLateStartBarrier: Bool = false
     ) {
         guard let pending = pendingRegistrations[id],
               region.map({
@@ -460,6 +462,9 @@ final class RegionRegistrationCoordinator {
         pendingRegistrations.removeValue(forKey: id)
         pending.timeoutWorkItem?.cancel()
         monitor.stopMonitoring(for: pending.requestedRegion)
+        if installLateStartBarrier {
+            addCancellationTombstone(for: pending.requestedRegion)
+        }
 
         if let previousRegion = pending.previousRegion,
            pending.previousCallbackHandle != nil
@@ -495,7 +500,8 @@ final class RegionRegistrationCoordinator {
                 matching: region,
                 failure: originalFailure.appending(
                     "Timed out while restoring the previous registration."
-                )
+                ),
+                installLateStartBarrier: true
             )
         }
         restoration.timeoutWorkItem = timeoutWorkItem
@@ -508,7 +514,8 @@ final class RegionRegistrationCoordinator {
     private func finishRestorationWithFailure(
         id: String,
         matching region: CLRegion?,
-        failure: RegionRegistrationFailure
+        failure: RegionRegistrationFailure,
+        installLateStartBarrier: Bool = false
     ) {
         guard let restoration = pendingRestorations[id],
               region.map({
@@ -521,6 +528,9 @@ final class RegionRegistrationCoordinator {
         pendingRestorations.removeValue(forKey: id)
         restoration.timeoutWorkItem?.cancel()
         monitor.stopMonitoring(for: restoration.region)
+        if installLateStartBarrier {
+            addCancellationTombstone(for: restoration.region)
+        }
         removeCallbackMetadata(id: id)
         invalidateCommittedRegion(id)
         restoration.completion(.failure(failure))
