@@ -32,6 +32,8 @@
 * Bounds every Android Play Services geofence mutation to 30 seconds, compensates registration timeouts with durable recovery evidence, and ignores late task callbacks
 * Keeps iOS Core Location mutation authority process-stable across Flutter engine detach and reattach while replacing only the event-delivery route
 * Keeps configured Android fence centers separate from device-fix accuracy/mock metadata and makes callback summaries and the example privacy-conscious by default
+* Keeps the previous Android callback route authoritative until a same-ID replacement commits, validates Android timing settings before serialization, and preserves typed remove-all errors for synchronous Play services failures
+* Re-stops late iOS monitoring confirmations after registration or restoration timeouts so Core Location cannot retain an unowned region
 
 ## 1.3.1
 

@@ -102,22 +102,23 @@ internal class GeofenceRegistrationStore(
         geofence: GeofenceWire,
         recoveryEligible: Boolean = true,
         active: Boolean = true,
-        callbackPackageFingerprint: String? = null
+        callbackPackageFingerprint: String? = null,
+        expirationDeadlineMillis: Long? = geofence.androidSettings
+            .expirationDurationMillis
+            ?.let { safeDeadline(nowMillis(), it) },
     ): Boolean {
         val rawIds = rawIndex().toMutableSet().apply { add(geofence.id) }
         val configuredIds = configuredIndex().toMutableSet().apply { add(geofence.id) }
         val recordJson = Json.encodeToString(GeofenceStorage.fromWire(geofence))
-        val durationMillis = geofence.androidSettings.expirationDurationMillis
-        val deadlineMillis = durationMillis?.let { safeDeadline(nowMillis(), it) }
 
         return backend.edit {
             putStringSet(Constants.PERSISTENT_GEOFENCES_IDS_KEY, rawIds)
             putStringSet(Constants.PERSISTENT_CONFIGURED_GEOFENCES_IDS_KEY, configuredIds)
             putString(recordKey(geofence.id), recordJson)
-            if (deadlineMillis == null) {
+            if (expirationDeadlineMillis == null) {
                 remove(expirationKey(geofence.id))
             } else {
-                putLong(expirationKey(geofence.id), deadlineMillis)
+                putLong(expirationKey(geofence.id), expirationDeadlineMillis)
             }
             putBoolean(recoveryEligibleKey(geofence.id), recoveryEligible)
             putBoolean(activeKey(geofence.id), active)

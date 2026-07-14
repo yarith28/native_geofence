@@ -324,6 +324,32 @@ class NativeGeofenceManager {
       throw NativeGeofenceException.invalidArgument(
           message: 'Geofence radius must be finite and strictly positive.');
     }
+    const maximumAndroidDurationMillis = 2147483647;
+    final androidSettings = geofence.androidSettings;
+    final expiration = androidSettings.expiration;
+    if (expiration != null && expiration.inMilliseconds <= 0) {
+      throw NativeGeofenceException.invalidArgument(
+          message:
+              'Android geofence expiration must be at least 1 millisecond.');
+    }
+    final loiteringDelayMillis = androidSettings.loiteringDelay.inMilliseconds;
+    if (androidSettings.loiteringDelay.isNegative ||
+        loiteringDelayMillis > maximumAndroidDurationMillis) {
+      throw NativeGeofenceException.invalidArgument(
+          message: 'Android geofence loitering delay must be between 0 and '
+              '$maximumAndroidDurationMillis milliseconds.');
+    }
+    final notificationResponsiveness =
+        androidSettings.notificationResponsiveness;
+    final notificationResponsivenessMillis =
+        notificationResponsiveness?.inMilliseconds;
+    if (notificationResponsiveness != null &&
+        (notificationResponsiveness.isNegative ||
+            notificationResponsivenessMillis! > maximumAndroidDurationMillis)) {
+      throw NativeGeofenceException.invalidArgument(
+          message: 'Android geofence notification responsiveness must be '
+              'between 0 and $maximumAndroidDurationMillis milliseconds.');
+    }
     if (isIos &&
         geofence.triggers.length == 1 &&
         geofence.triggers.first == GeofenceEvent.dwell) {
