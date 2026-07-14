@@ -1,13 +1,12 @@
 package com.chunkytofustudios.native_geofence.bridge
 
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
 import com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWire
 import com.chunkytofustudios.native_geofence.generated.GeofenceEvent
 import com.chunkytofustudios.native_geofence.generated.LocationWire
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 import java.util.concurrent.Future
+import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.SynchronousQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -40,6 +39,23 @@ internal class NativeGeofenceBridgeDecisionGate(
         cancelTimeout()
         onResolved(decision)
         return true
+    }
+}
+
+/** Keeps the ownership deadline independent from Android's main message queue. */
+internal object NativeGeofenceBridgeTimeoutScheduler {
+    private val executor = ScheduledThreadPoolExecutor(
+        1,
+        { runnable ->
+            Thread(runnable, "native-geofence-bridge-timeout").apply { isDaemon = true }
+        }
+    ).apply {
+        removeOnCancelPolicy = true
+    }
+
+    fun schedule(delayMillis: Long, action: () -> Unit): () -> Unit {
+        val future = executor.schedule(action, delayMillis, TimeUnit.MILLISECONDS)
+        return { future.cancel(false) }
     }
 }
 
@@ -127,7 +143,6 @@ internal object NativeGeofenceBridgeMapper {
 }
 
 internal object NativeGeofenceBridgeDispatcher {
-    private val mainHandler = Handler(Looper.getMainLooper())
     private val processorExecutor = ThreadPoolExecutor(
         0,
         2,
@@ -153,12 +168,7 @@ internal object NativeGeofenceBridgeDispatcher {
         val processingFuture = AtomicReference<Future<*>?>(null)
         val gate = NativeGeofenceBridgeDecisionGate(
             timeoutMillis = OWNERSHIP_TIMEOUT_MILLIS,
-            schedule = { delayMillis, action ->
-                val runnable = Runnable(action)
-                mainHandler.postDelayed(runnable, delayMillis)
-                val cancel: () -> Unit = { mainHandler.removeCallbacks(runnable) }
-                cancel
-            },
+            schedule = NativeGeofenceBridgeTimeoutScheduler::schedule,
             onResolved = { decision ->
                 if (decision == null) {
                     processingFuture.get()?.cancel(true)

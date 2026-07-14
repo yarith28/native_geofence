@@ -4,6 +4,8 @@ import com.chunkytofustudios.native_geofence.generated.ActiveGeofenceWire
 import com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWire
 import com.chunkytofustudios.native_geofence.generated.GeofenceEvent
 import com.chunkytofustudios.native_geofence.generated.LocationWire
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -45,6 +47,31 @@ class NativeGeofenceBridgeDecisionGateTest {
         scheduler.fire()
         assertFalse(gate.resolve(NativeGeofenceBridgeDecision.Accept))
         assertEquals(listOf<NativeGeofenceBridgeDecision?>(null), decisions)
+    }
+
+    @Test
+    fun `production ownership deadline is independent from the main looper`() {
+        val fired = CountDownLatch(1)
+        var timeoutThread: String? = null
+
+        NativeGeofenceBridgeTimeoutScheduler.schedule(0L) {
+            timeoutThread = Thread.currentThread().name
+            fired.countDown()
+        }
+
+        assertTrue(fired.await(2L, TimeUnit.SECONDS))
+        assertEquals("native-geofence-bridge-timeout", timeoutThread)
+    }
+}
+
+class NativeGeofenceBridgeMetadataTest {
+    @Test
+    fun `metadata discovery exceptions safely disable the processor`() {
+        val className = NativeGeofenceBridgeCompatibility.processorClassNameOrNull {
+            throw Exception("package metadata unavailable")
+        }
+
+        assertEquals(null, className)
     }
 }
 

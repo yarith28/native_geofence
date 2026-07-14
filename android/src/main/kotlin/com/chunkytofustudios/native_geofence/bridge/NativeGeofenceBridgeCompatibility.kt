@@ -7,18 +7,19 @@ import com.chunkytofustudios.native_geofence.util.AndroidPackageManagerCompat
 
 /** Keeps the bridge processor manifest lookup out of bridge orchestration. */
 internal object NativeGeofenceBridgeCompatibility {
-    fun processorClassName(context: Context): String? {
-        val applicationInfo = try {
-            AndroidPackageManagerCompat.getApplicationInfo(
-                context.packageManager,
-                context.packageName,
-                PackageManager.GET_META_DATA,
-            )
-        } catch (_: RuntimeException) {
-            return null
-        }
-        return applicationInfo.metaData
+    fun processorClassName(context: Context): String? = processorClassNameOrNull {
+        val applicationInfo = AndroidPackageManagerCompat.getApplicationInfo(
+            context.packageManager,
+            context.packageName,
+            PackageManager.GET_META_DATA,
+        )
+        applicationInfo.metaData
             ?.getString(Constants.NATIVE_EVENT_PROCESSOR_METADATA_KEY)
-            ?.takeIf(String::isNotBlank)
+    }
+
+    internal fun processorClassNameOrNull(load: () -> String?): String? = try {
+        load()?.takeIf(String::isNotBlank)
+    } catch (_: Exception) {
+        null
     }
 }
