@@ -192,22 +192,7 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
         locationServicesQueue.async {
             let locationServicesEnabled = CLLocationManager.locationServicesEnabled()
             DispatchQueue.main.async {
-                let finePermission: Bool
-                let backgroundPermission: Bool
-                switch authorizationStatus {
-                case .authorizedAlways:
-                    finePermission = true
-                    backgroundPermission = true
-                case .authorizedWhenInUse:
-                    finePermission = true
-                    backgroundPermission = false
-                case .denied, .notDetermined, .restricted:
-                    finePermission = false
-                    backgroundPermission = false
-                @unknown default:
-                    finePermission = false
-                    backgroundPermission = false
-                }
+                let permission = IosLocationPermissionEvidence.from(authorizationStatus)
                 let refreshState: NativeGeofenceCallbackRefreshState
                 switch refreshDecision {
                 case .notApplicable:
@@ -219,8 +204,8 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
                 }
                 let health = IosNativeGeofenceStatusHealth.compute(
                     persistedCount: persistedIds.count,
-                    finePermission: finePermission,
-                    backgroundPermission: backgroundPermission,
+                    locationPermission: permission.locationPermissionGranted,
+                    backgroundPermission: permission.backgroundLocationPermissionGranted,
                     locationServicesEnabled: locationServicesEnabled,
                     monitoringAvailable: monitoringAvailable,
                     dispatcherRegistered: dispatcherRegistered,
@@ -233,8 +218,9 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
                             platform: .ios,
                             osVersion: osVersion,
                             persistedGeofenceIds: persistedIds,
-                            fineLocationPermissionGranted: finePermission,
-                            backgroundLocationPermissionGranted: backgroundPermission,
+                            locationPermissionGranted: permission.locationPermissionGranted,
+                            backgroundLocationPermissionGranted:
+                                permission.backgroundLocationPermissionGranted,
                             notificationPermissionGranted: nil,
                             locationServicesEnabled: locationServicesEnabled,
                             monitoringAvailable: monitoringAvailable,

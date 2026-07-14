@@ -197,7 +197,7 @@ extension NativeGeofenceStatusWireMapper on NativeGeofenceStatusWire {
         platform: platform,
         osVersion: osVersion,
         persistedGeofenceIds: List.unmodifiable(persistedGeofenceIds),
-        fineLocationPermissionGranted: fineLocationPermissionGranted,
+        locationPermissionGranted: locationPermissionGranted,
         backgroundLocationPermissionGranted:
             backgroundLocationPermissionGranted,
         notificationPermissionGranted: notificationPermissionGranted,

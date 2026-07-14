@@ -677,7 +677,7 @@ class NativeGeofenceStatusWire {
     required this.platform,
     this.osVersion,
     required this.persistedGeofenceIds,
-    this.fineLocationPermissionGranted,
+    this.locationPermissionGranted,
     this.backgroundLocationPermissionGranted,
     this.notificationPermissionGranted,
     this.locationServicesEnabled,
@@ -705,7 +705,10 @@ class NativeGeofenceStatusWire {
 
   List<String> persistedGeofenceIds;
 
-  bool? fineLocationPermissionGranted;
+  /// Whether the platform's required foreground location authorization is
+  /// granted. This means fine location on Android and When In Use or Always
+  /// authorization on iOS.
+  bool? locationPermissionGranted;
 
   bool? backgroundLocationPermissionGranted;
 
@@ -750,7 +753,7 @@ class NativeGeofenceStatusWire {
       platform,
       osVersion,
       persistedGeofenceIds,
-      fineLocationPermissionGranted,
+      locationPermissionGranted,
       backgroundLocationPermissionGranted,
       notificationPermissionGranted,
       locationServicesEnabled,
@@ -783,7 +786,7 @@ class NativeGeofenceStatusWire {
       platform: result[0]! as NativeGeofencePlatform,
       osVersion: result[1] as String?,
       persistedGeofenceIds: (result[2]! as List<Object?>).cast<String>(),
-      fineLocationPermissionGranted: result[3] as bool?,
+      locationPermissionGranted: result[3] as bool?,
       backgroundLocationPermissionGranted: result[4] as bool?,
       notificationPermissionGranted: result[5] as bool?,
       locationServicesEnabled: result[6] as bool?,
@@ -819,8 +822,8 @@ class NativeGeofenceStatusWire {
     return _deepEquals(platform, other.platform) &&
         _deepEquals(osVersion, other.osVersion) &&
         _deepEquals(persistedGeofenceIds, other.persistedGeofenceIds) &&
-        _deepEquals(fineLocationPermissionGranted,
-            other.fineLocationPermissionGranted) &&
+        _deepEquals(
+            locationPermissionGranted, other.locationPermissionGranted) &&
         _deepEquals(backgroundLocationPermissionGranted,
             other.backgroundLocationPermissionGranted) &&
         _deepEquals(notificationPermissionGranted,
