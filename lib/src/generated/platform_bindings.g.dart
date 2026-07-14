@@ -676,7 +676,7 @@ class NativeGeofenceStatusWire {
   NativeGeofenceStatusWire({
     required this.platform,
     this.osVersion,
-    required this.persistedGeofenceIds,
+    required this.persistedGeofenceCount,
     this.locationPermissionGranted,
     this.backgroundLocationPermissionGranted,
     this.notificationPermissionGranted,
@@ -703,7 +703,7 @@ class NativeGeofenceStatusWire {
 
   String? osVersion;
 
-  List<String> persistedGeofenceIds;
+  int persistedGeofenceCount;
 
   /// Whether the platform's required foreground location authorization is
   /// granted. This means fine location on Android and When In Use or Always
@@ -752,7 +752,7 @@ class NativeGeofenceStatusWire {
     return <Object?>[
       platform,
       osVersion,
-      persistedGeofenceIds,
+      persistedGeofenceCount,
       locationPermissionGranted,
       backgroundLocationPermissionGranted,
       notificationPermissionGranted,
@@ -785,7 +785,7 @@ class NativeGeofenceStatusWire {
     return NativeGeofenceStatusWire(
       platform: result[0]! as NativeGeofencePlatform,
       osVersion: result[1] as String?,
-      persistedGeofenceIds: (result[2]! as List<Object?>).cast<String>(),
+      persistedGeofenceCount: result[2]! as int,
       locationPermissionGranted: result[3] as bool?,
       backgroundLocationPermissionGranted: result[4] as bool?,
       notificationPermissionGranted: result[5] as bool?,
@@ -821,7 +821,7 @@ class NativeGeofenceStatusWire {
     }
     return _deepEquals(platform, other.platform) &&
         _deepEquals(osVersion, other.osVersion) &&
-        _deepEquals(persistedGeofenceIds, other.persistedGeofenceIds) &&
+        _deepEquals(persistedGeofenceCount, other.persistedGeofenceCount) &&
         _deepEquals(
             locationPermissionGranted, other.locationPermissionGranted) &&
         _deepEquals(backgroundLocationPermissionGranted,

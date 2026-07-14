@@ -269,11 +269,18 @@ rejected. Different registrations may use different valid callbacks.
 Future<void> geofenceTriggered(GeofenceCallbackParams params) async {
   for (final geofence in params.geofences) {
     final context = params.callbackContextsByGeofenceId[geofence.id];
-    debugPrint('id=${geofence.id}, context=$context');
+    if (context == 1001) {
+      // Route this registration to app-owned work.
+    }
   }
-  debugPrint('eventAt=${params.eventAt}, deliveryId=${params.eventId}');
+  debugPrint('event=${params.event.name}, count=${params.geofences.length}');
 }
 ```
+
+Callback parameters can contain app-owned IDs and contexts, exact fence centers,
+a device location, timestamps, and delivery IDs. Do not dump them into logs or
+lock-screen notifications unless that disclosure is intentional. The default
+`toString()` returns only a bounded presence/count summary.
 
 Register directly when the application owns a one-off mutation. The optional
 `callbackContext` is an opaque signed 64-bit routing value. The plugin stores it
@@ -353,7 +360,16 @@ Every `ensureSynchronized()` call is one native-owned inspect-and-mutate
 transaction, serialized with create, remove, and other
 synchronization mutations across foreground and headless engine paths. Native
 code owns the no-op decision, reasons, counts, fingerprint, and rollback
-snapshot.
+snapshot. On iOS, that mutation authority and its Core Location delegate remain
+process-stable across Flutter engine detach and reattach; only event delivery is
+reattached to the current engine.
+
+Android bounds every Play Services geofence registration and removal task to 30
+seconds so the native mutation queue cannot stall indefinitely. A timed-out
+registration has an unknown platform outcome, so the transaction compensates by
+removing the requested ID before restoring its prior snapshot. Late task
+callbacks are ignored, and failed compensation remains visible in durable
+recovery evidence.
 
 Rollback and automatic recovery suppress initial triggers. Synchronization does
 not re-arm unchanged regions. A new or platform-changed Android registration
@@ -483,12 +499,14 @@ print(status.registrationHealth);
 ```
 
 Status is asynchronous, read-only, and privacy-safe. It includes persisted
-plugin-owned IDs, relevant permission and service prerequisites, callback
-refresh evidence, computed registration health, and the most recent structured
-registration/removal/broadcast/enqueue/worker/recovery/foreground facts. Facts
-contain only a timestamp, fixed outcome label, success flag, and optional count;
-they do not contain coordinates, callback handles, contexts, or raw registration
-JSON. The plugin does not automatically dump the snapshot into logs.
+plugin-owned registration counts, relevant permission and service prerequisites,
+callback refresh evidence, computed registration health, and the most recent
+structured registration/removal/broadcast/enqueue/worker/recovery/foreground
+facts. Facts contain only a timestamp, fixed outcome label, success flag, and
+optional count;
+the snapshot does not contain registration IDs, coordinates, callback handles,
+contexts, raw registration JSON, or synchronization fingerprints. The plugin
+does not automatically dump the snapshot into logs.
 
 On Android, registration health is derived from non-mutating lifecycle evidence:
 active, recoverable, pending-cleanup, corrupt/raw-only, and unknown records remain
@@ -498,7 +516,7 @@ exact recovery generation and attempt still own the durable retry ticket.
 
 Nullable fields mean the platform cannot provide the evidence. In particular,
 Android reports `canEnumerateLivePlatformRegistrations == false`: Play Services
-does not expose its live geofence set, so persisted IDs and PendingIntent state
+does not expose its live geofence set, so persisted state and PendingIntent state
 are evidence rather than proof of live registration. iOS monitoring counts are
 restricted to circular regions backed by plugin callback metadata and never
 include unrelated app-wide monitored regions. Each lifecycle fact is only the
@@ -559,8 +577,8 @@ try {
 
 The provided example app gates API access on initialization, requests
 permissions, demonstrates direct registration plus synchronization inspection
-and reconciliation, routes an opaque callback context, and sends notifications
-when geofence events occur.
+and reconciliation, uses an opaque callback context for routing without
+displaying it, and sends summary notifications without exact IDs or locations.
 
 ## Prior art
 
