@@ -31,6 +31,30 @@ final class IosGeofencePreflightTests: XCTestCase {
         )
     }
 
+    func testPermissionEvidenceSeparatesLocationFromBackgroundAuthorization() {
+        XCTAssertEqual(
+            IosLocationPermissionEvidence.from(.authorizedAlways),
+            IosLocationPermissionEvidence(
+                locationPermissionGranted: true,
+                backgroundLocationPermissionGranted: true
+            )
+        )
+        XCTAssertEqual(
+            IosLocationPermissionEvidence.from(authorizedWhenInUse),
+            IosLocationPermissionEvidence(
+                locationPermissionGranted: true,
+                backgroundLocationPermissionGranted: false
+            )
+        )
+        XCTAssertEqual(
+            IosLocationPermissionEvidence.from(.denied),
+            IosLocationPermissionEvidence(
+                locationPermissionGranted: false,
+                backgroundLocationPermissionGranted: false
+            )
+        )
+    }
+
     func testOtherAuthorizationStatesRequireLocationPermission() {
         for status: CLAuthorizationStatus in [.denied, .notDetermined, .restricted] {
             XCTAssertEqual(

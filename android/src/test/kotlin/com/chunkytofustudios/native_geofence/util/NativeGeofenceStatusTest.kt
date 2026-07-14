@@ -113,7 +113,7 @@ class NativeGeofenceStatusHealthTest {
 
     private fun evidence() = NativeGeofenceHealthEvidence(
         persistedRegistrationCount = 1,
-        fineLocationPermissionGranted = true,
+        locationPermissionGranted = true,
         backgroundLocationPermissionGranted = true,
         locationServicesEnabled = true,
         platformMonitoringAvailable = true,

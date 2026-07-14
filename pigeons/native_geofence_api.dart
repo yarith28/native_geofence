@@ -242,7 +242,12 @@ class NativeGeofenceStatusWire {
   final NativeGeofencePlatform platform;
   final String? osVersion;
   final List<String> persistedGeofenceIds;
-  final bool? fineLocationPermissionGranted;
+
+  /// Whether the platform's required foreground location authorization is
+  /// granted. This means fine location on Android and When In Use or Always
+  /// authorization on iOS.
+  final bool? locationPermissionGranted;
+
   final bool? backgroundLocationPermissionGranted;
   final bool? notificationPermissionGranted;
   final bool? locationServicesEnabled;
@@ -267,7 +272,7 @@ class NativeGeofenceStatusWire {
     required this.platform,
     this.osVersion,
     required this.persistedGeofenceIds,
-    this.fineLocationPermissionGranted,
+    this.locationPermissionGranted,
     this.backgroundLocationPermissionGranted,
     this.notificationPermissionGranted,
     this.locationServicesEnabled,

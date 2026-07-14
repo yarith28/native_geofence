@@ -1,7 +1,7 @@
 enum IosNativeGeofenceStatusHealth {
     static func compute(
         persistedCount: Int,
-        finePermission: Bool,
+        locationPermission: Bool,
         backgroundPermission: Bool,
         locationServicesEnabled: Bool,
         monitoringAvailable: Bool,
@@ -10,7 +10,7 @@ enum IosNativeGeofenceStatusHealth {
         monitoredCount: Int
     ) -> NativeGeofenceRegistrationHealth {
         guard persistedCount > 0 else { return .noRegistrations }
-        guard finePermission,
+        guard locationPermission,
               backgroundPermission,
               locationServicesEnabled,
               monitoringAvailable,

@@ -36,7 +36,15 @@ class NativeGeofenceStatus {
   final NativeGeofencePlatform platform;
   final String? osVersion;
   final List<String> persistedGeofenceIds;
-  final bool? fineLocationPermissionGranted;
+
+  /// Whether the platform's required foreground location authorization is
+  /// granted.
+  ///
+  /// On Android this means `ACCESS_FINE_LOCATION`. On iOS this means either
+  /// When In Use or Always authorization; consult
+  /// [backgroundLocationPermissionGranted] to distinguish background access.
+  final bool? locationPermissionGranted;
+
   final bool? backgroundLocationPermissionGranted;
   final bool? notificationPermissionGranted;
   final bool? locationServicesEnabled;
@@ -61,7 +69,7 @@ class NativeGeofenceStatus {
     required this.platform,
     this.osVersion,
     required this.persistedGeofenceIds,
-    this.fineLocationPermissionGranted,
+    this.locationPermissionGranted,
     this.backgroundLocationPermissionGranted,
     this.notificationPermissionGranted,
     this.locationServicesEnabled,
@@ -87,7 +95,7 @@ class NativeGeofenceStatus {
         'platform': platform.name,
         'osVersion': osVersion,
         'persistedGeofenceIds': [...persistedGeofenceIds]..sort(),
-        'fineLocationPermissionGranted': fineLocationPermissionGranted,
+        'locationPermissionGranted': locationPermissionGranted,
         'backgroundLocationPermissionGranted':
             backgroundLocationPermissionGranted,
         'notificationPermissionGranted': notificationPermissionGranted,

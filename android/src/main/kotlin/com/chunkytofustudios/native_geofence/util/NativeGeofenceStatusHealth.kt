@@ -5,7 +5,7 @@ import com.chunkytofustudios.native_geofence.generated.NativeGeofenceRegistratio
 
 internal data class NativeGeofenceHealthEvidence(
     val persistedRegistrationCount: Int,
-    val fineLocationPermissionGranted: Boolean?,
+    val locationPermissionGranted: Boolean?,
     val backgroundLocationPermissionGranted: Boolean?,
     val locationServicesEnabled: Boolean?,
     val platformMonitoringAvailable: Boolean?,
@@ -66,7 +66,7 @@ internal object NativeGeofenceStatusHealth {
             }
         }
         val requiredEvidence = listOf(
-            evidence.fineLocationPermissionGranted,
+            evidence.locationPermissionGranted,
             evidence.backgroundLocationPermissionGranted,
             evidence.locationServicesEnabled,
             evidence.platformMonitoringAvailable,
