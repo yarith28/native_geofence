@@ -198,13 +198,17 @@ internal class AndroidGeofenceRegistrationTransaction(
     }
 
     private fun currentRegistrationFailed(error: Throwable) {
-        rollbackWithoutCompensation(
-            FailureState(
-                AndroidGeofenceRegistrationFailureStage.PLATFORM_REGISTRATION,
-                error,
-            ),
-            State.REGISTERING,
+        val failure = FailureState(
+            AndroidGeofenceRegistrationFailureStage.PLATFORM_REGISTRATION,
+            error,
         )
+        if (error is AndroidGeofenceMutationTimeoutException) {
+            // The Task outcome is unknown. Remove the requested ID before
+            // restoring durable and previous-platform authority.
+            startCompensation(failure, State.REGISTERING)
+        } else {
+            rollbackWithoutCompensation(failure, State.REGISTERING)
+        }
     }
 
     private fun rollbackWithoutCompensation(failure: FailureState, expectedState: State) {

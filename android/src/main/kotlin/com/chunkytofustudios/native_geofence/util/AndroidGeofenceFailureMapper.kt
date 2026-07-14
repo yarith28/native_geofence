@@ -12,7 +12,11 @@ internal object AndroidGeofenceFailureMapper {
     fun from(error: Throwable): AndroidGeofenceFailureEvidence =
         fromStatus(
             statusCode = (error as? ApiException)?.statusCode,
-            fallbackMessage = error.toString()
+            fallbackMessage = if (error is AndroidGeofenceMutationTimeoutException) {
+                error.message.orEmpty()
+            } else {
+                error.toString()
+            }
         )
 
     internal fun fromStatus(
