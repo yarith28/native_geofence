@@ -1,5 +1,8 @@
 package com.chunkytofustudios.native_geofence.util
 
+import com.chunkytofustudios.native_geofence.bridge.NativeGeofenceCallbackEnqueueResult
+import com.chunkytofustudios.native_geofence.bridge.NativeGeofenceCallbackCompletion
+import com.chunkytofustudios.native_geofence.bridge.toPublicEnqueueResult
 import com.chunkytofustudios.native_geofence.generated.FlutterError
 import com.chunkytofustudios.native_geofence.generated.NativeGeofenceErrorCode
 import kotlin.test.Test
@@ -8,6 +11,26 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class CallbackDeliveryPolicyTest {
+    @Test
+    fun `public enqueue completion resolves once across competing outcomes`() {
+        val outcomes = mutableListOf<NativeGeofenceCallbackEnqueueResult>()
+        val completion = NativeGeofenceCallbackCompletion(outcomes::add)
+
+        val accepted = Thread {
+            completion.complete(NativeGeofenceCallbackEnqueueResult.ACCEPTED)
+        }
+        val rejected = Thread {
+            completion.complete(NativeGeofenceCallbackEnqueueResult.REJECTED)
+        }
+        accepted.start()
+        rejected.start()
+        accepted.join()
+        rejected.join()
+        completion.complete(NativeGeofenceCallbackEnqueueResult.UNCONFIRMED)
+
+        assertEquals(1, outcomes.size)
+    }
+
     @Test
     fun `infrastructure and Dart failures retry within the bound`() {
         val failures = listOf(
@@ -201,6 +224,24 @@ class CallbackWorkEnqueueCoordinatorTest {
 
         assertTrue(deleted.isEmpty())
         assertEquals(listOf(CallbackEnqueueOutcome.UNCONFIRMED), outcomes)
+    }
+}
+
+class NativeGeofenceCallbackDeliveryResultTest {
+    @Test
+    fun `public ownership results preserve all coordinator outcomes`() {
+        assertEquals(
+            NativeGeofenceCallbackEnqueueResult.ACCEPTED,
+            CallbackEnqueueOutcome.ACCEPTED.toPublicEnqueueResult(),
+        )
+        assertEquals(
+            NativeGeofenceCallbackEnqueueResult.REJECTED,
+            CallbackEnqueueOutcome.REJECTED.toPublicEnqueueResult(),
+        )
+        assertEquals(
+            NativeGeofenceCallbackEnqueueResult.UNCONFIRMED,
+            CallbackEnqueueOutcome.UNCONFIRMED.toPublicEnqueueResult(),
+        )
     }
 }
 

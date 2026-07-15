@@ -102,6 +102,7 @@ extension ActiveGeofenceMapper on ActiveGeofence {
       radiusMeters: radiusMeters,
       triggers: triggers.toList(),
       androidSettings: androidSettings?.toWire(),
+      expirationDeadlineMillis: expirationDeadline?.millisecondsSinceEpoch,
     );
   }
 }
@@ -114,6 +115,9 @@ extension ActiveGeofenceWireMapper on ActiveGeofenceWire {
       radiusMeters: radiusMeters,
       triggers: triggers.toSet(),
       androidSettings: androidSettings?.fromWire(),
+      expirationDeadline: expirationDeadlineMillis == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(expirationDeadlineMillis!),
     );
   }
 }

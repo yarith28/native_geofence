@@ -430,10 +430,14 @@ internal class GeofenceRegistrationStore(
      * deliberately excluded.
      */
     fun getRegisteredGeofences(): List<GeofenceWire> {
+        return getRegisteredGeofenceSnapshots().map { it.configuredGeofence }
+    }
+
+    fun getRegisteredGeofenceSnapshots(): List<StoredGeofenceRegistration> {
         val configured = configuredIds().toSet()
         return recoveryInventory().mapNotNull { entry ->
             val stored = entry.storedRegistration ?: return@mapNotNull null
-            stored.configuredGeofence.takeIf {
+            stored.takeIf {
                 entry.id in configured &&
                     entry.disposition == GeofenceRecoveryDisposition.RECOVERABLE &&
                     stored.active

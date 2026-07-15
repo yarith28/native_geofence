@@ -468,6 +468,10 @@ struct ActiveGeofenceWire: Hashable {
   var radiusMeters: Double
   var triggers: [GeofenceEvent]
   var androidSettings: AndroidGeofenceSettingsWire? = nil
+  /// Absolute Android wall-clock expiration deadline for this active
+  /// registration. Null means the registration does not expire or the platform
+  /// does not expose an Android deadline.
+  var expirationDeadlineMillis: Int64? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -477,13 +481,15 @@ struct ActiveGeofenceWire: Hashable {
     let radiusMeters = pigeonVar_list[2] as! Double
     let triggers = pigeonVar_list[3] as! [GeofenceEvent]
     let androidSettings: AndroidGeofenceSettingsWire? = nilOrValue(pigeonVar_list[4])
+    let expirationDeadlineMillis: Int64? = nilOrValue(pigeonVar_list[5])
 
     return ActiveGeofenceWire(
       id: id,
       location: location,
       radiusMeters: radiusMeters,
       triggers: triggers,
-      androidSettings: androidSettings
+      androidSettings: androidSettings,
+      expirationDeadlineMillis: expirationDeadlineMillis
     )
   }
   func toList() -> [Any?] {
@@ -493,13 +499,14 @@ struct ActiveGeofenceWire: Hashable {
       radiusMeters,
       triggers,
       androidSettings,
+      expirationDeadlineMillis,
     ]
   }
   static func == (lhs: ActiveGeofenceWire, rhs: ActiveGeofenceWire) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsFlutterBindings(lhs.id, rhs.id) && deepEqualsFlutterBindings(lhs.location, rhs.location) && deepEqualsFlutterBindings(lhs.radiusMeters, rhs.radiusMeters) && deepEqualsFlutterBindings(lhs.triggers, rhs.triggers) && deepEqualsFlutterBindings(lhs.androidSettings, rhs.androidSettings)
+    return deepEqualsFlutterBindings(lhs.id, rhs.id) && deepEqualsFlutterBindings(lhs.location, rhs.location) && deepEqualsFlutterBindings(lhs.radiusMeters, rhs.radiusMeters) && deepEqualsFlutterBindings(lhs.triggers, rhs.triggers) && deepEqualsFlutterBindings(lhs.androidSettings, rhs.androidSettings) && deepEqualsFlutterBindings(lhs.expirationDeadlineMillis, rhs.expirationDeadlineMillis)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -509,6 +516,7 @@ struct ActiveGeofenceWire: Hashable {
     deepHashFlutterBindings(value: radiusMeters, hasher: &hasher)
     deepHashFlutterBindings(value: triggers, hasher: &hasher)
     deepHashFlutterBindings(value: androidSettings, hasher: &hasher)
+    deepHashFlutterBindings(value: expirationDeadlineMillis, hasher: &hasher)
   }
 }
 
@@ -1033,6 +1041,10 @@ class FlutterBindingsPigeonCodec: FlutterStandardMessageCodec, @unchecked Sendab
 protocol NativeGeofenceApi {
   func initialize(callbackDispatcherHandle: Int64) throws
   func createGeofence(geofence: GeofenceWire, completion: @escaping (Result<Void, Error>) -> Void)
+  /// Restores a canonical registration while preserving its existing Android
+  /// absolute expiration deadline. Intended for higher-level transactional
+  /// coordinators that already own an exact before-image.
+  func restoreGeofence(geofence: GeofenceWire, expirationDeadlineMillis: Int64?, completion: @escaping (Result<Void, Error>) -> Void)
   func reCreateAfterReboot(completion: @escaping (Result<Void, Error>) -> Void)
   func getStatus(completion: @escaping (Result<NativeGeofenceStatusWire, Error>) -> Void)
   func getSynchronizationState(desiredRegistrations: [GeofenceWire], completion: @escaping (Result<NativeGeofenceSynchronizationStateWire, Error>) -> Void)
@@ -1080,6 +1092,27 @@ class NativeGeofenceApiSetup {
       }
     } else {
       createGeofenceChannel.setMessageHandler(nil)
+    }
+    /// Restores a canonical registration while preserving its existing Android
+    /// absolute expiration deadline. Intended for higher-level transactional
+    /// coordinators that already own an exact before-image.
+    let restoreGeofenceChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.native_geofence.NativeGeofenceApi.restoreGeofence\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      restoreGeofenceChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let geofenceArg = args[0] as! GeofenceWire
+        let expirationDeadlineMillisArg: Int64? = nilOrValue(args[1])
+        api.restoreGeofence(geofence: geofenceArg, expirationDeadlineMillis: expirationDeadlineMillisArg) { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      restoreGeofenceChannel.setMessageHandler(nil)
     }
     let reCreateAfterRebootChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.native_geofence.NativeGeofenceApi.reCreateAfterReboot\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {

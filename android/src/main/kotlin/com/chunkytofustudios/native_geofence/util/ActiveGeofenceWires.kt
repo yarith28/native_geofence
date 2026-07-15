@@ -21,11 +21,15 @@ class ActiveGeofenceWires {
                     e.expirationTime,
                     e.loiteringDelay.toLong(),
                     e.notificationResponsiveness.toLong()
-                )
+                ),
+                null,
             )
         }
 
-        fun fromGeofenceWire(e: GeofenceWire): ActiveGeofenceWire {
+        fun fromGeofenceWire(
+            e: GeofenceWire,
+            expirationDeadlineMillis: Long? = null,
+        ): ActiveGeofenceWire {
             return ActiveGeofenceWire(
                 e.id,
                 // Persisted registration input can contain device-fix metadata,
@@ -33,7 +37,8 @@ class ActiveGeofenceWires {
                 LocationWire(e.location.latitude, e.location.longitude, null, false),
                 e.radiusMeters,
                 e.triggers,
-                e.androidSettings
+                e.androidSettings,
+                expirationDeadlineMillis,
             )
         }
     }

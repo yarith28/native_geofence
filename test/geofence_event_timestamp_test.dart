@@ -55,4 +55,31 @@ void main() {
     expect(params.eventAt, isNull);
     expect(params.eventId, isNull);
   });
+
+  test('active geofence mapper preserves the absolute expiration deadline', () {
+    const deadlineMillis = 1720000000123;
+    final wire = ActiveGeofenceWire(
+      id: 'office',
+      location: LocationWire(
+        latitude: 11.5,
+        longitude: 104.9,
+        isMock: false,
+      ),
+      radiusMeters: 120,
+      triggers: [GeofenceEvent.enter],
+      androidSettings: AndroidGeofenceSettingsWire(
+        initialTriggers: [GeofenceEvent.enter],
+        expirationDurationMillis: 300000,
+        loiteringDelayMillis: 300000,
+      ),
+      expirationDeadlineMillis: deadlineMillis,
+    );
+
+    final active = wire.fromWire();
+
+    expect(active.expirationDeadline?.millisecondsSinceEpoch, deadlineMillis);
+    expect(active.androidSettings?.expiration, const Duration(minutes: 5));
+    expect(active.toWire().expirationDeadlineMillis, deadlineMillis);
+    expect(active.toJson()['expirationDeadlineMillis'], deadlineMillis);
+  });
 }

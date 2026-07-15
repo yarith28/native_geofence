@@ -3,31 +3,18 @@ package com.chunkytofustudios.native_geofence.receivers
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import androidx.work.BackoffPolicy
-import androidx.work.Data
-import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.OutOfQuotaPolicy
-import androidx.work.WorkManager
-import com.chunkytofustudios.native_geofence.Constants
-import com.chunkytofustudios.native_geofence.NativeGeofenceBackgroundWorker
 import com.chunkytofustudios.native_geofence.api.NativeGeofenceApiImpl
+import com.chunkytofustudios.native_geofence.bridge.NativeGeofenceCallbackDelivery
+import com.chunkytofustudios.native_geofence.bridge.NativeGeofenceCallbackEnqueueResult
 import com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWire
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceMutationKind
-import com.chunkytofustudios.native_geofence.util.AndroidPackageFingerprint
 import com.chunkytofustudios.native_geofence.util.BroadcastCompletionBarrier
-import com.chunkytofustudios.native_geofence.util.CallbackEnqueueOperation
-import com.chunkytofustudios.native_geofence.util.CallbackEnqueueOutcome
-import com.chunkytofustudios.native_geofence.util.CallbackEnqueueUnconfirmedException
-import com.chunkytofustudios.native_geofence.util.CallbackWorkEnqueueCoordinator
-import com.chunkytofustudios.native_geofence.util.GeofenceCallbackPayloadStore
 import com.chunkytofustudios.native_geofence.util.GeofenceCallbackRouting
 import com.chunkytofustudios.native_geofence.util.GeofenceCallbackRoutingResult
 import com.chunkytofustudios.native_geofence.util.GeofenceEvents
 import com.chunkytofustudios.native_geofence.util.GeofenceMutationQueues
 import com.chunkytofustudios.native_geofence.util.GeofenceMutationRunner
 import com.chunkytofustudios.native_geofence.util.LocationWires
-import com.chunkytofustudios.native_geofence.util.NativeGeofenceIo
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnosticStage
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnostics
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
@@ -38,8 +25,6 @@ import com.google.android.gms.location.GeofencingEvent
 import com.google.android.gms.location.GeofenceStatusCodes
 import com.google.android.gms.location.LocationServices
 import java.util.UUID
-import java.util.concurrent.Executor
-import java.util.concurrent.TimeUnit
 
 internal sealed interface GeofenceBroadcastOutcome {
     data class Callbacks(val routing: GeofenceCallbackRoutingResult) : GeofenceBroadcastOutcome
@@ -56,7 +41,52 @@ internal object GeofenceBroadcastOutcomeClassifier {
         }
 }
 
+internal typealias NativeCallbackDeliveryEnqueue = (
+    Context,
+    GeofenceCallbackParamsWire,
+    (NativeGeofenceCallbackEnqueueResult) -> Unit,
+) -> Unit
+
+/** Keeps the broadcast lease tied to completion of the public delivery boundary. */
+internal class GeofenceBroadcastCallbackEnqueuer(
+    private val enqueue: NativeCallbackDeliveryEnqueue =
+        NativeGeofenceCallbackDelivery::enqueue,
+    private val eventId: () -> String = { UUID.randomUUID().toString() },
+) {
+    fun enqueue(
+        context: Context,
+        groups: List<GeofenceCallbackParamsWire>,
+        barrier: BroadcastCompletionBarrier,
+    ) {
+        if (groups.isEmpty()) return
+        val tickets = groups.map { barrier.ticket() }
+        groups.forEachIndexed { index, params ->
+            try {
+                enqueue(context, params.copy(eventId = eventId())) {
+                    tickets[index]()
+                }
+            } catch (error: Throwable) {
+                runCatching {
+                    NativeGeofenceLogger.e(
+                        context,
+                        TAG,
+                        "Failed to dispatch callback delivery.",
+                        error,
+                    )
+                }
+                tickets[index]()
+            }
+        }
+    }
+
+    private companion object {
+        const val TAG = "GeofenceBroadcastCallbackEnqueuer"
+    }
+}
+
 class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
+    private val callbackEnqueuer = GeofenceBroadcastCallbackEnqueuer()
+
     override fun onReceive(context: Context, intent: Intent) {
         val appContext = context.applicationContext
         NativeGeofenceLogger.d(appContext, TAG, "Geofence broadcast received.")
@@ -130,158 +160,7 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
         groups: List<GeofenceCallbackParamsWire>,
         barrier: BroadcastCompletionBarrier
     ) {
-        if (groups.isEmpty()) return
-        val tickets = groups.map { barrier.ticket() }
-        try {
-            NativeGeofenceIo.execute {
-                val packageFingerprint: String
-                val payloadStore: GeofenceCallbackPayloadStore
-                try {
-                    packageFingerprint = AndroidPackageFingerprint.current(context)
-                    payloadStore = GeofenceCallbackPayloadStore.forContext(context)
-                } catch (error: Throwable) {
-                    NativeGeofenceLogger.e(
-                        context,
-                        TAG,
-                        "Failed to prepare durable callback enqueueing.",
-                        error
-                    )
-                    tickets.forEach { it() }
-                    return@execute
-                }
-
-                groups.forEachIndexed { index, params ->
-                    enqueueCallback(
-                        context = context,
-                        params = params.copy(eventId = UUID.randomUUID().toString()),
-                        packageFingerprint = packageFingerprint,
-                        payloadStore = payloadStore,
-                        completion = tickets[index]
-                    )
-                }
-            }
-        } catch (error: Throwable) {
-            NativeGeofenceLogger.e(context, TAG, "Failed to dispatch callback enqueueing.", error)
-            tickets.forEach { it() }
-        }
-    }
-
-    private fun enqueueCallback(
-        context: Context,
-        params: GeofenceCallbackParamsWire,
-        packageFingerprint: String,
-        payloadStore: GeofenceCallbackPayloadStore,
-        completion: () -> Unit
-    ) {
-        val reference = try {
-            payloadStore.store(params, packageFingerprint)
-        } catch (error: Throwable) {
-            NativeGeofenceLogger.e(context, TAG, "Failed to persist a callback payload.", error)
-            null
-        }
-        if (reference == null) {
-            NativeGeofenceDiagnostics.record(
-                context,
-                NativeGeofenceDiagnosticStage.ENQUEUE,
-                succeeded = false,
-                outcome = "payload_persistence_failed",
-                geofenceCount = params.geofences.size
-            )
-            NativeGeofenceLogger.e(context, TAG, "Failed to persist a callback payload.")
-            completion()
-            return
-        }
-
-        val coordinator = CallbackWorkEnqueueCoordinator(payloadStore::delete)
-        coordinator.enqueue(
-            payloadReference = reference,
-            start = {
-                val workRequest = OneTimeWorkRequestBuilder<NativeGeofenceBackgroundWorker>()
-                    .setInputData(
-                        Data.Builder()
-                            .putString(Constants.WORKER_PAYLOAD_REFERENCE_KEY, reference)
-                            .build()
-                    )
-                    .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30L, TimeUnit.SECONDS)
-                    .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-                    .build()
-                val operation = WorkManager.getInstance(context).enqueueUniqueWork(
-                    Constants.GEOFENCE_CALLBACK_WORK_GROUP,
-                    ExistingWorkPolicy.APPEND_OR_REPLACE,
-                    workRequest
-                )
-                CallbackEnqueueOperation { observed ->
-                    val future = operation.result
-                    future.addListener(
-                        {
-                            try {
-                                future.get()
-                                observed(Result.success(Unit))
-                            } catch (error: InterruptedException) {
-                                Thread.currentThread().interrupt()
-                                observed(
-                                    Result.failure(
-                                        CallbackEnqueueUnconfirmedException(error)
-                                    )
-                                )
-                            } catch (error: Throwable) {
-                                observed(Result.failure(error))
-                            }
-                        },
-                        DIRECT_EXECUTOR
-                    )
-                }
-            }
-        ) { outcome ->
-            try {
-                when (outcome) {
-                    CallbackEnqueueOutcome.ACCEPTED -> {
-                        NativeGeofenceDiagnostics.record(
-                            context,
-                            NativeGeofenceDiagnosticStage.ENQUEUE,
-                            succeeded = true,
-                            outcome = "work_enqueue_confirmed",
-                            geofenceCount = params.geofences.size
-                        )
-                        NativeGeofenceLogger.d(
-                            context,
-                            TAG,
-                            "Callback work enqueue was confirmed."
-                        )
-                    }
-                    CallbackEnqueueOutcome.REJECTED -> {
-                        NativeGeofenceDiagnostics.record(
-                            context,
-                            NativeGeofenceDiagnosticStage.ENQUEUE,
-                            succeeded = false,
-                            outcome = "work_enqueue_failed",
-                            geofenceCount = params.geofences.size
-                        )
-                        NativeGeofenceLogger.e(
-                            context,
-                            TAG,
-                            "Callback work enqueue was rejected."
-                        )
-                    }
-                    CallbackEnqueueOutcome.UNCONFIRMED -> {
-                        NativeGeofenceDiagnostics.record(
-                            context,
-                            NativeGeofenceDiagnosticStage.ENQUEUE,
-                            succeeded = false,
-                            outcome = "work_enqueue_unconfirmed",
-                            geofenceCount = params.geofences.size
-                        )
-                        NativeGeofenceLogger.w(
-                            context,
-                            TAG,
-                            "Callback work enqueue could not be confirmed; payload retained."
-                        )
-                    }
-                }
-            } finally {
-                completion()
-            }
-        }
+        callbackEnqueuer.enqueue(context, groups, barrier)
     }
 
     private fun cleanupOrphans(
@@ -441,6 +320,5 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
 
     private companion object {
         const val TAG = "NativeGeofenceBroadcastReceiver"
-        val DIRECT_EXECUTOR = Executor { command -> command.run() }
     }
 }

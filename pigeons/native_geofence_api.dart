@@ -101,12 +101,18 @@ class ActiveGeofenceWire {
 
   final AndroidGeofenceSettingsWire? androidSettings;
 
+  /// Absolute Android wall-clock expiration deadline for this active
+  /// registration. Null means the registration does not expire or the platform
+  /// does not expose an Android deadline.
+  final int? expirationDeadlineMillis;
+
   const ActiveGeofenceWire({
     required this.id,
     required this.location,
     required this.radiusMeters,
     required this.triggers,
     required this.androidSettings,
+    this.expirationDeadlineMillis,
   });
 }
 
@@ -350,6 +356,15 @@ abstract class NativeGeofenceApi {
 
   @async
   void createGeofence({required GeofenceWire geofence});
+
+  /// Restores a canonical registration while preserving its existing Android
+  /// absolute expiration deadline. Intended for higher-level transactional
+  /// coordinators that already own an exact before-image.
+  @async
+  void restoreGeofence({
+    required GeofenceWire geofence,
+    int? expirationDeadlineMillis,
+  });
 
   @async
   void reCreateAfterReboot();

@@ -304,6 +304,39 @@ class NativeGeofenceManager {
         .catchError(NativeGeofenceExceptionMapper.catchError<void>);
   }
 
+  /// Restore [geofence] without granting a finite Android registration a fresh
+  /// lifetime.
+  ///
+  /// [expirationDeadline] is an absolute deadline captured from an
+  /// [ActiveGeofence]. Android re-arms the platform fence only for the remaining
+  /// lifetime while retaining [geofence]'s canonical configured duration. A
+  /// deadline that has already elapsed restores the correct expired state by
+  /// leaving the ID removed. Other platforms ignore the deadline.
+  ///
+  /// This is the rollback boundary for a higher-level coordinator spanning
+  /// native_geofence and another durable layer. Normal application registration
+  /// should use [createGeofence] or [ensureSynchronized].
+  Future<void> restoreGeofence(
+    Geofence geofence,
+    GeofenceCallback callback, {
+    int? callbackContext,
+    required DateTime? expirationDeadline,
+  }) async {
+    final prepared = _prepareRegistration(
+      GeofenceRegistration(
+        geofence: geofence,
+        callback: callback,
+        callbackContext: callbackContext,
+      ),
+    );
+    return _api
+        .restoreGeofence(
+          geofence: prepared.wire,
+          expirationDeadlineMillis: expirationDeadline?.millisecondsSinceEpoch,
+        )
+        .catchError(NativeGeofenceExceptionMapper.catchError<void>);
+  }
+
   _PreparedRegistration _prepareRegistration(
     GeofenceRegistration registration,
   ) {
