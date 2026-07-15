@@ -22,6 +22,73 @@ class NativeGeofenceLifecycleFact {
       };
 }
 
+/// One privacy-safe, correlated stage in native callback delivery.
+class NativeGeofenceDeliveryTrace {
+  final int sequence;
+  final DateTime occurredAt;
+  final Duration? elapsedRealtime;
+  final String? traceId;
+  final String stage;
+  final String outcome;
+  final String? event;
+  final int? geofenceCount;
+  final int? attempt;
+  final String? owner;
+  final String? reasonCode;
+  final Duration? duration;
+  final Duration? queueAge;
+  final bool? hasLocation;
+  final Duration? locationAge;
+  final double? accuracyMeters;
+  final String? processorSource;
+  final String? processorClass;
+  final String? errorType;
+
+  const NativeGeofenceDeliveryTrace({
+    required this.sequence,
+    required this.occurredAt,
+    this.elapsedRealtime,
+    this.traceId,
+    required this.stage,
+    required this.outcome,
+    this.event,
+    this.geofenceCount,
+    this.attempt,
+    this.owner,
+    this.reasonCode,
+    this.duration,
+    this.queueAge,
+    this.hasLocation,
+    this.locationAge,
+    this.accuracyMeters,
+    this.processorSource,
+    this.processorClass,
+    this.errorType,
+  });
+
+  Map<String, Object?> toJson() => {
+        'sequence': sequence,
+        'occurredAtMillis': occurredAt.millisecondsSinceEpoch,
+        'elapsedRealtimeMillis': elapsedRealtime?.inMilliseconds,
+        'traceId': traceId,
+        'stage': stage,
+        'outcome': outcome,
+        'event': event,
+        'geofenceCount': geofenceCount,
+        'attempt': attempt,
+        'owner': owner,
+        'reasonCode': reasonCode,
+        'durationMillis': duration?.inMilliseconds,
+        'queueAgeMillis': queueAge?.inMilliseconds,
+        'hasLocation': hasLocation,
+        'locationAgeMillis': locationAge?.inMilliseconds,
+        'accuracyMeters': accuracyMeters,
+        'processorSource': processorSource,
+        'processorClass': processorClass,
+        'errorType': errorType,
+      };
+}
+
 /// Read-only evidence about native_geofence prerequisites and lifecycle state.
 ///
 /// Nullable fields mean the platform cannot provide that evidence or the
@@ -70,6 +137,10 @@ class NativeGeofenceStatus {
   final NativeGeofenceLifecycleFact? lastWorkerFact;
   final NativeGeofenceLifecycleFact? lastRecoveryFact;
   final NativeGeofenceLifecycleFact? lastForegroundFact;
+  final List<NativeGeofenceDeliveryTrace> deliveryTrace;
+  final int deliveryTraceDroppedCount;
+  final String? packageVersion;
+  final String? buildRevision;
 
   const NativeGeofenceStatus({
     required this.platform,
@@ -95,6 +166,10 @@ class NativeGeofenceStatus {
     this.lastWorkerFact,
     this.lastRecoveryFact,
     this.lastForegroundFact,
+    this.deliveryTrace = const [],
+    this.deliveryTraceDroppedCount = 0,
+    this.packageVersion,
+    this.buildRevision,
   });
 
   Map<String, Object?> toJson() => {
@@ -123,5 +198,9 @@ class NativeGeofenceStatus {
         'lastWorkerFact': lastWorkerFact?.toJson(),
         'lastRecoveryFact': lastRecoveryFact?.toJson(),
         'lastForegroundFact': lastForegroundFact?.toJson(),
+        'deliveryTrace': deliveryTrace.map((entry) => entry.toJson()).toList(),
+        'deliveryTraceDroppedCount': deliveryTraceDroppedCount,
+        'packageVersion': packageVersion,
+        'buildRevision': buildRevision,
       };
 }

@@ -1,9 +1,11 @@
 package com.chunkytofustudios.native_geofence.bridge
 
 import android.content.Context
+import android.os.SystemClock
 import com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWire
 import com.chunkytofustudios.native_geofence.generated.GeofenceEvent
 import com.chunkytofustudios.native_geofence.generated.LocationWire
+import com.chunkytofustudios.native_geofence.util.NativeGeofenceDeliveryDiagnostics
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 import java.util.concurrent.Future
 import java.util.concurrent.ScheduledThreadPoolExecutor
@@ -70,7 +72,9 @@ internal object NativeGeofenceBridgeMapper {
                     latitude = it.latitude,
                     longitude = it.longitude,
                     accuracyMeters = it.accuracyMeters,
-                    isMock = it.isMock
+                    isMock = it.isMock,
+                    fixTimeMillis = it.fixTimeMillis,
+                    elapsedRealtimeNanos = it.elapsedRealtimeNanos,
                 )
             },
             eventAtMillis = params.eventAtMillis,
@@ -110,7 +114,9 @@ internal object NativeGeofenceBridgeMapper {
                         latitude = it.latitude,
                         longitude = it.longitude,
                         accuracyMeters = it.accuracyMeters,
-                        isMock = it.isMock
+                        isMock = it.isMock,
+                        fixTimeMillis = it.fixTimeMillis,
+                        elapsedRealtimeNanos = it.elapsedRealtimeNanos,
                     )
                 },
                 callbackContextsByGeofenceId = original.callbackContextsByGeofenceId
@@ -158,14 +164,67 @@ internal object NativeGeofenceBridgeDispatcher {
         params: GeofenceCallbackParamsWire,
         completion: (NativeGeofenceBridgeOutcome) -> Unit
     ) {
-        val processor = NativeGeofenceBridge.resolve(context)
+        val startedAtElapsed = SystemClock.elapsedRealtime()
+        val traceId = params.traceId?.takeIf(String::isNotBlank) ?: params.eventId
         val event = NativeGeofenceBridgeMapper.event(params)
-        if (processor == null || event == null) {
+        if (event == null) {
+            record(
+                context = context,
+                params = params,
+                traceId = traceId,
+                stage = "bridge_decision",
+                outcome = "invalid_event_to_dart",
+                owner = "dart",
+                reasonCode = "event_id_missing",
+            )
             completion(NativeGeofenceBridgeOutcome.Continue(params))
             return
         }
 
+        val resolution = NativeGeofenceBridge.resolveDetailed(context)
+        record(
+            context = context,
+            params = params,
+            traceId = traceId,
+            stage = "bridge_resolved",
+            outcome = resolution.outcome,
+            processorSource = resolution.source,
+            processorClass = resolution.className,
+            errorType = resolution.errorType,
+        )
+        val processor = resolution.processor
+        if (processor == null) {
+            record(
+                context = context,
+                params = params,
+                traceId = traceId,
+                stage = "bridge_decision",
+                outcome = "processor_unavailable_to_dart",
+                owner = "dart",
+                reasonCode = resolution.outcome,
+                processorSource = resolution.source,
+                processorClass = resolution.className,
+                errorType = resolution.errorType,
+                durationMillis = SystemClock.elapsedRealtime() - startedAtElapsed,
+            )
+            completion(NativeGeofenceBridgeOutcome.Continue(params))
+            return
+        }
+
+        record(
+            context = context,
+            params = params,
+            traceId = traceId,
+            stage = "bridge_invoked",
+            outcome = "started",
+            owner = "native_pending",
+            processorSource = resolution.source,
+            processorClass = resolution.className,
+        )
+
         val processingFuture = AtomicReference<Future<*>?>(null)
+        val forcedOutcome = AtomicReference<String?>(null)
+        val forcedErrorType = AtomicReference<String?>(null)
         val gate = NativeGeofenceBridgeDecisionGate(
             timeoutMillis = OWNERSHIP_TIMEOUT_MILLIS,
             schedule = NativeGeofenceBridgeTimeoutScheduler::schedule,
@@ -178,7 +237,38 @@ internal object NativeGeofenceBridgeDispatcher {
                         "Native event processor timed out; continuing with Dart delivery."
                     )
                 }
-                completion(NativeGeofenceBridgeMapper.outcome(params, decision))
+                val mapped = NativeGeofenceBridgeMapper.outcome(params, decision)
+                val outcome = forcedOutcome.get() ?: when (decision) {
+                    NativeGeofenceBridgeDecision.Accept -> "native_accepted"
+                    NativeGeofenceBridgeDecision.Decline -> "declined_to_dart"
+                    is NativeGeofenceBridgeDecision.Transform ->
+                        if (mapped is NativeGeofenceBridgeOutcome.Continue &&
+                            mapped.params == params
+                        ) {
+                            "invalid_transform_to_dart"
+                        } else {
+                            "transformed_to_dart"
+                        }
+                    null -> "timeout_to_dart"
+                }
+                record(
+                    context = context,
+                    params = params,
+                    traceId = traceId,
+                    stage = "bridge_decision",
+                    outcome = outcome,
+                    owner = if (decision == NativeGeofenceBridgeDecision.Accept) {
+                        "native"
+                    } else {
+                        "dart"
+                    },
+                    reasonCode = if (decision == null) "ownership_timeout" else null,
+                    durationMillis = SystemClock.elapsedRealtime() - startedAtElapsed,
+                    processorSource = resolution.source,
+                    processorClass = resolution.className,
+                    errorType = forcedErrorType.get(),
+                )
+                completion(mapped)
             }
         )
 
@@ -191,6 +281,8 @@ internal object NativeGeofenceBridgeDispatcher {
                             event
                         ) { result ->
                             val decision = result.getOrElse { error ->
+                                forcedOutcome.compareAndSet(null, "failed_to_dart")
+                                forcedErrorType.compareAndSet(null, error.javaClass.name)
                                 NativeGeofenceLogger.w(
                                     context,
                                     TAG,
@@ -200,9 +292,24 @@ internal object NativeGeofenceBridgeDispatcher {
                                 )
                                 NativeGeofenceBridgeDecision.Decline
                             }
-                            gate.resolve(decision)
+                            if (!gate.resolve(decision)) {
+                                record(
+                                    context = context,
+                                    params = params,
+                                    traceId = traceId,
+                                    stage = "bridge_completion",
+                                    outcome = "late_completion_ignored",
+                                    owner = "dart",
+                                    durationMillis = SystemClock.elapsedRealtime() -
+                                        startedAtElapsed,
+                                    processorSource = resolution.source,
+                                    processorClass = resolution.className,
+                                )
+                            }
                         }
                     } catch (error: Throwable) {
+                        forcedOutcome.compareAndSet(null, "threw_to_dart")
+                        forcedErrorType.compareAndSet(null, error.javaClass.name)
                         NativeGeofenceLogger.w(
                             context,
                             TAG,
@@ -214,6 +321,8 @@ internal object NativeGeofenceBridgeDispatcher {
                 }
             )
         } catch (error: RuntimeException) {
+            forcedOutcome.compareAndSet(null, "schedule_failed_to_dart")
+            forcedErrorType.compareAndSet(null, error.javaClass.name)
             NativeGeofenceLogger.w(
                 context,
                 TAG,
@@ -221,6 +330,45 @@ internal object NativeGeofenceBridgeDispatcher {
                 error
             )
             gate.resolve(NativeGeofenceBridgeDecision.Decline)
+        }
+    }
+
+    private fun record(
+        context: Context,
+        params: GeofenceCallbackParamsWire,
+        traceId: String?,
+        stage: String,
+        outcome: String,
+        owner: String? = null,
+        reasonCode: String? = null,
+        durationMillis: Long? = null,
+        processorSource: String? = null,
+        processorClass: String? = null,
+        errorType: String? = null,
+    ) {
+        val location = params.location
+        val locationAgeMillis = location?.elapsedRealtimeNanos?.let { fixElapsedNanos ->
+            ((SystemClock.elapsedRealtimeNanos() - fixElapsedNanos) / 1_000_000L)
+                .coerceAtLeast(0L)
+        }
+        runCatching {
+            NativeGeofenceDeliveryDiagnostics.record(
+                context = context,
+                traceId = traceId,
+                stage = stage,
+                outcome = outcome,
+                event = params.event.name.lowercase(),
+                geofenceCount = params.geofences.size,
+                owner = owner,
+                reasonCode = reasonCode,
+                durationMillis = durationMillis,
+                hasLocation = location != null,
+                locationAgeMillis = locationAgeMillis,
+                accuracyMeters = location?.accuracyMeters,
+                processorSource = processorSource,
+                processorClass = processorClass,
+                errorType = errorType,
+            )
         }
     }
 

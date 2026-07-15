@@ -216,6 +216,8 @@ class LocationWire {
     required this.longitude,
     this.accuracyMeters,
     required this.isMock,
+    this.fixTimeMillis,
+    this.elapsedRealtimeNanos,
   });
 
   double latitude;
@@ -228,12 +230,20 @@ class LocationWire {
   /// Whether this fix came from a mock location provider.
   bool isMock;
 
+  /// Device wall-clock timestamp reported by the location provider.
+  int? fixTimeMillis;
+
+  /// Monotonic provider timestamp used to calculate fix age on Android.
+  int? elapsedRealtimeNanos;
+
   List<Object?> _toList() {
     return <Object?>[
       latitude,
       longitude,
       accuracyMeters,
       isMock,
+      fixTimeMillis,
+      elapsedRealtimeNanos,
     ];
   }
 
@@ -248,6 +258,8 @@ class LocationWire {
       longitude: result[1]! as double,
       accuracyMeters: result[2] as double?,
       isMock: result[3]! as bool,
+      fixTimeMillis: result[4] as int?,
+      elapsedRealtimeNanos: result[5] as int?,
     );
   }
 
@@ -263,7 +275,9 @@ class LocationWire {
     return _deepEquals(latitude, other.latitude) &&
         _deepEquals(longitude, other.longitude) &&
         _deepEquals(accuracyMeters, other.accuracyMeters) &&
-        _deepEquals(isMock, other.isMock);
+        _deepEquals(isMock, other.isMock) &&
+        _deepEquals(fixTimeMillis, other.fixTimeMillis) &&
+        _deepEquals(elapsedRealtimeNanos, other.elapsedRealtimeNanos);
   }
 
   @override
@@ -543,6 +557,7 @@ class GeofenceCallbackParamsWire {
     required this.callbackHandle,
     this.eventId,
     this.callbackContextsByGeofenceId,
+    this.traceId,
   });
 
   List<ActiveGeofenceWire> geofences;
@@ -566,6 +581,13 @@ class GeofenceCallbackParamsWire {
   /// Registrations without a context are absent from this map.
   Map<String, int>? callbackContextsByGeofenceId;
 
+  /// Correlates this delivery with the root native transition that caused it.
+  ///
+  /// Direct native deliveries use the same value as [eventId]. A higher-level
+  /// processor may create a new delivery [eventId] while preserving this root
+  /// identity across confirmation, retry, and application queueing.
+  String? traceId;
+
   List<Object?> _toList() {
     return <Object?>[
       geofences,
@@ -575,6 +597,7 @@ class GeofenceCallbackParamsWire {
       callbackHandle,
       eventId,
       callbackContextsByGeofenceId,
+      traceId,
     ];
   }
 
@@ -593,6 +616,7 @@ class GeofenceCallbackParamsWire {
       eventId: result[5] as String?,
       callbackContextsByGeofenceId:
           (result[6] as Map<Object?, Object?>?)?.cast<String, int>(),
+      traceId: result[7] as String?,
     );
   }
 
@@ -613,7 +637,8 @@ class GeofenceCallbackParamsWire {
         _deepEquals(callbackHandle, other.callbackHandle) &&
         _deepEquals(eventId, other.eventId) &&
         _deepEquals(
-            callbackContextsByGeofenceId, other.callbackContextsByGeofenceId);
+            callbackContextsByGeofenceId, other.callbackContextsByGeofenceId) &&
+        _deepEquals(traceId, other.traceId);
   }
 
   @override
@@ -681,6 +706,157 @@ class NativeGeofenceLifecycleFactWire {
   int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
 }
 
+/// Privacy-safe evidence for one native callback-delivery stage.
+class NativeGeofenceDeliveryTraceWire {
+  NativeGeofenceDeliveryTraceWire({
+    required this.sequence,
+    required this.occurredAtMillis,
+    this.elapsedRealtimeMillis,
+    this.traceId,
+    required this.stage,
+    required this.outcome,
+    this.event,
+    this.geofenceCount,
+    this.attempt,
+    this.owner,
+    this.reasonCode,
+    this.durationMillis,
+    this.queueAgeMillis,
+    this.hasLocation,
+    this.locationAgeMillis,
+    this.accuracyMeters,
+    this.processorSource,
+    this.processorClass,
+    this.errorType,
+  });
+
+  int sequence;
+
+  int occurredAtMillis;
+
+  int? elapsedRealtimeMillis;
+
+  String? traceId;
+
+  String stage;
+
+  String outcome;
+
+  String? event;
+
+  int? geofenceCount;
+
+  int? attempt;
+
+  String? owner;
+
+  String? reasonCode;
+
+  int? durationMillis;
+
+  int? queueAgeMillis;
+
+  bool? hasLocation;
+
+  int? locationAgeMillis;
+
+  double? accuracyMeters;
+
+  String? processorSource;
+
+  String? processorClass;
+
+  String? errorType;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      sequence,
+      occurredAtMillis,
+      elapsedRealtimeMillis,
+      traceId,
+      stage,
+      outcome,
+      event,
+      geofenceCount,
+      attempt,
+      owner,
+      reasonCode,
+      durationMillis,
+      queueAgeMillis,
+      hasLocation,
+      locationAgeMillis,
+      accuracyMeters,
+      processorSource,
+      processorClass,
+      errorType,
+    ];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static NativeGeofenceDeliveryTraceWire decode(Object result) {
+    result as List<Object?>;
+    return NativeGeofenceDeliveryTraceWire(
+      sequence: result[0]! as int,
+      occurredAtMillis: result[1]! as int,
+      elapsedRealtimeMillis: result[2] as int?,
+      traceId: result[3] as String?,
+      stage: result[4]! as String,
+      outcome: result[5]! as String,
+      event: result[6] as String?,
+      geofenceCount: result[7] as int?,
+      attempt: result[8] as int?,
+      owner: result[9] as String?,
+      reasonCode: result[10] as String?,
+      durationMillis: result[11] as int?,
+      queueAgeMillis: result[12] as int?,
+      hasLocation: result[13] as bool?,
+      locationAgeMillis: result[14] as int?,
+      accuracyMeters: result[15] as double?,
+      processorSource: result[16] as String?,
+      processorClass: result[17] as String?,
+      errorType: result[18] as String?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! NativeGeofenceDeliveryTraceWire ||
+        other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(sequence, other.sequence) &&
+        _deepEquals(occurredAtMillis, other.occurredAtMillis) &&
+        _deepEquals(elapsedRealtimeMillis, other.elapsedRealtimeMillis) &&
+        _deepEquals(traceId, other.traceId) &&
+        _deepEquals(stage, other.stage) &&
+        _deepEquals(outcome, other.outcome) &&
+        _deepEquals(event, other.event) &&
+        _deepEquals(geofenceCount, other.geofenceCount) &&
+        _deepEquals(attempt, other.attempt) &&
+        _deepEquals(owner, other.owner) &&
+        _deepEquals(reasonCode, other.reasonCode) &&
+        _deepEquals(durationMillis, other.durationMillis) &&
+        _deepEquals(queueAgeMillis, other.queueAgeMillis) &&
+        _deepEquals(hasLocation, other.hasLocation) &&
+        _deepEquals(locationAgeMillis, other.locationAgeMillis) &&
+        _deepEquals(accuracyMeters, other.accuracyMeters) &&
+        _deepEquals(processorSource, other.processorSource) &&
+        _deepEquals(processorClass, other.processorClass) &&
+        _deepEquals(errorType, other.errorType);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
 class NativeGeofenceStatusWire {
   NativeGeofenceStatusWire({
     required this.platform,
@@ -706,6 +882,10 @@ class NativeGeofenceStatusWire {
     this.lastWorkerFact,
     this.lastRecoveryFact,
     this.lastForegroundFact,
+    this.deliveryTrace,
+    this.deliveryTraceDroppedCount,
+    this.packageVersion,
+    this.buildRevision,
   });
 
   NativeGeofencePlatform platform;
@@ -757,6 +937,14 @@ class NativeGeofenceStatusWire {
 
   NativeGeofenceLifecycleFactWire? lastForegroundFact;
 
+  List<NativeGeofenceDeliveryTraceWire>? deliveryTrace;
+
+  int? deliveryTraceDroppedCount;
+
+  String? packageVersion;
+
+  String? buildRevision;
+
   List<Object?> _toList() {
     return <Object?>[
       platform,
@@ -782,6 +970,10 @@ class NativeGeofenceStatusWire {
       lastWorkerFact,
       lastRecoveryFact,
       lastForegroundFact,
+      deliveryTrace,
+      deliveryTraceDroppedCount,
+      packageVersion,
+      buildRevision,
     ];
   }
 
@@ -815,6 +1007,11 @@ class NativeGeofenceStatusWire {
       lastWorkerFact: result[20] as NativeGeofenceLifecycleFactWire?,
       lastRecoveryFact: result[21] as NativeGeofenceLifecycleFactWire?,
       lastForegroundFact: result[22] as NativeGeofenceLifecycleFactWire?,
+      deliveryTrace: (result[23] as List<Object?>?)
+          ?.cast<NativeGeofenceDeliveryTraceWire>(),
+      deliveryTraceDroppedCount: result[24] as int?,
+      packageVersion: result[25] as String?,
+      buildRevision: result[26] as String?,
     );
   }
 
@@ -858,7 +1055,12 @@ class NativeGeofenceStatusWire {
         _deepEquals(lastEnqueueFact, other.lastEnqueueFact) &&
         _deepEquals(lastWorkerFact, other.lastWorkerFact) &&
         _deepEquals(lastRecoveryFact, other.lastRecoveryFact) &&
-        _deepEquals(lastForegroundFact, other.lastForegroundFact);
+        _deepEquals(lastForegroundFact, other.lastForegroundFact) &&
+        _deepEquals(deliveryTrace, other.deliveryTrace) &&
+        _deepEquals(
+            deliveryTraceDroppedCount, other.deliveryTraceDroppedCount) &&
+        _deepEquals(packageVersion, other.packageVersion) &&
+        _deepEquals(buildRevision, other.buildRevision);
   }
 
   @override
@@ -1070,14 +1272,17 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is NativeGeofenceLifecycleFactWire) {
       buffer.putUint8(141);
       writeValue(buffer, value.encode());
-    } else if (value is NativeGeofenceStatusWire) {
+    } else if (value is NativeGeofenceDeliveryTraceWire) {
       buffer.putUint8(142);
       writeValue(buffer, value.encode());
-    } else if (value is NativeGeofenceSynchronizationStateWire) {
+    } else if (value is NativeGeofenceStatusWire) {
       buffer.putUint8(143);
       writeValue(buffer, value.encode());
-    } else if (value is NativeGeofenceSynchronizationResultWire) {
+    } else if (value is NativeGeofenceSynchronizationStateWire) {
       buffer.putUint8(144);
+      writeValue(buffer, value.encode());
+    } else if (value is NativeGeofenceSynchronizationResultWire) {
+      buffer.putUint8(145);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -1126,11 +1331,13 @@ class _PigeonCodec extends StandardMessageCodec {
       case 141:
         return NativeGeofenceLifecycleFactWire.decode(readValue(buffer)!);
       case 142:
-        return NativeGeofenceStatusWire.decode(readValue(buffer)!);
+        return NativeGeofenceDeliveryTraceWire.decode(readValue(buffer)!);
       case 143:
+        return NativeGeofenceStatusWire.decode(readValue(buffer)!);
+      case 144:
         return NativeGeofenceSynchronizationStateWire.decode(
             readValue(buffer)!);
-      case 144:
+      case 145:
         return NativeGeofenceSynchronizationResultWire.decode(
             readValue(buffer)!);
       default:

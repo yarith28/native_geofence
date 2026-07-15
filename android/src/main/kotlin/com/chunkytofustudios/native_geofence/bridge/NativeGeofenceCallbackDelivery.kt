@@ -1,6 +1,7 @@
 package com.chunkytofustudios.native_geofence.bridge
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.work.BackoffPolicy
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
@@ -17,6 +18,7 @@ import com.chunkytofustudios.native_geofence.util.CallbackEnqueueUnconfirmedExce
 import com.chunkytofustudios.native_geofence.util.CallbackWorkEnqueueCoordinator
 import com.chunkytofustudios.native_geofence.util.GeofenceCallbackPayloadStore
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnosticStage
+import com.chunkytofustudios.native_geofence.util.NativeGeofenceDeliveryDiagnostics
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnostics
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceIo
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
@@ -70,22 +72,37 @@ object NativeGeofenceCallbackDelivery {
     ) {
         val guardedCompletion = NativeGeofenceCallbackCompletion(completion)
         val appContext = context.applicationContext
-        val identified = if (params.eventId.isNullOrBlank()) {
-            params.copy(eventId = UUID.randomUUID().toString())
-        } else {
-            params
-        }
+        val eventId = params.eventId?.takeIf(String::isNotBlank)
+            ?: UUID.randomUUID().toString()
+        val identified = params.copy(
+            eventId = eventId,
+            traceId = params.traceId?.takeIf(String::isNotBlank) ?: eventId,
+        )
         try {
             NativeGeofenceIo.execute {
                 try {
                     enqueuePersisted(appContext, identified, guardedCompletion::complete)
                 } catch (error: Throwable) {
                     guardedCompletion.complete(NativeGeofenceCallbackEnqueueResult.REJECTED)
+                    recordDelivery(
+                        appContext,
+                        identified,
+                        "enqueue_dispatch",
+                        "failed",
+                        errorType = error.javaClass.name,
+                    )
                     logError(appContext, "Callback enqueueing failed unexpectedly.", error)
                 }
             }
         } catch (error: Throwable) {
             guardedCompletion.complete(NativeGeofenceCallbackEnqueueResult.REJECTED)
+            recordDelivery(
+                appContext,
+                identified,
+                "enqueue_dispatch",
+                "failed",
+                errorType = error.javaClass.name,
+            )
             logError(appContext, "Failed to dispatch callback enqueueing.", error)
         }
     }
@@ -102,18 +119,39 @@ object NativeGeofenceCallbackDelivery {
             payloadStore = GeofenceCallbackPayloadStore.forContext(context)
         } catch (error: Throwable) {
             completion(NativeGeofenceCallbackEnqueueResult.REJECTED)
+            recordDelivery(
+                context,
+                params,
+                "payload_prepare",
+                "failed",
+                errorType = error.javaClass.name,
+            )
             logError(context, "Failed to prepare durable callback enqueueing.", error)
             return
         }
 
+        var persistenceError: Throwable? = null
         val reference = try {
             payloadStore.store(params, packageFingerprint)
         } catch (error: Throwable) {
+            persistenceError = error
             logError(context, "Failed to persist a callback payload.", error)
             null
         }
         if (reference == null) {
             completion(NativeGeofenceCallbackEnqueueResult.REJECTED)
+            recordDelivery(
+                context,
+                params,
+                "payload_persist",
+                "failed",
+                reasonCode = if (persistenceError == null) {
+                    "store_rejected"
+                } else {
+                    "exception"
+                },
+                errorType = persistenceError?.javaClass?.name,
+            )
             runCatching {
                 NativeGeofenceDiagnostics.record(
                     context,
@@ -125,6 +163,7 @@ object NativeGeofenceCallbackDelivery {
             }
             return
         }
+        recordDelivery(context, params, "payload_persist", "succeeded")
 
         CallbackWorkEnqueueCoordinator(payloadStore::delete).enqueue(
             payloadReference = reference,
@@ -188,6 +227,13 @@ object NativeGeofenceCallbackDelivery {
             outcome = outcome,
             geofenceCount = params.geofences.size,
         )
+        recordDelivery(
+            context = context,
+            params = params,
+            stage = "work_enqueue",
+            outcome = outcome,
+            reasonCode = result.name.lowercase(),
+        )
         when (result) {
             NativeGeofenceCallbackEnqueueResult.ACCEPTED ->
                 NativeGeofenceLogger.d(context, TAG, "Callback work enqueue was confirmed.")
@@ -206,5 +252,35 @@ object NativeGeofenceCallbackDelivery {
 
     private fun logError(context: Context, message: String, error: Throwable) {
         runCatching { NativeGeofenceLogger.e(context, TAG, message, error) }
+    }
+
+    private fun recordDelivery(
+        context: Context,
+        params: GeofenceCallbackParamsWire,
+        stage: String,
+        outcome: String,
+        reasonCode: String? = null,
+        errorType: String? = null,
+    ) {
+        val location = params.location
+        runCatching {
+            NativeGeofenceDeliveryDiagnostics.record(
+                context = context,
+                traceId = params.traceId ?: params.eventId,
+                stage = stage,
+                outcome = outcome,
+                event = params.event.name.lowercase(),
+                geofenceCount = params.geofences.size,
+                owner = "native_geofence",
+                reasonCode = reasonCode,
+                hasLocation = location != null,
+                locationAgeMillis = location?.elapsedRealtimeNanos?.let {
+                    ((SystemClock.elapsedRealtimeNanos() - it) / 1_000_000L)
+                        .coerceAtLeast(0L)
+                },
+                accuracyMeters = location?.accuracyMeters,
+                errorType = errorType,
+            )
+        }
     }
 }

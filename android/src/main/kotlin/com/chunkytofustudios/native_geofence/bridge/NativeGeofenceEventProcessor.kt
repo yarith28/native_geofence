@@ -12,7 +12,9 @@ data class NativeGeofenceBridgeLocation(
     val latitude: Double,
     val longitude: Double,
     val accuracyMeters: Double?,
-    val isMock: Boolean
+    val isMock: Boolean,
+    val fixTimeMillis: Long? = null,
+    val elapsedRealtimeNanos: Long? = null,
 )
 
 data class NativeGeofenceBridgeEvent(

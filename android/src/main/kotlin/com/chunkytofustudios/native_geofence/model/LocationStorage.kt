@@ -9,10 +9,19 @@ class LocationStorage(
     private val longitude: Double,
     private val accuracyMeters: Double? = null,
     private val isMock: Boolean = false,
+    private val fixTimeMillis: Long? = null,
+    private val elapsedRealtimeNanos: Long? = null,
 ) {
     companion object {
         fun fromWire(e: LocationWire): LocationStorage {
-            return LocationStorage(e.latitude, e.longitude, e.accuracyMeters, e.isMock)
+            return LocationStorage(
+                e.latitude,
+                e.longitude,
+                e.accuracyMeters,
+                e.isMock,
+                e.fixTimeMillis,
+                e.elapsedRealtimeNanos,
+            )
         }
     }
 
@@ -22,6 +31,8 @@ class LocationStorage(
             longitude,
             accuracyMeters,
             isMock,
+            fixTimeMillis,
+            elapsedRealtimeNanos,
         )
     }
 }

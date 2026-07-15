@@ -12,6 +12,8 @@ class LocationWires {
                 e.longitude,
                 if (e.hasAccuracy()) e.accuracy.toDouble() else null,
                 LocationCompat.isMock(e),
+                e.time.takeIf { it > 0L },
+                e.elapsedRealtimeNanos.takeIf { it > 0L },
             )
         }
     }

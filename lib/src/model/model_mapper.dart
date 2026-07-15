@@ -12,6 +12,8 @@ extension LocationMapper on Location {
       longitude: longitude,
       accuracyMeters: accuracyMeters,
       isMock: isMock,
+      fixTimeMillis: fixTime?.millisecondsSinceEpoch,
+      elapsedRealtimeNanos: elapsedRealtimeNanos,
     );
   }
 }
@@ -23,6 +25,10 @@ extension LocationWireMapper on LocationWire {
       longitude: longitude,
       accuracyMeters: accuracyMeters,
       isMock: isMock,
+      fixTime: fixTimeMillis == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(fixTimeMillis!),
+      elapsedRealtimeNanos: elapsedRealtimeNanos,
     );
   }
 }
@@ -132,6 +138,7 @@ extension GeofenceCallbackParamsWireMapper on GeofenceCallbackParamsWire {
           ? null
           : DateTime.fromMillisecondsSinceEpoch(eventAtMillis!),
       eventId: eventId,
+      traceId: traceId,
       callbackContextsByGeofenceId: Map.unmodifiable(
         callbackContextsByGeofenceId ?? const <String, int>{},
       ),
@@ -196,6 +203,39 @@ extension NativeGeofenceLifecycleFactWireMapper
       );
 }
 
+extension NativeGeofenceDeliveryTraceWireMapper
+    on NativeGeofenceDeliveryTraceWire {
+  NativeGeofenceDeliveryTrace fromWire() => NativeGeofenceDeliveryTrace(
+        sequence: sequence,
+        occurredAt: DateTime.fromMillisecondsSinceEpoch(occurredAtMillis),
+        elapsedRealtime: elapsedRealtimeMillis == null
+            ? null
+            : Duration(milliseconds: elapsedRealtimeMillis!),
+        traceId: traceId,
+        stage: stage,
+        outcome: outcome,
+        event: event,
+        geofenceCount: geofenceCount,
+        attempt: attempt,
+        owner: owner,
+        reasonCode: reasonCode,
+        duration: durationMillis == null
+            ? null
+            : Duration(milliseconds: durationMillis!),
+        queueAge: queueAgeMillis == null
+            ? null
+            : Duration(milliseconds: queueAgeMillis!),
+        hasLocation: hasLocation,
+        locationAge: locationAgeMillis == null
+            ? null
+            : Duration(milliseconds: locationAgeMillis!),
+        accuracyMeters: accuracyMeters,
+        processorSource: processorSource,
+        processorClass: processorClass,
+        errorType: errorType,
+      );
+}
+
 extension NativeGeofenceStatusWireMapper on NativeGeofenceStatusWire {
   NativeGeofenceStatus fromWire() => NativeGeofenceStatus(
         platform: platform,
@@ -223,5 +263,12 @@ extension NativeGeofenceStatusWireMapper on NativeGeofenceStatusWire {
         lastWorkerFact: lastWorkerFact?.fromWire(),
         lastRecoveryFact: lastRecoveryFact?.fromWire(),
         lastForegroundFact: lastForegroundFact?.fromWire(),
+        deliveryTrace: List.unmodifiable(
+          deliveryTrace?.map((entry) => entry.fromWire()) ??
+              const <NativeGeofenceDeliveryTrace>[],
+        ),
+        deliveryTraceDroppedCount: deliveryTraceDroppedCount ?? 0,
+        packageVersion: packageVersion,
+        buildRevision: buildRevision,
       );
 }

@@ -3,6 +3,7 @@ package com.chunkytofustudios.native_geofence.receivers
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.SystemClock
 import com.chunkytofustudios.native_geofence.api.NativeGeofenceApiImpl
 import com.chunkytofustudios.native_geofence.bridge.NativeGeofenceCallbackDelivery
 import com.chunkytofustudios.native_geofence.bridge.NativeGeofenceCallbackEnqueueResult
@@ -17,6 +18,7 @@ import com.chunkytofustudios.native_geofence.util.GeofenceMutationRunner
 import com.chunkytofustudios.native_geofence.util.LocationWires
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnosticStage
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnostics
+import com.chunkytofustudios.native_geofence.util.NativeGeofenceDeliveryDiagnostics
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 import com.chunkytofustudios.native_geofence.util.NativeGeofencePersistence
 import com.chunkytofustudios.native_geofence.util.OrphanedGeofenceCleanupCoordinator
@@ -61,11 +63,23 @@ internal class GeofenceBroadcastCallbackEnqueuer(
         if (groups.isEmpty()) return
         val tickets = groups.map { barrier.ticket() }
         groups.forEachIndexed { index, params ->
+            val deliveryId = eventId()
+            val identified = params.copy(eventId = deliveryId, traceId = deliveryId)
             try {
-                enqueue(context, params.copy(eventId = eventId())) {
+                recordBroadcastDelivery(context, identified, "dispatching")
+                enqueue(
+                    context,
+                    identified,
+                ) {
                     tickets[index]()
                 }
             } catch (error: Throwable) {
+                recordBroadcastDelivery(
+                    context,
+                    identified,
+                    "dispatch_failed",
+                    error.javaClass.name,
+                )
                 runCatching {
                     NativeGeofenceLogger.e(
                         context,
@@ -76,6 +90,33 @@ internal class GeofenceBroadcastCallbackEnqueuer(
                 }
                 tickets[index]()
             }
+        }
+    }
+
+    private fun recordBroadcastDelivery(
+        context: Context,
+        params: GeofenceCallbackParamsWire,
+        outcome: String,
+        errorType: String? = null,
+    ) {
+        val location = params.location
+        runCatching {
+            NativeGeofenceDeliveryDiagnostics.record(
+                context = context,
+                traceId = params.traceId,
+                stage = "broadcast_delivery",
+                outcome = outcome,
+                event = params.event.name.lowercase(),
+                geofenceCount = params.geofences.size,
+                owner = "native_geofence",
+                hasLocation = location != null,
+                locationAgeMillis = location?.elapsedRealtimeNanos?.let {
+                    ((SystemClock.elapsedRealtimeNanos() - it) / 1_000_000L)
+                        .coerceAtLeast(0L)
+                },
+                accuracyMeters = location?.accuracyMeters,
+                errorType = errorType,
+            )
         }
     }
 

@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.concurrent.futures.CallbackToFutureAdapter
 import androidx.work.ForegroundInfo
 import androidx.work.ListenableWorker
@@ -36,6 +37,7 @@ import com.chunkytofustudios.native_geofence.util.LegacyGeofenceCallbackPayloadS
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceIo
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnosticStage
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnostics
+import com.chunkytofustudios.native_geofence.util.NativeGeofenceDeliveryDiagnostics
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 import com.chunkytofustudios.native_geofence.util.NativeGeofencePersistence
 import com.chunkytofustudios.native_geofence.util.Notifications
@@ -68,6 +70,12 @@ class NativeGeofenceBackgroundWorker(
     private var callbackParams: GeofenceCallbackParamsWire? = null
 
     @Volatile
+    private var deliveryParams: GeofenceCallbackParamsWire? = null
+
+    @Volatile
+    private var payloadEnqueuedAtMillis: Long? = null
+
+    @Volatile
     private var payloadLease: CallbackPayloadLease? = null
 
     @Volatile
@@ -82,7 +90,7 @@ class NativeGeofenceBackgroundWorker(
     @Volatile
     private var workerDiagnosticFailure: CallbackDeliveryFailure? = null
 
-    private var startTime: Long = 0L
+    private var startTimeElapsed: Long = 0L
 
     override fun getForegroundInfoAsync(): ListenableFuture<ForegroundInfo> {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -93,7 +101,7 @@ class NativeGeofenceBackgroundWorker(
     }
 
     override fun startWork(): ListenableFuture<Result> {
-        startTime = System.currentTimeMillis()
+        startTimeElapsed = SystemClock.elapsedRealtime()
         coordinator = CallbackDeliveryCoordinator(
             timeoutMillis = ::timeoutFor,
             schedule = { delayMillis, action ->
@@ -124,6 +132,11 @@ class NativeGeofenceBackgroundWorker(
     }
 
     override fun onStopped() {
+        recordDelivery(
+            stage = "worker_stopped",
+            outcome = "cancelled",
+            reasonCode = workerDiagnosticFailure?.name?.lowercase() ?: "system_stop",
+        )
         stopped.set(true)
         completed.set(true)
         coordinator?.cancel()
@@ -148,21 +161,48 @@ class NativeGeofenceBackgroundWorker(
 
         val triggerApi = NativeGeofenceTriggerApi(engine.dartExecutor.binaryMessenger)
         NativeGeofenceLogger.d(context, TAG, "Dart callback API is ready.")
+        recordDelivery(
+            stage = "dart_callback",
+            outcome = "invoking",
+            owner = "dart",
+        )
         try {
             triggerApi.geofenceTriggered(params) { result ->
                 if (coordinator?.complete(CallbackDeliveryStage.CALLBACK) != true) {
+                    recordDelivery(
+                        stage = "dart_callback",
+                        outcome = "late_completion_ignored",
+                        owner = "dart",
+                    )
                     return@geofenceTriggered
                 }
                 val error = result.exceptionOrNull()
                 if (error == null) {
+                    recordDelivery(
+                        stage = "dart_callback",
+                        outcome = "completed",
+                        owner = "dart",
+                    )
                     finish(CallbackDeliveryPolicy.success())
                 } else {
+                    recordDelivery(
+                        stage = "dart_callback",
+                        outcome = "failed",
+                        owner = "dart",
+                        errorType = error.javaClass.name,
+                    )
                     finishFailure(CallbackDeliveryPolicy.classifyDartError(error))
                 }
             }
         } catch (error: Throwable) {
             if (coordinator?.complete(CallbackDeliveryStage.CALLBACK) == true) {
                 NativeGeofenceLogger.e(context, TAG, "Failed to invoke the Dart callback.", error)
+                recordDelivery(
+                    stage = "dart_callback",
+                    outcome = "invoke_threw",
+                    owner = "dart",
+                    errorType = error.javaClass.name,
+                )
                 finishFailure(CallbackDeliveryFailure.DART_DELIVERY)
             }
         }
@@ -316,6 +356,7 @@ class NativeGeofenceBackgroundWorker(
             CallbackPayloadReadResult.Corrupt ->
                 finishFailure(CallbackDeliveryFailure.PAYLOAD_CORRUPT)
             is CallbackPayloadReadResult.Found -> {
+                payloadEnqueuedAtMillis = loaded.envelope.enqueuedAtMillis
                 val currentFingerprint = AndroidPackageFingerprint.current(context)
                 if (loaded.envelope.packageFingerprint != currentFingerprint) {
                     finishFailure(CallbackDeliveryFailure.PACKAGE_STALE)
@@ -375,6 +416,12 @@ class NativeGeofenceBackgroundWorker(
 
     private fun processNativeBridge(params: GeofenceCallbackParamsWire) {
         if (completed.get() || stopped.get()) return
+        deliveryParams = params
+        recordDelivery(
+            stage = "worker_started",
+            outcome = "processing",
+            owner = "native_geofence",
+        )
         NativeGeofenceBridgeDispatcher.process(context, params) { outcome ->
             mainHandler.post {
                 if (completed.get() || stopped.get()) return@post
@@ -383,6 +430,11 @@ class NativeGeofenceBackgroundWorker(
                         finish(CallbackDeliveryPolicy.success())
                     is NativeGeofenceBridgeOutcome.Continue -> {
                         callbackParams = outcome.params
+                        recordDelivery(
+                            stage = "dart_runtime",
+                            outcome = "startup_requested",
+                            owner = "dart",
+                        )
                         startFlutterEngine()
                     }
                 }
@@ -456,6 +508,11 @@ class NativeGeofenceBackgroundWorker(
                             callbackInfo
                         )
                     )
+                    recordDelivery(
+                        stage = "dart_runtime",
+                        outcome = "started",
+                        owner = "dart",
+                    )
                 } catch (error: Throwable) {
                     NativeGeofenceLogger.e(
                         context,
@@ -463,11 +520,23 @@ class NativeGeofenceBackgroundWorker(
                         "Failed to start the callback runtime.",
                         error
                     )
+                    recordDelivery(
+                        stage = "dart_runtime",
+                        outcome = "startup_failed",
+                        owner = "dart",
+                        errorType = error.javaClass.name,
+                    )
                     finishFailure(CallbackDeliveryFailure.INFRASTRUCTURE)
                 }
             }
         } catch (error: Throwable) {
             NativeGeofenceLogger.e(context, TAG, "Flutter startup failed.", error)
+            recordDelivery(
+                stage = "dart_runtime",
+                outcome = "startup_failed",
+                owner = "dart",
+                errorType = error.javaClass.name,
+            )
             finishFailure(CallbackDeliveryFailure.INFRASTRUCTURE)
         }
     }
@@ -511,6 +580,17 @@ class NativeGeofenceBackgroundWorker(
                 },
             geofenceCount = callbackParams?.geofences?.size
         )
+        val terminalOutcome = workerDiagnosticFailure?.name?.lowercase()
+            ?: when (decision.workerResult) {
+                CallbackWorkerResult.SUCCESS -> "completed"
+                CallbackWorkerResult.RETRY -> "retry_scheduled"
+            }
+        recordDelivery(
+            stage = "worker_finished",
+            outcome = terminalOutcome,
+            owner = if (callbackParams == null) "native" else "dart",
+            reasonCode = decision.workerResult.name.lowercase(),
+        )
 
         val workResult = when (decision.workerResult) {
             CallbackWorkerResult.SUCCESS -> Result.success()
@@ -520,7 +600,7 @@ class NativeGeofenceBackgroundWorker(
             if (!stopped.get()) {
                 completer?.set(workResult)
             }
-            val duration = System.currentTimeMillis() - startTime
+            val duration = SystemClock.elapsedRealtime() - startTimeElapsed
             NativeGeofenceLogger.d(context, TAG, "Callback work completed in ${duration}ms.")
         }
 
@@ -565,6 +645,45 @@ class NativeGeofenceBackgroundWorker(
         CallbackDeliveryStage.STARTUP -> STARTUP_TIMEOUT_MILLIS
         CallbackDeliveryStage.API_READY -> API_READY_TIMEOUT_MILLIS
         CallbackDeliveryStage.CALLBACK -> CALLBACK_TIMEOUT_MILLIS
+    }
+
+    private fun recordDelivery(
+        stage: String,
+        outcome: String,
+        owner: String? = null,
+        reasonCode: String? = null,
+        errorType: String? = null,
+    ) {
+        val params = deliveryParams ?: callbackParams
+        val location = params?.location
+        runCatching {
+            NativeGeofenceDeliveryDiagnostics.record(
+                context = context,
+                traceId = params?.traceId ?: params?.eventId,
+                stage = stage,
+                outcome = outcome,
+                event = params?.event?.name?.lowercase(),
+                geofenceCount = params?.geofences?.size,
+                attempt = runAttemptCount + 1,
+                owner = owner,
+                reasonCode = reasonCode,
+                durationMillis = if (startTimeElapsed == 0L) {
+                    null
+                } else {
+                    SystemClock.elapsedRealtime() - startTimeElapsed
+                },
+                queueAgeMillis = payloadEnqueuedAtMillis?.let {
+                    (System.currentTimeMillis() - it).coerceAtLeast(0L)
+                },
+                hasLocation = params?.let { location != null },
+                locationAgeMillis = location?.elapsedRealtimeNanos?.let {
+                    ((SystemClock.elapsedRealtimeNanos() - it) / 1_000_000L)
+                        .coerceAtLeast(0L)
+                },
+                accuracyMeters = location?.accuracyMeters,
+                errorType = errorType,
+            )
+        }
     }
 
     companion object {

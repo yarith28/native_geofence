@@ -274,6 +274,10 @@ struct LocationWire: Hashable {
   var accuracyMeters: Double? = nil
   /// Whether this fix came from a mock location provider.
   var isMock: Bool
+  /// Device wall-clock timestamp reported by the location provider.
+  var fixTimeMillis: Int64? = nil
+  /// Monotonic provider timestamp used to calculate fix age on Android.
+  var elapsedRealtimeNanos: Int64? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -282,12 +286,16 @@ struct LocationWire: Hashable {
     let longitude = pigeonVar_list[1] as! Double
     let accuracyMeters: Double? = nilOrValue(pigeonVar_list[2])
     let isMock = pigeonVar_list[3] as! Bool
+    let fixTimeMillis: Int64? = nilOrValue(pigeonVar_list[4])
+    let elapsedRealtimeNanos: Int64? = nilOrValue(pigeonVar_list[5])
 
     return LocationWire(
       latitude: latitude,
       longitude: longitude,
       accuracyMeters: accuracyMeters,
-      isMock: isMock
+      isMock: isMock,
+      fixTimeMillis: fixTimeMillis,
+      elapsedRealtimeNanos: elapsedRealtimeNanos
     )
   }
   func toList() -> [Any?] {
@@ -296,13 +304,15 @@ struct LocationWire: Hashable {
       longitude,
       accuracyMeters,
       isMock,
+      fixTimeMillis,
+      elapsedRealtimeNanos,
     ]
   }
   static func == (lhs: LocationWire, rhs: LocationWire) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsFlutterBindings(lhs.latitude, rhs.latitude) && deepEqualsFlutterBindings(lhs.longitude, rhs.longitude) && deepEqualsFlutterBindings(lhs.accuracyMeters, rhs.accuracyMeters) && deepEqualsFlutterBindings(lhs.isMock, rhs.isMock)
+    return deepEqualsFlutterBindings(lhs.latitude, rhs.latitude) && deepEqualsFlutterBindings(lhs.longitude, rhs.longitude) && deepEqualsFlutterBindings(lhs.accuracyMeters, rhs.accuracyMeters) && deepEqualsFlutterBindings(lhs.isMock, rhs.isMock) && deepEqualsFlutterBindings(lhs.fixTimeMillis, rhs.fixTimeMillis) && deepEqualsFlutterBindings(lhs.elapsedRealtimeNanos, rhs.elapsedRealtimeNanos)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -311,6 +321,8 @@ struct LocationWire: Hashable {
     deepHashFlutterBindings(value: longitude, hasher: &hasher)
     deepHashFlutterBindings(value: accuracyMeters, hasher: &hasher)
     deepHashFlutterBindings(value: isMock, hasher: &hasher)
+    deepHashFlutterBindings(value: fixTimeMillis, hasher: &hasher)
+    deepHashFlutterBindings(value: elapsedRealtimeNanos, hasher: &hasher)
   }
 }
 
@@ -536,6 +548,12 @@ struct GeofenceCallbackParamsWire: Hashable {
   /// Opaque callback contexts keyed by triggering geofence ID.
   /// Registrations without a context are absent from this map.
   var callbackContextsByGeofenceId: [String: Int64]? = nil
+  /// Correlates this delivery with the root native transition that caused it.
+  ///
+  /// Direct native deliveries use the same value as [eventId]. A higher-level
+  /// processor may create a new delivery [eventId] while preserving this root
+  /// identity across confirmation, retry, and application queueing.
+  var traceId: String? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -547,6 +565,7 @@ struct GeofenceCallbackParamsWire: Hashable {
     let callbackHandle = pigeonVar_list[4] as! Int64
     let eventId: String? = nilOrValue(pigeonVar_list[5])
     let callbackContextsByGeofenceId: [String: Int64]? = nilOrValue(pigeonVar_list[6])
+    let traceId: String? = nilOrValue(pigeonVar_list[7])
 
     return GeofenceCallbackParamsWire(
       geofences: geofences,
@@ -555,7 +574,8 @@ struct GeofenceCallbackParamsWire: Hashable {
       eventAtMillis: eventAtMillis,
       callbackHandle: callbackHandle,
       eventId: eventId,
-      callbackContextsByGeofenceId: callbackContextsByGeofenceId
+      callbackContextsByGeofenceId: callbackContextsByGeofenceId,
+      traceId: traceId
     )
   }
   func toList() -> [Any?] {
@@ -567,13 +587,14 @@ struct GeofenceCallbackParamsWire: Hashable {
       callbackHandle,
       eventId,
       callbackContextsByGeofenceId,
+      traceId,
     ]
   }
   static func == (lhs: GeofenceCallbackParamsWire, rhs: GeofenceCallbackParamsWire) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsFlutterBindings(lhs.geofences, rhs.geofences) && deepEqualsFlutterBindings(lhs.event, rhs.event) && deepEqualsFlutterBindings(lhs.location, rhs.location) && deepEqualsFlutterBindings(lhs.eventAtMillis, rhs.eventAtMillis) && deepEqualsFlutterBindings(lhs.callbackHandle, rhs.callbackHandle) && deepEqualsFlutterBindings(lhs.eventId, rhs.eventId) && deepEqualsFlutterBindings(lhs.callbackContextsByGeofenceId, rhs.callbackContextsByGeofenceId)
+    return deepEqualsFlutterBindings(lhs.geofences, rhs.geofences) && deepEqualsFlutterBindings(lhs.event, rhs.event) && deepEqualsFlutterBindings(lhs.location, rhs.location) && deepEqualsFlutterBindings(lhs.eventAtMillis, rhs.eventAtMillis) && deepEqualsFlutterBindings(lhs.callbackHandle, rhs.callbackHandle) && deepEqualsFlutterBindings(lhs.eventId, rhs.eventId) && deepEqualsFlutterBindings(lhs.callbackContextsByGeofenceId, rhs.callbackContextsByGeofenceId) && deepEqualsFlutterBindings(lhs.traceId, rhs.traceId)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -585,6 +606,7 @@ struct GeofenceCallbackParamsWire: Hashable {
     deepHashFlutterBindings(value: callbackHandle, hasher: &hasher)
     deepHashFlutterBindings(value: eventId, hasher: &hasher)
     deepHashFlutterBindings(value: callbackContextsByGeofenceId, hasher: &hasher)
+    deepHashFlutterBindings(value: traceId, hasher: &hasher)
   }
 }
 
@@ -634,6 +656,129 @@ struct NativeGeofenceLifecycleFactWire: Hashable {
   }
 }
 
+/// Privacy-safe evidence for one native callback-delivery stage.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct NativeGeofenceDeliveryTraceWire: Hashable {
+  var sequence: Int64
+  var occurredAtMillis: Int64
+  var elapsedRealtimeMillis: Int64? = nil
+  var traceId: String? = nil
+  var stage: String
+  var outcome: String
+  var event: String? = nil
+  var geofenceCount: Int64? = nil
+  var attempt: Int64? = nil
+  var owner: String? = nil
+  var reasonCode: String? = nil
+  var durationMillis: Int64? = nil
+  var queueAgeMillis: Int64? = nil
+  var hasLocation: Bool? = nil
+  var locationAgeMillis: Int64? = nil
+  var accuracyMeters: Double? = nil
+  var processorSource: String? = nil
+  var processorClass: String? = nil
+  var errorType: String? = nil
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> NativeGeofenceDeliveryTraceWire? {
+    let sequence = pigeonVar_list[0] as! Int64
+    let occurredAtMillis = pigeonVar_list[1] as! Int64
+    let elapsedRealtimeMillis: Int64? = nilOrValue(pigeonVar_list[2])
+    let traceId: String? = nilOrValue(pigeonVar_list[3])
+    let stage = pigeonVar_list[4] as! String
+    let outcome = pigeonVar_list[5] as! String
+    let event: String? = nilOrValue(pigeonVar_list[6])
+    let geofenceCount: Int64? = nilOrValue(pigeonVar_list[7])
+    let attempt: Int64? = nilOrValue(pigeonVar_list[8])
+    let owner: String? = nilOrValue(pigeonVar_list[9])
+    let reasonCode: String? = nilOrValue(pigeonVar_list[10])
+    let durationMillis: Int64? = nilOrValue(pigeonVar_list[11])
+    let queueAgeMillis: Int64? = nilOrValue(pigeonVar_list[12])
+    let hasLocation: Bool? = nilOrValue(pigeonVar_list[13])
+    let locationAgeMillis: Int64? = nilOrValue(pigeonVar_list[14])
+    let accuracyMeters: Double? = nilOrValue(pigeonVar_list[15])
+    let processorSource: String? = nilOrValue(pigeonVar_list[16])
+    let processorClass: String? = nilOrValue(pigeonVar_list[17])
+    let errorType: String? = nilOrValue(pigeonVar_list[18])
+
+    return NativeGeofenceDeliveryTraceWire(
+      sequence: sequence,
+      occurredAtMillis: occurredAtMillis,
+      elapsedRealtimeMillis: elapsedRealtimeMillis,
+      traceId: traceId,
+      stage: stage,
+      outcome: outcome,
+      event: event,
+      geofenceCount: geofenceCount,
+      attempt: attempt,
+      owner: owner,
+      reasonCode: reasonCode,
+      durationMillis: durationMillis,
+      queueAgeMillis: queueAgeMillis,
+      hasLocation: hasLocation,
+      locationAgeMillis: locationAgeMillis,
+      accuracyMeters: accuracyMeters,
+      processorSource: processorSource,
+      processorClass: processorClass,
+      errorType: errorType
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      sequence,
+      occurredAtMillis,
+      elapsedRealtimeMillis,
+      traceId,
+      stage,
+      outcome,
+      event,
+      geofenceCount,
+      attempt,
+      owner,
+      reasonCode,
+      durationMillis,
+      queueAgeMillis,
+      hasLocation,
+      locationAgeMillis,
+      accuracyMeters,
+      processorSource,
+      processorClass,
+      errorType,
+    ]
+  }
+  static func == (lhs: NativeGeofenceDeliveryTraceWire, rhs: NativeGeofenceDeliveryTraceWire) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsFlutterBindings(lhs.sequence, rhs.sequence) && deepEqualsFlutterBindings(lhs.occurredAtMillis, rhs.occurredAtMillis) && deepEqualsFlutterBindings(lhs.elapsedRealtimeMillis, rhs.elapsedRealtimeMillis) && deepEqualsFlutterBindings(lhs.traceId, rhs.traceId) && deepEqualsFlutterBindings(lhs.stage, rhs.stage) && deepEqualsFlutterBindings(lhs.outcome, rhs.outcome) && deepEqualsFlutterBindings(lhs.event, rhs.event) && deepEqualsFlutterBindings(lhs.geofenceCount, rhs.geofenceCount) && deepEqualsFlutterBindings(lhs.attempt, rhs.attempt) && deepEqualsFlutterBindings(lhs.owner, rhs.owner) && deepEqualsFlutterBindings(lhs.reasonCode, rhs.reasonCode) && deepEqualsFlutterBindings(lhs.durationMillis, rhs.durationMillis) && deepEqualsFlutterBindings(lhs.queueAgeMillis, rhs.queueAgeMillis) && deepEqualsFlutterBindings(lhs.hasLocation, rhs.hasLocation) && deepEqualsFlutterBindings(lhs.locationAgeMillis, rhs.locationAgeMillis) && deepEqualsFlutterBindings(lhs.accuracyMeters, rhs.accuracyMeters) && deepEqualsFlutterBindings(lhs.processorSource, rhs.processorSource) && deepEqualsFlutterBindings(lhs.processorClass, rhs.processorClass) && deepEqualsFlutterBindings(lhs.errorType, rhs.errorType)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("NativeGeofenceDeliveryTraceWire")
+    deepHashFlutterBindings(value: sequence, hasher: &hasher)
+    deepHashFlutterBindings(value: occurredAtMillis, hasher: &hasher)
+    deepHashFlutterBindings(value: elapsedRealtimeMillis, hasher: &hasher)
+    deepHashFlutterBindings(value: traceId, hasher: &hasher)
+    deepHashFlutterBindings(value: stage, hasher: &hasher)
+    deepHashFlutterBindings(value: outcome, hasher: &hasher)
+    deepHashFlutterBindings(value: event, hasher: &hasher)
+    deepHashFlutterBindings(value: geofenceCount, hasher: &hasher)
+    deepHashFlutterBindings(value: attempt, hasher: &hasher)
+    deepHashFlutterBindings(value: owner, hasher: &hasher)
+    deepHashFlutterBindings(value: reasonCode, hasher: &hasher)
+    deepHashFlutterBindings(value: durationMillis, hasher: &hasher)
+    deepHashFlutterBindings(value: queueAgeMillis, hasher: &hasher)
+    deepHashFlutterBindings(value: hasLocation, hasher: &hasher)
+    deepHashFlutterBindings(value: locationAgeMillis, hasher: &hasher)
+    deepHashFlutterBindings(value: accuracyMeters, hasher: &hasher)
+    deepHashFlutterBindings(value: processorSource, hasher: &hasher)
+    deepHashFlutterBindings(value: processorClass, hasher: &hasher)
+    deepHashFlutterBindings(value: errorType, hasher: &hasher)
+  }
+}
+
 /// Generated class from Pigeon that represents data sent in messages.
 struct NativeGeofenceStatusWire: Hashable {
   var platform: NativeGeofencePlatform
@@ -662,6 +807,10 @@ struct NativeGeofenceStatusWire: Hashable {
   var lastWorkerFact: NativeGeofenceLifecycleFactWire? = nil
   var lastRecoveryFact: NativeGeofenceLifecycleFactWire? = nil
   var lastForegroundFact: NativeGeofenceLifecycleFactWire? = nil
+  var deliveryTrace: [NativeGeofenceDeliveryTraceWire]? = nil
+  var deliveryTraceDroppedCount: Int64? = nil
+  var packageVersion: String? = nil
+  var buildRevision: String? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -689,6 +838,10 @@ struct NativeGeofenceStatusWire: Hashable {
     let lastWorkerFact: NativeGeofenceLifecycleFactWire? = nilOrValue(pigeonVar_list[20])
     let lastRecoveryFact: NativeGeofenceLifecycleFactWire? = nilOrValue(pigeonVar_list[21])
     let lastForegroundFact: NativeGeofenceLifecycleFactWire? = nilOrValue(pigeonVar_list[22])
+    let deliveryTrace: [NativeGeofenceDeliveryTraceWire]? = nilOrValue(pigeonVar_list[23])
+    let deliveryTraceDroppedCount: Int64? = nilOrValue(pigeonVar_list[24])
+    let packageVersion: String? = nilOrValue(pigeonVar_list[25])
+    let buildRevision: String? = nilOrValue(pigeonVar_list[26])
 
     return NativeGeofenceStatusWire(
       platform: platform,
@@ -713,7 +866,11 @@ struct NativeGeofenceStatusWire: Hashable {
       lastEnqueueFact: lastEnqueueFact,
       lastWorkerFact: lastWorkerFact,
       lastRecoveryFact: lastRecoveryFact,
-      lastForegroundFact: lastForegroundFact
+      lastForegroundFact: lastForegroundFact,
+      deliveryTrace: deliveryTrace,
+      deliveryTraceDroppedCount: deliveryTraceDroppedCount,
+      packageVersion: packageVersion,
+      buildRevision: buildRevision
     )
   }
   func toList() -> [Any?] {
@@ -741,13 +898,17 @@ struct NativeGeofenceStatusWire: Hashable {
       lastWorkerFact,
       lastRecoveryFact,
       lastForegroundFact,
+      deliveryTrace,
+      deliveryTraceDroppedCount,
+      packageVersion,
+      buildRevision,
     ]
   }
   static func == (lhs: NativeGeofenceStatusWire, rhs: NativeGeofenceStatusWire) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsFlutterBindings(lhs.platform, rhs.platform) && deepEqualsFlutterBindings(lhs.osVersion, rhs.osVersion) && deepEqualsFlutterBindings(lhs.persistedGeofenceCount, rhs.persistedGeofenceCount) && deepEqualsFlutterBindings(lhs.locationPermissionGranted, rhs.locationPermissionGranted) && deepEqualsFlutterBindings(lhs.backgroundLocationPermissionGranted, rhs.backgroundLocationPermissionGranted) && deepEqualsFlutterBindings(lhs.notificationPermissionGranted, rhs.notificationPermissionGranted) && deepEqualsFlutterBindings(lhs.locationServicesEnabled, rhs.locationServicesEnabled) && deepEqualsFlutterBindings(lhs.monitoringAvailable, rhs.monitoringAvailable) && deepEqualsFlutterBindings(lhs.playServicesAvailable, rhs.playServicesAvailable) && deepEqualsFlutterBindings(lhs.callbackPendingIntentAvailable, rhs.callbackPendingIntentAvailable) && deepEqualsFlutterBindings(lhs.callbackReceiverAvailable, rhs.callbackReceiverAvailable) && deepEqualsFlutterBindings(lhs.canEnumerateLivePlatformRegistrations, rhs.canEnumerateLivePlatformRegistrations) && deepEqualsFlutterBindings(lhs.pluginOwnedMonitoringCount, rhs.pluginOwnedMonitoringCount) && deepEqualsFlutterBindings(lhs.callbackDispatcherRegistered, rhs.callbackDispatcherRegistered) && deepEqualsFlutterBindings(lhs.callbackRefreshState, rhs.callbackRefreshState) && deepEqualsFlutterBindings(lhs.registrationHealth, rhs.registrationHealth) && deepEqualsFlutterBindings(lhs.lastRegistrationFact, rhs.lastRegistrationFact) && deepEqualsFlutterBindings(lhs.lastRemovalFact, rhs.lastRemovalFact) && deepEqualsFlutterBindings(lhs.lastBroadcastFact, rhs.lastBroadcastFact) && deepEqualsFlutterBindings(lhs.lastEnqueueFact, rhs.lastEnqueueFact) && deepEqualsFlutterBindings(lhs.lastWorkerFact, rhs.lastWorkerFact) && deepEqualsFlutterBindings(lhs.lastRecoveryFact, rhs.lastRecoveryFact) && deepEqualsFlutterBindings(lhs.lastForegroundFact, rhs.lastForegroundFact)
+    return deepEqualsFlutterBindings(lhs.platform, rhs.platform) && deepEqualsFlutterBindings(lhs.osVersion, rhs.osVersion) && deepEqualsFlutterBindings(lhs.persistedGeofenceCount, rhs.persistedGeofenceCount) && deepEqualsFlutterBindings(lhs.locationPermissionGranted, rhs.locationPermissionGranted) && deepEqualsFlutterBindings(lhs.backgroundLocationPermissionGranted, rhs.backgroundLocationPermissionGranted) && deepEqualsFlutterBindings(lhs.notificationPermissionGranted, rhs.notificationPermissionGranted) && deepEqualsFlutterBindings(lhs.locationServicesEnabled, rhs.locationServicesEnabled) && deepEqualsFlutterBindings(lhs.monitoringAvailable, rhs.monitoringAvailable) && deepEqualsFlutterBindings(lhs.playServicesAvailable, rhs.playServicesAvailable) && deepEqualsFlutterBindings(lhs.callbackPendingIntentAvailable, rhs.callbackPendingIntentAvailable) && deepEqualsFlutterBindings(lhs.callbackReceiverAvailable, rhs.callbackReceiverAvailable) && deepEqualsFlutterBindings(lhs.canEnumerateLivePlatformRegistrations, rhs.canEnumerateLivePlatformRegistrations) && deepEqualsFlutterBindings(lhs.pluginOwnedMonitoringCount, rhs.pluginOwnedMonitoringCount) && deepEqualsFlutterBindings(lhs.callbackDispatcherRegistered, rhs.callbackDispatcherRegistered) && deepEqualsFlutterBindings(lhs.callbackRefreshState, rhs.callbackRefreshState) && deepEqualsFlutterBindings(lhs.registrationHealth, rhs.registrationHealth) && deepEqualsFlutterBindings(lhs.lastRegistrationFact, rhs.lastRegistrationFact) && deepEqualsFlutterBindings(lhs.lastRemovalFact, rhs.lastRemovalFact) && deepEqualsFlutterBindings(lhs.lastBroadcastFact, rhs.lastBroadcastFact) && deepEqualsFlutterBindings(lhs.lastEnqueueFact, rhs.lastEnqueueFact) && deepEqualsFlutterBindings(lhs.lastWorkerFact, rhs.lastWorkerFact) && deepEqualsFlutterBindings(lhs.lastRecoveryFact, rhs.lastRecoveryFact) && deepEqualsFlutterBindings(lhs.lastForegroundFact, rhs.lastForegroundFact) && deepEqualsFlutterBindings(lhs.deliveryTrace, rhs.deliveryTrace) && deepEqualsFlutterBindings(lhs.deliveryTraceDroppedCount, rhs.deliveryTraceDroppedCount) && deepEqualsFlutterBindings(lhs.packageVersion, rhs.packageVersion) && deepEqualsFlutterBindings(lhs.buildRevision, rhs.buildRevision)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -775,6 +936,10 @@ struct NativeGeofenceStatusWire: Hashable {
     deepHashFlutterBindings(value: lastWorkerFact, hasher: &hasher)
     deepHashFlutterBindings(value: lastRecoveryFact, hasher: &hasher)
     deepHashFlutterBindings(value: lastForegroundFact, hasher: &hasher)
+    deepHashFlutterBindings(value: deliveryTrace, hasher: &hasher)
+    deepHashFlutterBindings(value: deliveryTraceDroppedCount, hasher: &hasher)
+    deepHashFlutterBindings(value: packageVersion, hasher: &hasher)
+    deepHashFlutterBindings(value: buildRevision, hasher: &hasher)
   }
 }
 
@@ -955,10 +1120,12 @@ private class FlutterBindingsPigeonCodecReader: FlutterStandardReader {
     case 141:
       return NativeGeofenceLifecycleFactWire.fromList(self.readValue() as! [Any?])
     case 142:
-      return NativeGeofenceStatusWire.fromList(self.readValue() as! [Any?])
+      return NativeGeofenceDeliveryTraceWire.fromList(self.readValue() as! [Any?])
     case 143:
-      return NativeGeofenceSynchronizationStateWire.fromList(self.readValue() as! [Any?])
+      return NativeGeofenceStatusWire.fromList(self.readValue() as! [Any?])
     case 144:
+      return NativeGeofenceSynchronizationStateWire.fromList(self.readValue() as! [Any?])
+    case 145:
       return NativeGeofenceSynchronizationResultWire.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
@@ -1007,14 +1174,17 @@ private class FlutterBindingsPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? NativeGeofenceLifecycleFactWire {
       super.writeByte(141)
       super.writeValue(value.toList())
-    } else if let value = value as? NativeGeofenceStatusWire {
+    } else if let value = value as? NativeGeofenceDeliveryTraceWire {
       super.writeByte(142)
       super.writeValue(value.toList())
-    } else if let value = value as? NativeGeofenceSynchronizationStateWire {
+    } else if let value = value as? NativeGeofenceStatusWire {
       super.writeByte(143)
       super.writeValue(value.toList())
-    } else if let value = value as? NativeGeofenceSynchronizationResultWire {
+    } else if let value = value as? NativeGeofenceSynchronizationStateWire {
       super.writeByte(144)
+      super.writeValue(value.toList())
+    } else if let value = value as? NativeGeofenceSynchronizationResultWire {
+      super.writeByte(145)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
