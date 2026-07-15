@@ -1,5 +1,6 @@
 package com.chunkytofustudios.native_geofence.bridge
 
+import com.chunkytofustudios.native_geofence.Constants
 import com.chunkytofustudios.native_geofence.generated.ActiveGeofenceWire
 import com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWire
 import com.chunkytofustudios.native_geofence.generated.GeofenceEvent
@@ -65,6 +66,36 @@ class NativeGeofenceBridgeDecisionGateTest {
 }
 
 class NativeGeofenceBridgeMetadataTest {
+    @Test
+    fun `metadata keys preserve current and legacy bridge contracts`() {
+        assertEquals(
+            "com.chunkytofustudios.native_geofence.native_event_processor",
+            Constants.NATIVE_EVENT_PROCESSOR_METADATA_KEY
+        )
+        assertEquals(
+            "com.chunkytofustudios.native_geofence.BRIDGE_PROCESSOR",
+            Constants.LEGACY_NATIVE_EVENT_PROCESSOR_METADATA_KEY
+        )
+    }
+
+    @Test
+    fun `legacy metadata remains compatible while the current key takes precedence`() {
+        assertEquals(
+            "legacy.Processor",
+            NativeGeofenceBridgeCompatibility.preferredProcessorClassName(
+                current = null,
+                legacy = "legacy.Processor",
+            ),
+        )
+        assertEquals(
+            "current.Processor",
+            NativeGeofenceBridgeCompatibility.preferredProcessorClassName(
+                current = "current.Processor",
+                legacy = "legacy.Processor",
+            ),
+        )
+    }
+
     @Test
     fun `metadata discovery exceptions safely disable the processor`() {
         val className = NativeGeofenceBridgeCompatibility.processorClassNameOrNull {
