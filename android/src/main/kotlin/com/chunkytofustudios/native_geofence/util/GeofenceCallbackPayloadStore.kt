@@ -74,10 +74,12 @@ internal object CallbackPayloadMigration {
     fun withStableEventId(
         params: GeofenceCallbackParamsWire,
         workerId: String
-    ): GeofenceCallbackParamsWire = if (params.eventId.isNullOrBlank()) {
-        params.copy(eventId = workerId)
-    } else {
-        params
+    ): GeofenceCallbackParamsWire {
+        val eventId = params.eventId?.takeIf(String::isNotBlank) ?: workerId
+        return params.copy(
+            eventId = eventId,
+            traceId = params.traceId?.takeIf(String::isNotBlank) ?: eventId,
+        )
     }
 }
 

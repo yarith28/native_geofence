@@ -14,6 +14,8 @@ class GeofenceCallbackParamsStorage(
     private val eventId: String? = null,
     // Defaulted for payload files queued before callback contexts existed.
     private val callbackContextsByGeofenceId: Map<String, Long>? = null,
+    // Defaulted for payload files queued before root tracing existed.
+    private val traceId: String? = null,
 ) {
     companion object {
         fun fromWire(e: GeofenceCallbackParamsWire): GeofenceCallbackParamsStorage {
@@ -25,6 +27,7 @@ class GeofenceCallbackParamsStorage(
                 callbackHandle = e.callbackHandle,
                 eventId = e.eventId,
                 callbackContextsByGeofenceId = e.callbackContextsByGeofenceId,
+                traceId = e.traceId,
             )
         }
     }
@@ -38,6 +41,7 @@ class GeofenceCallbackParamsStorage(
             callbackHandle = callbackHandle,
             eventId = eventId,
             callbackContextsByGeofenceId = callbackContextsByGeofenceId,
+            traceId = traceId,
         )
     }
 }

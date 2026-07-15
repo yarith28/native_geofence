@@ -235,15 +235,17 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
             eventAtMillis: eventAtMillis
         )
 
+        let eventId = UUID().uuidString
         let params = GeofenceCallbackParamsWire(
             geofences: [activeGeofence],
             event: event,
             eventAtMillis: eventAtMillis,
             callbackHandle: callbackHandle,
-            eventId: UUID().uuidString,
+            eventId: eventId,
             callbackContextsByGeofenceId: NativeGeofencePersistence
                 .getRegionCallbackContext(id: activeGeofence.id)
-                .map { [activeGeofence.id: $0] }
+                .map { [activeGeofence.id: $0] },
+            traceId: eventId
         )
 
         deliverEvent(

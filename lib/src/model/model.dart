@@ -19,11 +19,20 @@ class Location {
   /// include a location fix.
   final bool isMock;
 
+  /// Wall-clock timestamp reported by the native location provider.
+  final DateTime? fixTime;
+
+  /// Monotonic provider timestamp. Primarily useful for diagnostics because it
+  /// remains meaningful when the device wall clock changes.
+  final int? elapsedRealtimeNanos;
+
   const Location({
     required this.latitude,
     required this.longitude,
     this.accuracyMeters,
     this.isMock = false,
+    this.fixTime,
+    this.elapsedRealtimeNanos,
   });
 
   /// Whether this location instance is valid.
@@ -38,6 +47,8 @@ class Location {
         'longitude': longitude,
         'accuracyMeters': accuracyMeters,
         'isMock': isMock,
+        'fixTimeMillis': fixTime?.millisecondsSinceEpoch,
+        'elapsedRealtimeNanos': elapsedRealtimeNanos,
       };
 
   @override
@@ -301,6 +312,13 @@ class GeofenceCallbackParams {
   /// should still enforce their own state rules. Set on Android and iOS.
   final String? eventId;
 
+  /// Root delivery identity shared by native, confirmation, and application
+  /// processing stages.
+  ///
+  /// For a direct native callback this normally equals [eventId]. A smart
+  /// confirmation may create a new [eventId] while retaining this value.
+  final String? traceId;
+
   /// Opaque callback contexts keyed by triggering geofence ID.
   ///
   /// Registrations without a context are absent. The plugin never interprets
@@ -313,6 +331,7 @@ class GeofenceCallbackParams {
     required this.location,
     this.eventAt,
     this.eventId,
+    this.traceId,
     this.callbackContextsByGeofenceId = const {},
   });
 
@@ -326,6 +345,7 @@ class GeofenceCallbackParams {
         'hasLocation: ${location != null}, '
         'hasEventAt: ${eventAt != null}, '
         'hasEventId: ${eventId != null}, '
+        'hasTraceId: ${traceId != null}, '
         'callbackContextCount: ${callbackContextsByGeofenceId.length})';
   }
 }

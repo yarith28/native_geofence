@@ -38,6 +38,8 @@ void main() {
       'longitude': 104.9,
       'accuracyMeters': 12.0,
       'isMock': true,
+      'fixTimeMillis': null,
+      'elapsedRealtimeNanos': null,
     });
     expect(androidSettings.toJson(), {
       'initialTriggers': ['enter', 'exit'],
