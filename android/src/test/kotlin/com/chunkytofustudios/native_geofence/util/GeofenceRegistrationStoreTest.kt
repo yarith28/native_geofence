@@ -137,9 +137,13 @@ class GeofenceRegistrationStoreTest {
         now = 1_100L
 
         val registered = store.getRegisteredGeofences()
+        val snapshots = store.getRegisteredGeofenceSnapshots()
 
         assertEquals(listOf(alpha, office), registered)
         assertEquals(500L, registered.last().androidSettings.expirationDurationMillis)
+        assertEquals(registered, snapshots.map { it.configuredGeofence })
+        assertEquals(null, snapshots.first().expirationDeadlineMillis)
+        assertEquals(1_500L, snapshots.last().expirationDeadlineMillis)
         assertEquals(registered.map(GeofenceWire::id), store.getRegisteredGeofenceIds())
         assertFalse(assertNotNull(store.getConfiguredGeofence("expired")).active)
     }

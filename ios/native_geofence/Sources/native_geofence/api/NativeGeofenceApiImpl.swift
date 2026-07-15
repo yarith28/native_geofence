@@ -76,6 +76,14 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
         }
     }
 
+    func restoreGeofence(
+        geofence: GeofenceWire,
+        expirationDeadlineMillis: Int64?,
+        completion: @escaping (Result<Void, any Error>) -> Void
+    ) {
+        createGeofence(geofence: geofence, completion: completion)
+    }
+
     private func performCreateGeofence(
         geofence: GeofenceWire,
         completion: @escaping (Result<Void, any Error>) -> Void

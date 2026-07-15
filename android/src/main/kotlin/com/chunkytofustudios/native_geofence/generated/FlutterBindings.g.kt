@@ -535,7 +535,13 @@ data class ActiveGeofenceWire (
   val location: LocationWire,
   val radiusMeters: Double,
   val triggers: List<GeofenceEvent>,
-  val androidSettings: AndroidGeofenceSettingsWire? = null
+  val androidSettings: AndroidGeofenceSettingsWire? = null,
+  /**
+   * Absolute Android wall-clock expiration deadline for this active
+   * registration. Null means the registration does not expire or the platform
+   * does not expose an Android deadline.
+   */
+  val expirationDeadlineMillis: Long? = null
 )
  {
   companion object {
@@ -545,7 +551,8 @@ data class ActiveGeofenceWire (
       val radiusMeters = pigeonVar_list[2] as Double
       val triggers = pigeonVar_list[3] as List<GeofenceEvent>
       val androidSettings = pigeonVar_list[4] as AndroidGeofenceSettingsWire?
-      return ActiveGeofenceWire(id, location, radiusMeters, triggers, androidSettings)
+      val expirationDeadlineMillis = pigeonVar_list[5] as Long?
+      return ActiveGeofenceWire(id, location, radiusMeters, triggers, androidSettings, expirationDeadlineMillis)
     }
   }
   fun toList(): List<Any?> {
@@ -555,6 +562,7 @@ data class ActiveGeofenceWire (
       radiusMeters,
       triggers,
       androidSettings,
+      expirationDeadlineMillis,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -565,7 +573,7 @@ data class ActiveGeofenceWire (
       return true
     }
     val other = other as ActiveGeofenceWire
-    return FlutterBindingsPigeonUtils.deepEquals(this.id, other.id) && FlutterBindingsPigeonUtils.deepEquals(this.location, other.location) && FlutterBindingsPigeonUtils.deepEquals(this.radiusMeters, other.radiusMeters) && FlutterBindingsPigeonUtils.deepEquals(this.triggers, other.triggers) && FlutterBindingsPigeonUtils.deepEquals(this.androidSettings, other.androidSettings)
+    return FlutterBindingsPigeonUtils.deepEquals(this.id, other.id) && FlutterBindingsPigeonUtils.deepEquals(this.location, other.location) && FlutterBindingsPigeonUtils.deepEquals(this.radiusMeters, other.radiusMeters) && FlutterBindingsPigeonUtils.deepEquals(this.triggers, other.triggers) && FlutterBindingsPigeonUtils.deepEquals(this.androidSettings, other.androidSettings) && FlutterBindingsPigeonUtils.deepEquals(this.expirationDeadlineMillis, other.expirationDeadlineMillis)
   }
 
   override fun hashCode(): Int {
@@ -575,6 +583,7 @@ data class ActiveGeofenceWire (
     result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.radiusMeters)
     result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.triggers)
     result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.androidSettings)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.expirationDeadlineMillis)
     return result
   }
 }
@@ -1104,6 +1113,12 @@ private open class FlutterBindingsPigeonCodec : StandardMessageCodec() {
 interface NativeGeofenceApi {
   fun initialize(callbackDispatcherHandle: Long)
   fun createGeofence(geofence: GeofenceWire, callback: (Result<Unit>) -> Unit)
+  /**
+   * Restores a canonical registration while preserving its existing Android
+   * absolute expiration deadline. Intended for higher-level transactional
+   * coordinators that already own an exact before-image.
+   */
+  fun restoreGeofence(geofence: GeofenceWire, expirationDeadlineMillis: Long?, callback: (Result<Unit>) -> Unit)
   fun reCreateAfterReboot(callback: (Result<Unit>) -> Unit)
   fun getStatus(callback: (Result<NativeGeofenceStatusWire>) -> Unit)
   fun getSynchronizationState(desiredRegistrations: List<GeofenceWire>, callback: (Result<NativeGeofenceSynchronizationStateWire>) -> Unit)
@@ -1147,6 +1162,26 @@ interface NativeGeofenceApi {
             val args = message as List<Any?>
             val geofenceArg = args[0] as GeofenceWire
             api.createGeofence(geofenceArg) { result: Result<Unit> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(FlutterBindingsPigeonUtils.wrapError(error))
+              } else {
+                reply.reply(FlutterBindingsPigeonUtils.wrapResult(null))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.native_geofence.NativeGeofenceApi.restoreGeofence$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val geofenceArg = args[0] as GeofenceWire
+            val expirationDeadlineMillisArg = args[1] as Long?
+            api.restoreGeofence(geofenceArg, expirationDeadlineMillisArg) { result: Result<Unit> ->
               val error = result.exceptionOrNull()
               if (error != null) {
                 reply.reply(FlutterBindingsPigeonUtils.wrapError(error))

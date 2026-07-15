@@ -231,12 +231,21 @@ class ActiveGeofence {
   /// proof that an initial event occurred.
   final AndroidGeofenceSettings? androidSettings;
 
+  /// The absolute Android expiration deadline represented by this active
+  /// snapshot. Null means the registration does not expire or the platform is
+  /// not Android.
+  ///
+  /// Unlike [AndroidGeofenceSettings.expiration], this value does not restart
+  /// when a higher-level coordinator restores a failed multi-layer mutation.
+  final DateTime? expirationDeadline;
+
   ActiveGeofence({
     required this.id,
     required this.location,
     required this.radiusMeters,
     required this.triggers,
     required this.androidSettings,
+    this.expirationDeadline,
   });
 
   Map<String, Object?> toJson() => {
@@ -245,6 +254,7 @@ class ActiveGeofence {
         'radiusMeters': radiusMeters,
         'triggers': triggers.map((event) => event.name).toList()..sort(),
         'androidSettings': androidSettings?.toJson(),
+        'expirationDeadlineMillis': expirationDeadline?.millisecondsSinceEpoch,
       };
 
   @override
@@ -254,7 +264,8 @@ class ActiveGeofence {
         'location: $location, '
         'radiusMeters: $radiusMeters, '
         'triggers: [${triggers.map((e) => e.name).join(',')}], '
-        'androidSettings: $androidSettings)';
+        'androidSettings: $androidSettings, '
+        'expirationDeadline: $expirationDeadline)';
   }
 }
 

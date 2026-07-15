@@ -34,6 +34,38 @@ void main() {
         .setMockDecodedMessageHandler<Object?>(channel, null);
   });
 
+  test('manager forwards the canonical geofence and absolute restore deadline',
+      () async {
+    GeofenceWire? capturedGeofence;
+    int? capturedDeadlineMillis;
+    final channel = BasicMessageChannel<Object?>(
+      'dev.flutter.pigeon.native_geofence.NativeGeofenceApi.restoreGeofence',
+      NativeGeofenceApi.pigeonChannelCodec,
+    );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockDecodedMessageHandler<Object?>(channel, (message) async {
+      final arguments = message! as List<Object?>;
+      capturedGeofence = arguments[0] as GeofenceWire;
+      capturedDeadlineMillis = arguments[1] as int?;
+      return <Object?>[null];
+    });
+    final deadline = DateTime.fromMillisecondsSinceEpoch(1720000000123);
+
+    await NativeGeofenceManager.instance.restoreGeofence(
+      _geofence('office', expiration: const Duration(hours: 1)),
+      callbackWithContext,
+      callbackContext: 771,
+      expirationDeadline: deadline,
+    );
+
+    expect(capturedGeofence?.id, 'office');
+    expect(capturedGeofence?.callbackContext, 771);
+    expect(capturedGeofence?.callbackHandle, isNot(0));
+    expect(capturedDeadlineMillis, deadline.millisecondsSinceEpoch);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockDecodedMessageHandler<Object?>(channel, null);
+  });
+
   test('callback mapper exposes immutable contexts keyed by geofence ID', () {
     final wire = GeofenceCallbackParamsWire(
       geofences: [_active('office'), _active('home')],
@@ -65,13 +97,16 @@ void main() {
   });
 }
 
-Geofence _geofence(String id) => Geofence(
+Geofence _geofence(String id, {Duration? expiration}) => Geofence(
       id: id,
       location: const Location(latitude: 11.5, longitude: 104.9),
       radiusMeters: 100,
       triggers: const {GeofenceEvent.enter},
       iosSettings: const IosGeofenceSettings(),
-      androidSettings: const AndroidGeofenceSettings(initialTriggers: {}),
+      androidSettings: AndroidGeofenceSettings(
+        initialTriggers: const {},
+        expiration: expiration,
+      ),
     );
 
 ActiveGeofenceWire _active(String id) => ActiveGeofenceWire(
