@@ -104,6 +104,36 @@ class NativeGeofenceBridgeMetadataTest {
 
         assertEquals(null, className)
     }
+
+    @Test
+    fun `typed lookup distinguishes absent current legacy and failed metadata`() {
+        assertIs<NativeGeofenceBridgeCompatibility.LookupResult.Absent>(
+            NativeGeofenceBridgeCompatibility.lookupResult { null },
+        )
+        val current = assertIs<NativeGeofenceBridgeCompatibility.LookupResult.Found>(
+            NativeGeofenceBridgeCompatibility.lookupResult {
+                NativeGeofenceBridgeCompatibility.preferredProcessorMetadata(
+                    current = "current.Processor",
+                    legacy = "legacy.Processor",
+                )
+            },
+        )
+        assertEquals("manifest_current", current.metadata.source)
+        val legacy = assertIs<NativeGeofenceBridgeCompatibility.LookupResult.Found>(
+            NativeGeofenceBridgeCompatibility.lookupResult {
+                NativeGeofenceBridgeCompatibility.preferredProcessorMetadata(
+                    current = null,
+                    legacy = "legacy.Processor",
+                )
+            },
+        )
+        assertEquals("manifest_legacy", legacy.metadata.source)
+        assertIs<NativeGeofenceBridgeCompatibility.LookupResult.Failed>(
+            NativeGeofenceBridgeCompatibility.lookupResult {
+                throw IllegalStateException("metadata unavailable")
+            },
+        )
+    }
 }
 
 class NativeGeofenceBridgeMapperTest {
@@ -153,6 +183,7 @@ class NativeGeofenceBridgeMapperTest {
         assertEquals(91L, transformed.callbackHandle)
         assertEquals(123L, transformed.eventAtMillis)
         assertEquals("delivery-1", transformed.eventId)
+        assertEquals("trace-1", transformed.traceId)
         assertEquals(mapOf("b" to 2L), transformed.callbackContextsByGeofenceId)
     }
 
@@ -180,6 +211,8 @@ class NativeGeofenceBridgeMapperTest {
         assertEquals(listOf("a", "b"), event?.geofenceIds)
         assertEquals(NativeGeofenceBridgeTransition.ENTER, event?.transition)
         assertEquals("delivery-1", event?.eventId)
+        assertEquals(456L, event?.location?.fixTimeMillis)
+        assertEquals(789L, event?.location?.elapsedRealtimeNanos)
     }
 
     private fun params() = GeofenceCallbackParamsWire(
@@ -189,12 +222,15 @@ class NativeGeofenceBridgeMapperTest {
             latitude = 11.0,
             longitude = 104.0,
             accuracyMeters = 3.0,
-            isMock = false
+            isMock = false,
+            fixTimeMillis = 456L,
+            elapsedRealtimeNanos = 789L,
         ),
         eventAtMillis = 123L,
         callbackHandle = 91L,
         eventId = "delivery-1",
-        callbackContextsByGeofenceId = mapOf("a" to 1L, "b" to 2L)
+        callbackContextsByGeofenceId = mapOf("a" to 1L, "b" to 2L),
+        traceId = "trace-1",
     )
 
     private fun active(id: String) = ActiveGeofenceWire(

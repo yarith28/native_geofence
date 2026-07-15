@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.chunkytofustudios.native_geofence.BuildConfig
 import com.chunkytofustudios.native_geofence.Constants
 import com.chunkytofustudios.native_geofence.generated.NativeGeofenceCallbackRefreshState
 import com.chunkytofustudios.native_geofence.generated.NativeGeofencePlatform
@@ -79,6 +80,7 @@ internal class AndroidNativeGeofenceStatusProvider(private val context: Context)
             )
         )
 
+        val deliveryTrace = NativeGeofenceDeliveryDiagnostics.snapshot(appContext)
         return NativeGeofenceStatusWire(
             platform = NativeGeofencePlatform.ANDROID,
             osVersion = "API ${Build.VERSION.SDK_INT} (${Build.VERSION.RELEASE})",
@@ -102,7 +104,11 @@ internal class AndroidNativeGeofenceStatusProvider(private val context: Context)
             lastEnqueueFact = fact(appContext, NativeGeofenceDiagnosticStage.ENQUEUE),
             lastWorkerFact = fact(appContext, NativeGeofenceDiagnosticStage.WORKER),
             lastRecoveryFact = fact(appContext, NativeGeofenceDiagnosticStage.RECOVERY),
-            lastForegroundFact = fact(appContext, NativeGeofenceDiagnosticStage.FOREGROUND)
+            lastForegroundFact = fact(appContext, NativeGeofenceDiagnosticStage.FOREGROUND),
+            deliveryTrace = deliveryTrace.entries,
+            deliveryTraceDroppedCount = deliveryTrace.droppedCount,
+            packageVersion = BuildConfig.NATIVE_GEOFENCE_PACKAGE_VERSION,
+            buildRevision = BuildConfig.NATIVE_GEOFENCE_BUILD_REVISION,
         )
     }
 

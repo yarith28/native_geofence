@@ -5,11 +5,13 @@ import 'package:native_geofence/src/model/model_mapper.dart';
 
 void main() {
   test('location metadata round-trips through the platform wire model', () {
-    const location = Location(
+    final location = Location(
       latitude: 11.5564,
       longitude: 104.9282,
       accuracyMeters: 18.75,
       isMock: true,
+      fixTime: DateTime.fromMillisecondsSinceEpoch(1234),
+      elapsedRealtimeNanos: 5678,
     );
 
     final wire = location.toWire();
@@ -17,10 +19,14 @@ void main() {
 
     expect(wire.accuracyMeters, 18.75);
     expect(wire.isMock, isTrue);
+    expect(wire.fixTimeMillis, 1234);
+    expect(wire.elapsedRealtimeNanos, 5678);
     expect(decoded.latitude, location.latitude);
     expect(decoded.longitude, location.longitude);
     expect(decoded.accuracyMeters, location.accuracyMeters);
     expect(decoded.isMock, isTrue);
+    expect(decoded.fixTime, location.fixTime);
+    expect(decoded.elapsedRealtimeNanos, 5678);
   });
 
   test('legacy location construction keeps neutral metadata defaults', () {

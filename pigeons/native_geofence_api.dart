@@ -36,11 +36,19 @@ class LocationWire {
   /// Whether this fix came from a mock location provider.
   final bool isMock;
 
+  /// Device wall-clock timestamp reported by the location provider.
+  final int? fixTimeMillis;
+
+  /// Monotonic provider timestamp used to calculate fix age on Android.
+  final int? elapsedRealtimeNanos;
+
   const LocationWire({
     required this.latitude,
     required this.longitude,
     this.accuracyMeters,
     this.isMock = false,
+    this.fixTimeMillis,
+    this.elapsedRealtimeNanos,
   });
 }
 
@@ -134,6 +142,13 @@ class GeofenceCallbackParamsWire {
   /// Registrations without a context are absent from this map.
   final Map<String, int>? callbackContextsByGeofenceId;
 
+  /// Correlates this delivery with the root native transition that caused it.
+  ///
+  /// Direct native deliveries use the same value as [eventId]. A higher-level
+  /// processor may create a new delivery [eventId] while preserving this root
+  /// identity across confirmation, retry, and application queueing.
+  final String? traceId;
+
   const GeofenceCallbackParamsWire({
     required this.geofences,
     required this.event,
@@ -142,6 +157,7 @@ class GeofenceCallbackParamsWire {
     required this.callbackHandle,
     this.eventId,
     this.callbackContextsByGeofenceId,
+    this.traceId,
   });
 }
 
@@ -244,6 +260,51 @@ class NativeGeofenceLifecycleFactWire {
   });
 }
 
+/// Privacy-safe evidence for one native callback-delivery stage.
+class NativeGeofenceDeliveryTraceWire {
+  final int sequence;
+  final int occurredAtMillis;
+  final int? elapsedRealtimeMillis;
+  final String? traceId;
+  final String stage;
+  final String outcome;
+  final String? event;
+  final int? geofenceCount;
+  final int? attempt;
+  final String? owner;
+  final String? reasonCode;
+  final int? durationMillis;
+  final int? queueAgeMillis;
+  final bool? hasLocation;
+  final int? locationAgeMillis;
+  final double? accuracyMeters;
+  final String? processorSource;
+  final String? processorClass;
+  final String? errorType;
+
+  const NativeGeofenceDeliveryTraceWire({
+    required this.sequence,
+    required this.occurredAtMillis,
+    this.elapsedRealtimeMillis,
+    this.traceId,
+    required this.stage,
+    required this.outcome,
+    this.event,
+    this.geofenceCount,
+    this.attempt,
+    this.owner,
+    this.reasonCode,
+    this.durationMillis,
+    this.queueAgeMillis,
+    this.hasLocation,
+    this.locationAgeMillis,
+    this.accuracyMeters,
+    this.processorSource,
+    this.processorClass,
+    this.errorType,
+  });
+}
+
 class NativeGeofenceStatusWire {
   final NativeGeofencePlatform platform;
   final String? osVersion;
@@ -273,6 +334,10 @@ class NativeGeofenceStatusWire {
   final NativeGeofenceLifecycleFactWire? lastWorkerFact;
   final NativeGeofenceLifecycleFactWire? lastRecoveryFact;
   final NativeGeofenceLifecycleFactWire? lastForegroundFact;
+  final List<NativeGeofenceDeliveryTraceWire>? deliveryTrace;
+  final int? deliveryTraceDroppedCount;
+  final String? packageVersion;
+  final String? buildRevision;
 
   const NativeGeofenceStatusWire({
     required this.platform,
@@ -298,6 +363,10 @@ class NativeGeofenceStatusWire {
     this.lastWorkerFact,
     this.lastRecoveryFact,
     this.lastForegroundFact,
+    this.deliveryTrace,
+    this.deliveryTraceDroppedCount,
+    this.packageVersion,
+    this.buildRevision,
   });
 }
 

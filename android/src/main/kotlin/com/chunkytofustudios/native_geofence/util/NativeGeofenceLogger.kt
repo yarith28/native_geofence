@@ -119,6 +119,9 @@ object NativeGeofenceLogger {
     ) {
         val ctx = context?.applicationContext ?: appContext ?: return
         if (fileLoggingEnabled == false) return
+        // Capture the observation timestamp on the caller thread. File I/O can
+        // be delayed behind other diagnostic work and must not rewrite history.
+        val line = formatLine(level, tag, message, throwable)
         NativeGeofenceIo.execute {
             if (!isEnabled(ctx)) {
                 fileLoggingEnabled = false
@@ -128,7 +131,7 @@ object NativeGeofenceLogger {
             synchronized(fileLock) {
                 val file = logFile(ctx)
                 file.parentFile?.mkdirs()
-                file.appendText(formatLine(level, tag, message, throwable), Charsets.UTF_8)
+                file.appendText(line, Charsets.UTF_8)
                 trimToMaxBytes(file, maxBytes(ctx))
             }
         }

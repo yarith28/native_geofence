@@ -8,11 +8,16 @@ object NativeGeofenceBridge {
     private const val TAG = "NativeGeofenceBridge"
     private val lock = Object()
 
-    @Volatile
-    private var processor: NativeGeofenceEventProcessor? = null
+    internal data class Resolution(
+        val processor: NativeGeofenceEventProcessor?,
+        val outcome: String,
+        val source: String,
+        val className: String? = null,
+        val errorType: String? = null,
+    )
 
     @Volatile
-    private var metadataLoaded = false
+    private var resolution: Resolution? = null
 
     /**
      * Installs a processor before geofence delivery. Passing null explicitly
@@ -20,32 +25,54 @@ object NativeGeofenceBridge {
      */
     @JvmStatic
     fun setProcessor(processor: NativeGeofenceEventProcessor?) = synchronized(lock) {
-        this.processor = processor
-        metadataLoaded = true
+        resolution = Resolution(
+            processor = processor,
+            outcome = if (processor == null) "disabled" else "loaded",
+            source = if (processor == null) "programmatic_disabled" else "programmatic",
+            className = processor?.javaClass?.name,
+        )
     }
 
     internal fun resolve(context: Context): NativeGeofenceEventProcessor? {
-        processor?.let { return it }
+        return resolveDetailed(context).processor
+    }
+
+    internal fun resolveDetailed(context: Context): Resolution {
+        resolution?.let { return it }
         return synchronized(lock) {
-            processor?.let { return@synchronized it }
-            if (metadataLoaded) return@synchronized null
-            metadataLoaded = true
-            processor = loadMetadataProcessor(context.applicationContext)
-            processor
+            resolution?.let { return@synchronized it }
+            loadMetadataProcessor(context.applicationContext).also { resolution = it }
         }
     }
 
-    private fun loadMetadataProcessor(context: Context): NativeGeofenceEventProcessor? {
+    private fun loadMetadataProcessor(context: Context): Resolution {
+        val metadata = when (val lookup = NativeGeofenceBridgeCompatibility.lookup(context)) {
+            NativeGeofenceBridgeCompatibility.LookupResult.Absent -> {
+                NativeGeofenceLogger.d(
+                    context,
+                    TAG,
+                    "No native event processor metadata found; continuing with Dart delivery.",
+                )
+                return Resolution(null, "absent", "manifest")
+            }
+            is NativeGeofenceBridgeCompatibility.LookupResult.Failed -> {
+                NativeGeofenceLogger.w(
+                    context,
+                    TAG,
+                    "Native event processor metadata lookup failed; continuing with Dart delivery.",
+                    lookup.error,
+                )
+                return Resolution(
+                    null,
+                    "lookup_failed",
+                    "manifest",
+                    errorType = lookup.error.javaClass.name,
+                )
+            }
+            is NativeGeofenceBridgeCompatibility.LookupResult.Found -> lookup.metadata
+        }
         return try {
-            val className = NativeGeofenceBridgeCompatibility.processorClassName(context)
-                ?: run {
-                    NativeGeofenceLogger.d(
-                        context,
-                        TAG,
-                        "No native event processor metadata found; continuing with Dart delivery.",
-                    )
-                    return null
-                }
+            val className = metadata.className
             val loaded = Class.forName(className, false, context.classLoader)
                 .asSubclass(NativeGeofenceEventProcessor::class.java)
                 .getDeclaredConstructor()
@@ -55,7 +82,7 @@ object NativeGeofenceBridge {
                 TAG,
                 "Loaded native event processor class=$className.",
             )
-            loaded
+            Resolution(loaded, "loaded", metadata.source, className)
         } catch (error: Throwable) {
             NativeGeofenceLogger.w(
                 context,
@@ -64,7 +91,13 @@ object NativeGeofenceBridge {
                     "continuing with Dart delivery.",
                 error
             )
-            null
+            Resolution(
+                null,
+                "class_load_failed",
+                metadata.source,
+                metadata.className,
+                error.javaClass.name,
+            )
         }
     }
 }

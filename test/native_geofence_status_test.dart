@@ -34,6 +34,23 @@ void main() {
       lastWorkerFact: null,
       lastRecoveryFact: null,
       lastForegroundFact: null,
+      deliveryTrace: [
+        NativeGeofenceDeliveryTraceWire(
+          sequence: 7,
+          occurredAtMillis: 456,
+          traceId: 'trace-1',
+          stage: 'bridge_decision',
+          outcome: 'native_accepted',
+          event: 'exit',
+          geofenceCount: 1,
+          owner: 'native',
+          durationMillis: 12,
+          locationAgeMillis: 34,
+        ),
+      ],
+      deliveryTraceDroppedCount: 2,
+      packageVersion: '1.3.1',
+      buildRevision: 'abc123',
     );
 
     final status = wire.fromWire();
@@ -45,6 +62,11 @@ void main() {
     expect(status.canEnumerateLivePlatformRegistrations, isFalse);
     expect(status.lastRegistrationFact?.occurredAt.millisecondsSinceEpoch, 123);
     expect(status.lastRegistrationFact?.outcome, 'registered');
+    expect(status.deliveryTrace.single.traceId, 'trace-1');
+    expect(status.deliveryTrace.single.outcome, 'native_accepted');
+    expect(status.deliveryTraceDroppedCount, 2);
+    expect(status.packageVersion, '1.3.1');
+    expect(status.buildRevision, 'abc123');
     expect(status.toJson()['locationPermissionGranted'], isTrue);
     expect(status.toJson(), isNot(contains('fineLocationPermissionGranted')));
     expect(status.toJson(), isNot(contains('persistedGeofenceIds')));
