@@ -314,6 +314,43 @@ class AndroidGeofenceSynchronizationPlannerTest {
     }
 
     @Test
+    fun `rollback deadline must match the configured expiration contract`() {
+        val finite = geofence("finite", handle = 1, context = null).copy(
+            androidSettings = geofence(
+                "finite",
+                handle = 1,
+                context = null,
+            ).androidSettings.copy(expirationDurationMillis = 1_000),
+        )
+        val infinite = geofence("infinite", handle = 1, context = null)
+
+        assertTrue(
+            AndroidGeofenceSynchronizationPlanner.hasConsistentRollbackDeadline(
+                finite,
+                expirationDeadlineMillis = 2_000,
+            ),
+        )
+        assertFalse(
+            AndroidGeofenceSynchronizationPlanner.hasConsistentRollbackDeadline(
+                finite,
+                expirationDeadlineMillis = null,
+            ),
+        )
+        assertTrue(
+            AndroidGeofenceSynchronizationPlanner.hasConsistentRollbackDeadline(
+                infinite,
+                expirationDeadlineMillis = null,
+            ),
+        )
+        assertFalse(
+            AndroidGeofenceSynchronizationPlanner.hasConsistentRollbackDeadline(
+                infinite,
+                expirationDeadlineMillis = 2_000,
+            ),
+        )
+    }
+
+    @Test
     fun `rollback touches only registrations owned by the failed transaction`() {
         val office = stored(
             geofence("office", handle = 1, context = null),

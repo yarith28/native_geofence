@@ -239,6 +239,13 @@ internal object AndroidGeofenceSynchronizationPlanner {
         )
     }
 
+    fun hasConsistentRollbackDeadline(
+        configuredGeofence: GeofenceWire,
+        expirationDeadlineMillis: Long?,
+    ): Boolean =
+        (configuredGeofence.androidSettings.expirationDurationMillis == null) ==
+            (expirationDeadlineMillis == null)
+
     fun rollbackPlan(
         platformTouchedIds: Set<String>,
         previouslyActive: List<StoredGeofenceRegistration>

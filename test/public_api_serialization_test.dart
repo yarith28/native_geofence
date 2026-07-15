@@ -137,6 +137,7 @@ void main() {
   });
 
   test('callback parameter summary omits sensitive delivery details', () {
+    final deadline = DateTime.fromMillisecondsSinceEpoch(1720000000123);
     final params = GeofenceCallbackParams(
       geofences: [
         ActiveGeofence(
@@ -145,6 +146,7 @@ void main() {
           radiusMeters: 150,
           triggers: {GeofenceEvent.enter},
           androidSettings: AndroidGeofenceSettings(initialTriggers: {}),
+          expirationDeadline: deadline,
         ),
       ],
       event: GeofenceEvent.enter,
@@ -163,5 +165,9 @@ void main() {
     expect(summary, isNot(contains('private-delivery-id')));
     expect(summary, isNot(contains('11.')));
     expect(summary, isNot(contains('1001')));
+    expect(
+      params.geofences.single.toJson()['expirationDeadlineMillis'],
+      deadline.millisecondsSinceEpoch,
+    );
   });
 }

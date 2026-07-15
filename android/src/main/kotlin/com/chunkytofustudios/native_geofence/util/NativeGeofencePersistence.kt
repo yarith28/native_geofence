@@ -83,6 +83,13 @@ class NativeGeofencePersistence {
             }
 
         @JvmStatic
+        internal fun getAllRegisteredGeofenceSnapshots(
+            context: Context,
+        ): List<StoredGeofenceRegistration> = synchronized(sharedPreferencesLock) {
+            store(context).getRegisteredGeofenceSnapshots()
+        }
+
+        @JvmStatic
         internal fun getRecoveryInventory(
             context: Context,
         ): List<GeofenceRecoveryInventoryEntry> = synchronized(sharedPreferencesLock) {

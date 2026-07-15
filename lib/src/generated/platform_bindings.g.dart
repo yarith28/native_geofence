@@ -467,6 +467,7 @@ class ActiveGeofenceWire {
     required this.radiusMeters,
     required this.triggers,
     this.androidSettings,
+    this.expirationDeadlineMillis,
   });
 
   String id;
@@ -479,6 +480,11 @@ class ActiveGeofenceWire {
 
   AndroidGeofenceSettingsWire? androidSettings;
 
+  /// Absolute Android wall-clock expiration deadline for this active
+  /// registration. Null means the registration does not expire or the platform
+  /// does not expose an Android deadline.
+  int? expirationDeadlineMillis;
+
   List<Object?> _toList() {
     return <Object?>[
       id,
@@ -486,6 +492,7 @@ class ActiveGeofenceWire {
       radiusMeters,
       triggers,
       androidSettings,
+      expirationDeadlineMillis,
     ];
   }
 
@@ -501,6 +508,7 @@ class ActiveGeofenceWire {
       radiusMeters: result[2]! as double,
       triggers: (result[3]! as List<Object?>).cast<GeofenceEvent>(),
       androidSettings: result[4] as AndroidGeofenceSettingsWire?,
+      expirationDeadlineMillis: result[5] as int?,
     );
   }
 
@@ -517,7 +525,8 @@ class ActiveGeofenceWire {
         _deepEquals(location, other.location) &&
         _deepEquals(radiusMeters, other.radiusMeters) &&
         _deepEquals(triggers, other.triggers) &&
-        _deepEquals(androidSettings, other.androidSettings);
+        _deepEquals(androidSettings, other.androidSettings) &&
+        _deepEquals(expirationDeadlineMillis, other.expirationDeadlineMillis);
   }
 
   @override
@@ -1174,6 +1183,29 @@ class NativeGeofenceApi {
     );
     final Future<Object?> pigeonVar_sendFuture =
         pigeonVar_channel.send(<Object?>[geofence]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
+  /// Restores a canonical registration while preserving its existing Android
+  /// absolute expiration deadline. Intended for higher-level transactional
+  /// coordinators that already own an exact before-image.
+  Future<void> restoreGeofence(
+      {required GeofenceWire geofence, int? expirationDeadlineMillis}) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.native_geofence.NativeGeofenceApi.restoreGeofence$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture =
+        pigeonVar_channel.send(<Object?>[geofence, expirationDeadlineMillis]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(

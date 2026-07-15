@@ -173,6 +173,50 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         }
     }
 
+    override fun restoreGeofence(
+        geofence: GeofenceWire,
+        expirationDeadlineMillis: Long?,
+        callback: (Result<Unit>) -> Unit,
+    ) {
+        mutationRunner.run(callback) { complete ->
+            if (!AndroidGeofenceSynchronizationPlanner.hasConsistentRollbackDeadline(
+                    configuredGeofence = geofence,
+                    expirationDeadlineMillis = expirationDeadlineMillis,
+                )
+            ) {
+                complete(
+                    Result.failure(
+                        FlutterError(
+                            NativeGeofenceErrorCode.INVALID_ARGUMENTS.raw.toString(),
+                            "An Android rollback restore requires an absolute expiration " +
+                                "deadline exactly when the configured geofence is finite.",
+                        ),
+                    ),
+                )
+                return@run
+            }
+            val nowMillis = System.currentTimeMillis()
+            val platformGeofence = AndroidGeofenceSynchronizationPlanner
+                .platformRegistrationForRollback(
+                    configuredGeofence = geofence,
+                    expirationDeadlineMillis = expirationDeadlineMillis,
+                    nowMillis = nowMillis,
+                )
+            if (platformGeofence == null) {
+                removeGeofenceByIdLocked(geofence.id, complete)
+                return@run
+            }
+            createGeofenceHelper(
+                geofence = platformGeofence,
+                cache = true,
+                callback = complete,
+                configuredGeofence = geofence,
+                expirationDeadlineMillisOverride = expirationDeadlineMillis,
+                includeInitialTriggers = false,
+            )
+        }
+    }
+
     override fun reCreateAfterReboot(callback: (Result<Unit>) -> Unit) {
         startRecovery(
             "explicit_recreate_after_reboot",
@@ -422,8 +466,12 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
     }
 
     override fun getGeofences(): List<ActiveGeofenceWire> {
-        val geofences = NativeGeofencePersistence.getAllGeofences(context)
-        return geofences.map { ActiveGeofenceWires.fromGeofenceWire(it) }.toList()
+        return NativeGeofencePersistence.getAllRegisteredGeofenceSnapshots(context).map {
+            ActiveGeofenceWires.fromGeofenceWire(
+                it.configuredGeofence,
+                it.expirationDeadlineMillis,
+            )
+        }
     }
 
     override fun removeGeofenceById(id: String, callback: (Result<Unit>) -> Unit) {
@@ -1132,17 +1180,25 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                 return
             }
             try {
-                createGeofenceHelper(platformRegistration, cache = false) { result ->
-                    if (result.isSuccess) {
-                        restorationOutcomes[snapshotRegistration.configuredGeofence.id] =
-                            AndroidGeofenceRollbackRestorationOutcome.RESTORED
-                    } else {
-                        restorationOutcomes[snapshotRegistration.configuredGeofence.id] =
-                            AndroidGeofenceRollbackRestorationOutcome.FAILED
-                        failures.add("failed to rearm a previous native registration")
-                    }
-                    rearmAt(index + 1)
-                }
+                createGeofenceHelper(
+                    geofence = platformRegistration,
+                    cache = false,
+                    callback = { result ->
+                        if (result.isSuccess) {
+                            restorationOutcomes[snapshotRegistration.configuredGeofence.id] =
+                                AndroidGeofenceRollbackRestorationOutcome.RESTORED
+                        } else {
+                            restorationOutcomes[snapshotRegistration.configuredGeofence.id] =
+                                AndroidGeofenceRollbackRestorationOutcome.FAILED
+                            failures.add("failed to rearm a previous native registration")
+                        }
+                        rearmAt(index + 1)
+                    },
+                    configuredGeofence = snapshotRegistration.configuredGeofence,
+                    expirationDeadlineMillisOverride =
+                        snapshotRegistration.expirationDeadlineMillis,
+                    includeInitialTriggers = false,
+                )
             } catch (_: Throwable) {
                 restorationOutcomes[snapshotRegistration.configuredGeofence.id] =
                     AndroidGeofenceRollbackRestorationOutcome.FAILED
@@ -1225,10 +1281,13 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
     private fun createGeofenceHelper(
         geofence: GeofenceWire,
         cache: Boolean,
-        callback: ((Result<Unit>) -> Unit)?
+        callback: ((Result<Unit>) -> Unit)?,
+        configuredGeofence: GeofenceWire = geofence,
+        expirationDeadlineMillisOverride: Long? = null,
+        includeInitialTriggers: Boolean = cache,
     ) {
         val geofencingRequest = try {
-            buildGeofencingRequest(geofence, includeInitialTriggers = cache)
+            buildGeofencingRequest(geofence, includeInitialTriggers = includeInitialTriggers)
         } catch (e: Exception) {
             callback?.invoke(
                 Result.failure(
@@ -1263,16 +1322,18 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         // its exact snapshot. Expired registrations become positive cleanup
         // evidence and are never granted a fresh lifetime by rollback.
         val previousRecoverable =
-            NativeGeofencePersistence.getRecoverableGeofence(context, geofence.id)
-        val previousStored = NativeGeofencePersistence.getStoredGeofence(context, geofence.id)
-        val previousSnapshot = NativeGeofencePersistence.snapshot(context, geofence.id)
-        val previousRegistrationExists = previousSnapshot.containsEvidenceFor(geofence.id)
+            NativeGeofencePersistence.getRecoverableGeofence(context, configuredGeofence.id)
+        val previousStored = NativeGeofencePersistence.getStoredGeofence(
+            context,
+            configuredGeofence.id,
+        )
+        val previousSnapshot = NativeGeofencePersistence.snapshot(context, configuredGeofence.id)
+        val previousRegistrationExists = previousSnapshot.containsEvidenceFor(configuredGeofence.id)
         val previousPlatformGeofence = previousRecoverable?.takeIf {
             previousStored?.active == true && previousStored.lifecycleMetadataDurable
         }
-        val expirationDeadlineMillis = geofence.androidSettings
-            .expirationDurationMillis
-            ?.let {
+        val expirationDeadlineMillis = expirationDeadlineMillisOverride
+            ?: configuredGeofence.androidSettings.expirationDurationMillis?.let {
                 GeofenceRegistrationStore.safeDeadline(System.currentTimeMillis(), it)
             }
         val registrationPersistence = AndroidGeofenceRegistrationPersistence(
@@ -1283,7 +1344,7 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
             saveInactiveRegistration = {
                 NativeGeofencePersistence.saveGeofence(
                     context,
-                    geofence,
+                    configuredGeofence,
                     recoveryEligible = true,
                     active = false,
                     expirationDeadlineMillis = expirationDeadlineMillis,
@@ -1292,7 +1353,7 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
             saveActiveRegistration = {
                 NativeGeofencePersistence.saveGeofence(
                     context,
-                    geofence,
+                    configuredGeofence,
                     recoveryEligible = true,
                     active = true,
                     expirationDeadlineMillis = expirationDeadlineMillis,
@@ -1301,7 +1362,7 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
             markExistingRegistrationActive = {
                 NativeGeofencePersistence.setLifecycleState(
                     context,
-                    geofence.id,
+                    configuredGeofence.id,
                     recoveryEligible = true,
                     active = true,
                 )
@@ -1328,7 +1389,7 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                 beginGeofenceAdd(geofencingRequest)
             },
             beginCompensation = {
-                beginGeofenceRemoval(geofence.id)
+                beginGeofenceRemoval(configuredGeofence.id)
             },
             beginPreviousPlatformRestoration = {
                 beginGeofenceAdd(
@@ -1344,7 +1405,7 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                         NativeGeofenceLogger.d(
                             context,
                             TAG,
-                            "Successfully added Geofence ID=${geofence.id}.",
+                            "Successfully added Geofence ID=${configuredGeofence.id}.",
                         )
                         callback?.invoke(Result.success(Unit))
                     },
@@ -1353,7 +1414,7 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                         NativeGeofenceLogger.e(
                             context,
                             TAG,
-                            "Failed to add Geofence ID=${geofence.id}: ${failure.message}",
+                            "Failed to add Geofence ID=${configuredGeofence.id}: ${failure.message}",
                             failure.primaryCause ?: failure,
                         )
                         callback?.invoke(
@@ -1370,11 +1431,10 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         includeInitialTriggers: Boolean,
     ): GeofencingRequest = GeofencingRequest.Builder().apply {
         setInitialTrigger(
-            if (includeInitialTriggers) {
-                GeofenceEvents.createMask(geofence.androidSettings.initialTriggers)
-            } else {
-                0
-            },
+            GeofenceEvents.initialTriggerMask(
+                geofence.androidSettings.initialTriggers,
+                includeInitialTriggers,
+            ),
         )
         addGeofence(GeofenceWires.toGeofence(geofence))
     }.build()

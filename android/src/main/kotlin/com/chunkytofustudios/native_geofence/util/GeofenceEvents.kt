@@ -19,6 +19,11 @@ class GeofenceEvents {
             }
         }
 
+        fun initialTriggerMask(
+            events: List<GeofenceEvent>,
+            includeInitialTriggers: Boolean,
+        ): Int = if (includeInitialTriggers) createMask(events) else 0
+
         fun fromMask(mask: Int): List<GeofenceEvent> {
             return GeofenceEvent.entries.filter { (mask and toFlag(it)) != 0 }
         }
