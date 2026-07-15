@@ -5,6 +5,7 @@ import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 
 /** Optional process-wide native event bridge for host Android applications. */
 object NativeGeofenceBridge {
+    private const val TAG = "NativeGeofenceBridge"
     private val lock = Object()
 
     @Volatile
@@ -37,15 +38,28 @@ object NativeGeofenceBridge {
     private fun loadMetadataProcessor(context: Context): NativeGeofenceEventProcessor? {
         return try {
             val className = NativeGeofenceBridgeCompatibility.processorClassName(context)
-                ?: return null
-            Class.forName(className, false, context.classLoader)
+                ?: run {
+                    NativeGeofenceLogger.d(
+                        context,
+                        TAG,
+                        "No native event processor metadata found; continuing with Dart delivery.",
+                    )
+                    return null
+                }
+            val loaded = Class.forName(className, false, context.classLoader)
                 .asSubclass(NativeGeofenceEventProcessor::class.java)
                 .getDeclaredConstructor()
                 .newInstance()
+            NativeGeofenceLogger.i(
+                context,
+                TAG,
+                "Loaded native event processor class=$className.",
+            )
+            loaded
         } catch (error: Throwable) {
             NativeGeofenceLogger.w(
                 context,
-                "NativeGeofenceBridge",
+                TAG,
                 "The configured native event processor could not be loaded; " +
                     "continuing with Dart delivery.",
                 error
