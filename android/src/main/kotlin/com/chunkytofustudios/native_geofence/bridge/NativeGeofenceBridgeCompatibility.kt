@@ -13,9 +13,15 @@ internal object NativeGeofenceBridgeCompatibility {
             context.packageName,
             PackageManager.GET_META_DATA,
         )
-        applicationInfo.metaData
-            ?.getString(Constants.NATIVE_EVENT_PROCESSOR_METADATA_KEY)
+        val metadata = applicationInfo.metaData
+        preferredProcessorClassName(
+            current = metadata?.getString(Constants.NATIVE_EVENT_PROCESSOR_METADATA_KEY),
+            legacy = metadata?.getString(Constants.LEGACY_NATIVE_EVENT_PROCESSOR_METADATA_KEY),
+        )
     }
+
+    internal fun preferredProcessorClassName(current: String?, legacy: String?): String? =
+        current ?: legacy
 
     internal fun processorClassNameOrNull(load: () -> String?): String? = try {
         load()?.takeIf(String::isNotBlank)
