@@ -118,6 +118,8 @@ void main() {
       platform: NativeGeofencePlatform.android,
       persistedGeofenceCount: 2,
       preciseLocationPermissionGranted: true,
+      backgroundRefreshStatus:
+          NativeGeofenceBackgroundRefreshStatus.restricted,
       canEnumerateLivePlatformRegistrations: false,
       callbackRefreshState: NativeGeofenceCallbackRefreshState.current,
       registrationHealth: NativeGeofenceRegistrationHealth.healthy,
@@ -135,6 +137,10 @@ void main() {
     expect(
       status.toJson(),
       containsPair('preciseLocationPermissionGranted', true),
+    );
+    expect(
+      status.toJson(),
+      containsPair('backgroundRefreshStatus', 'restricted'),
     );
     expect(status.toJson(), isNot(contains('persistedGeofenceIds')));
     expect(

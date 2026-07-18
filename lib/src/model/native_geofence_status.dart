@@ -123,6 +123,10 @@ class NativeGeofenceStatus {
   /// Whether iOS granted full/precise location accuracy. Null on Android.
   final bool? preciseLocationPermissionGranted;
 
+  /// Whether iOS can wake the app to deliver region events in the background.
+  /// Null on Android.
+  final NativeGeofenceBackgroundRefreshStatus? backgroundRefreshStatus;
+
   final bool? notificationPermissionGranted;
   final bool? locationServicesEnabled;
   final bool? monitoringAvailable;
@@ -153,6 +157,7 @@ class NativeGeofenceStatus {
     this.locationPermissionGranted,
     this.backgroundLocationPermissionGranted,
     this.preciseLocationPermissionGranted,
+    this.backgroundRefreshStatus,
     this.notificationPermissionGranted,
     this.locationServicesEnabled,
     this.monitoringAvailable,
@@ -185,6 +190,7 @@ class NativeGeofenceStatus {
         'backgroundLocationPermissionGranted':
             backgroundLocationPermissionGranted,
         'preciseLocationPermissionGranted': preciseLocationPermissionGranted,
+        'backgroundRefreshStatus': backgroundRefreshStatus?.name,
         'notificationPermissionGranted': notificationPermissionGranted,
         'locationServicesEnabled': locationServicesEnabled,
         'monitoringAvailable': monitoringAvailable,

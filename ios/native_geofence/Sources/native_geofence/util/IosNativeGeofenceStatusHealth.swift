@@ -4,6 +4,7 @@ enum IosNativeGeofenceStatusHealth {
         locationPermission: Bool,
         backgroundPermission: Bool,
         preciseLocationPermission: Bool,
+        backgroundRefreshAvailable: Bool,
         locationServicesEnabled: Bool,
         monitoringAvailable: Bool,
         dispatcherRegistered: Bool,
@@ -21,6 +22,9 @@ enum IosNativeGeofenceStatusHealth {
             return .unavailable
         }
         if refreshState == .refreshRequired || monitoredCount != persistedCount {
+            return .degraded
+        }
+        if !backgroundRefreshAvailable {
             return .degraded
         }
         if refreshState == .unknown {
