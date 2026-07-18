@@ -2,6 +2,40 @@ import XCTest
 @testable import RegionRegistrationCore
 
 final class IosGeofenceSynchronizationPlannerTests: XCTestCase {
+    func testRemovalOnlySynchronizationDoesNotRequireRegistrationPreflight() {
+        XCTAssertFalse(
+            IosGeofenceSynchronizationPlanner.requiresRegistrationPreflight(
+                current: [registration(id: "stale")],
+                desired: []
+            )
+        )
+    }
+
+    func testMetadataAndFingerprintOnlySynchronizationAvoidsRegistrationPreflight() {
+        XCTAssertFalse(
+            IosGeofenceSynchronizationPlanner.requiresRegistrationPreflight(
+                current: [registration(id: "office", callbackHandle: 7)],
+                desired: [registration(id: "office", callbackHandle: 8)]
+            )
+        )
+    }
+
+    func testNewInactiveAndChangedRegionsRequireRegistrationPreflight() {
+        let existing = registration(id: "office")
+        XCTAssertTrue(
+            IosGeofenceSynchronizationPlanner.requiresRegistrationPreflight(
+                current: [],
+                desired: [existing]
+            )
+        )
+        XCTAssertTrue(
+            IosGeofenceSynchronizationPlanner.requiresRegistrationPreflight(
+                current: [existing],
+                desired: [registration(id: "office", latitude: 11.57)]
+            )
+        )
+    }
+
     func testFingerprintPreservesV1FieldOrderAndCanonicalSorting() {
         let fingerprint = IosGeofenceSynchronizationPlanner
             .desiredRegistrationFingerprint([
@@ -133,13 +167,14 @@ final class IosGeofenceSynchronizationPlannerTests: XCTestCase {
 
     private func registration(
         id: String,
+        latitude: Double = 11.56,
         triggers: [String] = ["enter"],
         callbackHandle: Int64 = 7,
         callbackContext: Int64? = nil
     ) -> IosGeofenceSynchronizationRegistration {
         IosGeofenceSynchronizationRegistration(
             id: id,
-            latitude: 11.56,
+            latitude: latitude,
             longitude: 104.93,
             radiusMeters: 100,
             triggers: triggers,
