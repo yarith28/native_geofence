@@ -10,6 +10,7 @@ import com.chunkytofustudios.native_geofence.bridge.NativeGeofenceCallbackEnqueu
 import com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWire
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceMutationKind
 import com.chunkytofustudios.native_geofence.util.BroadcastCompletionBarrier
+import com.chunkytofustudios.native_geofence.util.GeofenceCallbackRegistration
 import com.chunkytofustudios.native_geofence.util.GeofenceCallbackRouting
 import com.chunkytofustudios.native_geofence.util.GeofenceCallbackRoutingResult
 import com.chunkytofustudios.native_geofence.util.GeofenceEvents
@@ -351,7 +352,14 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                 event = geofenceEvent,
                 location = location?.let(LocationWires::fromLocation),
                 eventAtMillis = System.currentTimeMillis(),
-                lookup = { id -> NativeGeofencePersistence.getGeofence(context, id) },
+                lookup = { id ->
+                    NativeGeofencePersistence.getStoredGeofence(context, id)?.let {
+                        GeofenceCallbackRegistration(
+                            configuredGeofence = it.configuredGeofence,
+                            expirationDeadlineMillis = it.expirationDeadlineMillis,
+                        )
+                    }
+                },
                 isCallbackFresh = { id ->
                     NativeGeofencePersistence.isCallbackPackageCurrent(context, id)
                 }
