@@ -1,6 +1,7 @@
 export 'package:native_geofence/src/generated/platform_bindings.g.dart'
     show
         GeofenceEvent,
+        NativeGeofenceBackgroundRefreshStatus,
         NativeGeofenceCallbackRefreshState,
         NativeGeofenceErrorCode,
         NativeGeofencePlatform,
