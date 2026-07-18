@@ -28,6 +28,7 @@ private struct IosSynchronizationEvaluation {
     let allMonitoredRegions: Set<CLRegion>
     let ownedRegions: [CLCircularRegion]
     let packageFingerprint: String
+    let requiresRegistrationPreflight: Bool
     let decision: IosGeofenceSynchronizationDecision
 }
 
@@ -567,6 +568,11 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
             allMonitoredRegions: allMonitoredRegions,
             ownedRegions: ownedRegions,
             packageFingerprint: packageFingerprint,
+            requiresRegistrationPreflight: IosGeofenceSynchronizationPlanner
+                .requiresRegistrationPreflight(
+                    current: currentRegistrations,
+                    desired: desired.map(\.plannerRegistration)
+                ),
             decision: decision
         )
     }
@@ -615,28 +621,6 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
         locationServicesEnabled: Bool,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
-        guard CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self) else {
-            completion(
-                .failure(
-                    nativeGeofenceError(
-                        .iosRegionMonitoringFailed,
-                        message: "iOS region monitoring is not available on this device."
-                    )
-                )
-            )
-            return
-        }
-        if let failure = IosGeofencePreflight.failure(
-            locationServicesEnabled: locationServicesEnabled,
-            authorizationStatus: locationManagerDelegate.locationManager
-                .authorizationStatus,
-            accuracyAuthorization: locationManagerDelegate.locationManager
-                .accuracyAuthorization
-        ) {
-            completion(.failure(nativeGeofenceError(failure)))
-            return
-        }
-
         let desired = evaluation.desired
         let desiredIds = desired.map { $0.wire.id }
         let desiredIdSet = Set(desiredIds)
@@ -663,20 +647,46 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
 
         let ownedRegions = evaluation.ownedRegions
         let ownedLiveIds = Set(ownedRegions.map(\.identifier))
-        let finalOwnedLiveIds = evaluation.removeUnlisted
-            ? desiredIdSet
-            : ownedLiveIds.union(desiredIdSet)
-        let foreignRegionCount = allMonitoredRegions.count - ownedRegions.count
-        guard foreignRegionCount + finalOwnedLiveIds.count <= 20 else {
-            completion(
-                .failure(
-                    nativeGeofenceError(
-                        .iosRegionMonitoringFailed,
-                        message: "Synchronization would exceed iOS's 20 monitored-region limit."
+        if evaluation.requiresRegistrationPreflight {
+            guard CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self) else {
+                completion(
+                    .failure(
+                        nativeGeofenceError(
+                            .iosRegionMonitoringFailed,
+                            message: "iOS region monitoring is not available on this device."
+                        )
                     )
                 )
-            )
-            return
+                return
+            }
+            if let failure = IosGeofenceSynchronizationPreflight.failure(
+                requiresRegistrationPreflight:
+                    evaluation.requiresRegistrationPreflight,
+                locationServicesEnabled: locationServicesEnabled,
+                authorizationStatus: locationManagerDelegate.locationManager
+                    .authorizationStatus,
+                accuracyAuthorization: locationManagerDelegate.locationManager
+                    .accuracyAuthorization
+            ) {
+                completion(.failure(nativeGeofenceError(failure)))
+                return
+            }
+
+            let finalOwnedLiveIds = evaluation.removeUnlisted
+                ? desiredIdSet
+                : ownedLiveIds.union(desiredIdSet)
+            let foreignRegionCount = allMonitoredRegions.count - ownedRegions.count
+            guard foreignRegionCount + finalOwnedLiveIds.count <= 20 else {
+                completion(
+                    .failure(
+                        nativeGeofenceError(
+                            .iosRegionMonitoringFailed,
+                            message: "Synchronization would exceed iOS's 20 monitored-region limit."
+                        )
+                    )
+                )
+                return
+            }
         }
 
         let regionSnapshots = ownedRegions.compactMap { region -> IosSynchronizedRegionSnapshot? in

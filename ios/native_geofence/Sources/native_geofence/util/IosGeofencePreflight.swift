@@ -72,3 +72,19 @@ enum IosGeofencePreflight {
         return nil
     }
 }
+
+enum IosGeofenceSynchronizationPreflight {
+    static func failure(
+        requiresRegistrationPreflight: Bool,
+        locationServicesEnabled: Bool,
+        authorizationStatus: CLAuthorizationStatus,
+        accuracyAuthorization: CLAccuracyAuthorization
+    ) -> IosGeofencePreflightFailure? {
+        guard requiresRegistrationPreflight else { return nil }
+        return IosGeofencePreflight.failure(
+            locationServicesEnabled: locationServicesEnabled,
+            authorizationStatus: authorizationStatus,
+            accuracyAuthorization: accuracyAuthorization
+        )
+    }
+}
