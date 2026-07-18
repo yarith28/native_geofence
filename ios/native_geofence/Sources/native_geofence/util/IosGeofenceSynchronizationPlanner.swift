@@ -36,6 +36,17 @@ struct IosGeofenceSynchronizationDecision {
 }
 
 enum IosGeofenceSynchronizationPlanner {
+    static func requiresRegistrationPreflight(
+        current: [IosGeofenceSynchronizationRegistration],
+        desired: [IosGeofenceSynchronizationRegistration]
+    ) -> Bool {
+        let currentById = Dictionary(uniqueKeysWithValues: current.map { ($0.id, $0) })
+        return desired.contains { wanted in
+            guard let existing = currentById[wanted.id] else { return true }
+            return !platformSemanticsMatch(existing, wanted)
+        }
+    }
+
     static func decide(
         current: IosGeofenceSynchronizationInventory,
         desired: [IosGeofenceSynchronizationRegistration],
