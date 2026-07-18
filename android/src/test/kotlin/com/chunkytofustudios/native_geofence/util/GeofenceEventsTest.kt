@@ -7,7 +7,7 @@ import kotlin.test.assertEquals
 
 class GeofenceEventsTest {
     @Test
-    fun `rollback restoration disables every configured initial trigger`() {
+    fun `forward synchronization includes configured triggers while replay disables them`() {
         val configured = listOf(
             GeofenceEvent.ENTER,
             GeofenceEvent.EXIT,
