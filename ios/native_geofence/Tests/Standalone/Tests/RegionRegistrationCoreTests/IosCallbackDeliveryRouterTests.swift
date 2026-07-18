@@ -125,6 +125,38 @@ final class IosCallbackDeliveryRouterTests: XCTestCase {
         XCTAssertEqual(delivered, ["first", "second", "third"])
     }
 
+    func testJournalCompletionReceivesFinalDartOutcomeExactlyOnce() {
+        var routeCompletion: ((Bool) -> Void)?
+        var outcomes: [Bool] = []
+        let router = IosCallbackDeliveryRouter<String>(
+            selectRoute: { .main },
+            deliver: { _, _, completion in
+                routeCompletion = completion
+                return true
+            }
+        )
+
+        router.enqueue("event", completion: { outcomes.append($0) })
+        routeCompletion?(false)
+        routeCompletion?(true)
+
+        XCTAssertEqual(outcomes, [false])
+    }
+
+    func testCloseFailsActiveAndQueuedJournalDeliveries() {
+        var outcomes: [String] = []
+        let router = IosCallbackDeliveryRouter<String>(
+            selectRoute: { .headless },
+            deliver: { _, _, _ in true }
+        )
+
+        router.enqueue("active", completion: { outcomes.append("active:\($0)") })
+        router.enqueue("queued", completion: { outcomes.append("queued:\($0)") })
+        router.close()
+
+        XCTAssertEqual(Set(outcomes), Set(["active:false", "queued:false"]))
+    }
+
     func testSynchronousCompletionPublishesAcceptanceBeforeAdvancingFifo() {
         var events: [String] = []
         var blockerCompletion: ((Bool) -> Void)?

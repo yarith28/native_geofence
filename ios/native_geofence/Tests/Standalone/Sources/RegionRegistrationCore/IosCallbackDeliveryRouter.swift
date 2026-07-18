@@ -41,27 +41,27 @@ final class IosReattachableDelivery<Delivery> {
 private final class IosCallbackDeliveryCompletionGate {
     private let lock = NSLock()
     private var accepted: Bool?
-    private var completionReceived = false
+    private var completionResult: Bool?
 
-    func receiveCompletion(_ action: () -> Void) {
-        let shouldRun = withLock {
-            guard !completionReceived else { return false }
-            completionReceived = true
-            return accepted == true
+    func receiveCompletion(_ succeeded: Bool, _ action: (Bool) -> Void) {
+        let result = withLock { () -> Bool? in
+            guard completionResult == nil else { return nil }
+            completionResult = succeeded
+            return accepted == true ? succeeded : nil
         }
-        if shouldRun {
-            action()
+        if let result {
+            action(result)
         }
     }
 
-    func resolve(accepted: Bool, _ action: () -> Void) {
-        let shouldRun = withLock {
-            guard self.accepted == nil else { return false }
+    func resolve(accepted: Bool, _ action: (Bool) -> Void) {
+        let result = withLock { () -> Bool? in
+            guard self.accepted == nil else { return nil }
             self.accepted = accepted
-            return accepted && completionReceived
+            return accepted ? completionResult : nil
         }
-        if shouldRun {
-            action()
+        if let result {
+            action(result)
         }
     }
 
@@ -69,6 +69,27 @@ private final class IosCallbackDeliveryCompletionGate {
         lock.lock()
         defer { lock.unlock() }
         return body()
+    }
+}
+
+private final class IosCallbackDeliveryFinalizer {
+    private let lock = NSLock()
+    private var resolved = false
+    private let completion: (Bool) -> Void
+
+    init(completion: @escaping (Bool) -> Void) {
+        self.completion = completion
+    }
+
+    func resolve(_ succeeded: Bool) {
+        lock.lock()
+        guard !resolved else {
+            lock.unlock()
+            return
+        }
+        resolved = true
+        lock.unlock()
+        completion(succeeded)
     }
 }
 
@@ -90,6 +111,7 @@ final class IosCallbackDeliveryRouter<Element> {
         let shouldAttempt: () -> Bool
         let onAccepted: () -> Void
         let onRejected: () -> Void
+        let finalizer: IosCallbackDeliveryFinalizer
     }
 
     private let lock = NSRecursiveLock()
@@ -97,6 +119,7 @@ final class IosCallbackDeliveryRouter<Element> {
     private let deliver: Delivery
     private var queue: [Pending] = []
     private var activeToken: UUID?
+    private var activePending: Pending?
     private var closed = false
 
     init(
@@ -112,7 +135,8 @@ final class IosCallbackDeliveryRouter<Element> {
             element,
             shouldAttempt: { true },
             onAccepted: onAccepted,
-            onRejected: {}
+            onRejected: {},
+            onCompletion: { _ in }
         )
     }
 
@@ -125,7 +149,23 @@ final class IosCallbackDeliveryRouter<Element> {
             element,
             shouldAttempt: { true },
             onAccepted: onAccepted,
-            onRejected: onRejected
+            onRejected: onRejected,
+            onCompletion: { _ in }
+        )
+    }
+
+    /// Enqueues a journal-owned event and reports its final Dart outcome. A
+    /// route rejection, engine teardown, timeout, or Dart error reports false.
+    func enqueue(
+        _ element: Element,
+        completion: @escaping (Bool) -> Void
+    ) {
+        enqueue(
+            element,
+            shouldAttempt: { true },
+            onAccepted: {},
+            onRejected: {},
+            onCompletion: completion
         )
     }
 
@@ -133,7 +173,8 @@ final class IosCallbackDeliveryRouter<Element> {
         _ element: Element,
         shouldAttempt: @escaping () -> Bool,
         onAccepted: @escaping () -> Void,
-        onRejected: @escaping () -> Void
+        onRejected: @escaping () -> Void,
+        onCompletion: @escaping (Bool) -> Void = { _ in }
     ) {
         let queued = withLock {
             guard !closed else { return false }
@@ -142,7 +183,10 @@ final class IosCallbackDeliveryRouter<Element> {
                     element: element,
                     shouldAttempt: shouldAttempt,
                     onAccepted: onAccepted,
-                    onRejected: onRejected
+                    onRejected: onRejected,
+                    finalizer: IosCallbackDeliveryFinalizer(
+                        completion: onCompletion
+                    )
                 )
             )
             return true
@@ -154,22 +198,26 @@ final class IosCallbackDeliveryRouter<Element> {
         }
     }
 
-    /// Permanently rejects new work and drops work that has not started.
+    /// Permanently rejects new work and fails every unfinished delivery.
     ///
-    /// The selected runtime still owns cancellation of an active delivery. Its
-    /// eventual completion is ignored because the active token is invalidated
-    /// before teardown can synchronously re-enter the router.
+    /// Queued work receives its rejection hook. Active work was already
+    /// accepted, so only its final completion is failed. Late runtime results
+    /// are ignored after the active token is invalidated.
     func close() {
-        let rejected = withLock { () -> [Pending] in
-            guard !closed else { return [] }
+        let rejected = withLock { () -> (queued: [Pending], active: Pending?) in
+            guard !closed else { return ([], nil) }
             closed = true
             let rejected = queue
             queue.removeAll()
+            let active = activePending
             activeToken = nil
-            return rejected
+            activePending = nil
+            return (rejected, active)
         }
-        for pending in rejected {
+        rejected.active?.finalizer.resolve(false)
+        for pending in rejected.queued {
             pending.onRejected()
+            pending.finalizer.resolve(false)
         }
     }
 
@@ -178,7 +226,9 @@ final class IosCallbackDeliveryRouter<Element> {
             guard !closed, activeToken == nil, !queue.isEmpty else { return nil }
             let token = UUID()
             activeToken = token
-            return (queue.removeFirst(), token)
+            let pending = queue.removeFirst()
+            activePending = pending
+            return (pending, token)
         }
         guard let (pending, token) = selected else { return }
         guard isActive(token: token) else {
@@ -186,6 +236,8 @@ final class IosCallbackDeliveryRouter<Element> {
             return
         }
         guard pending.shouldAttempt() else {
+            pending.onRejected()
+            pending.finalizer.resolve(false)
             complete(token: token)
             return
         }
@@ -206,6 +258,7 @@ final class IosCallbackDeliveryRouter<Element> {
 
         if !accepted {
             pending.onRejected()
+            pending.finalizer.resolve(false)
             complete(token: token)
         }
     }
@@ -217,11 +270,13 @@ final class IosCallbackDeliveryRouter<Element> {
     ) -> Bool {
         guard isActive(token: token) else { return false }
         let completionGate = IosCallbackDeliveryCompletionGate()
-        let complete: () -> Void = { [weak self] in
-            self?.complete(token: token)
+        let complete: (Bool) -> Void = { [weak self] succeeded in
+            guard let self, self.isActive(token: token) else { return }
+            pending.finalizer.resolve(succeeded)
+            self.complete(token: token)
         }
-        let accepted = deliver(route, pending.element) { _ in
-            completionGate.receiveCompletion(complete)
+        let accepted = deliver(route, pending.element) { succeeded in
+            completionGate.receiveCompletion(succeeded, complete)
         }
         let publishAcceptance = accepted && isActive(token: token)
         if publishAcceptance {
@@ -241,6 +296,7 @@ final class IosCallbackDeliveryRouter<Element> {
         let shouldContinue = withLock {
             guard activeToken == token else { return false }
             activeToken = nil
+            activePending = nil
             return true
         }
         if shouldContinue {
