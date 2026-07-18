@@ -63,7 +63,7 @@ final class IosGeofenceCallbackJournal {
     private let decoder = JSONDecoder()
 
     init(
-        userDefaults: UserDefaults = .standard,
+        userDefaults: UserDefaults = NativeGeofenceUserDefaults.standard(),
         storageKey: String = Constants.GEOFENCE_CALLBACK_JOURNAL_KEY,
         eventTimeToLiveMillis: Int64 = 24 * 60 * 60 * 1000,
         pendingDuplicateWindowMillis: Int64 = Constants.LAST_EVENT_SUPPRESSION_TTL_MILLIS,
@@ -362,7 +362,7 @@ final class IosGeofenceEventDeduplicator {
     private var pendingById: [String: [Reservation]] = [:]
 
     init(
-        userDefaults: UserDefaults = .standard,
+        userDefaults: UserDefaults = NativeGeofenceUserDefaults.standard(),
         storageKey: String = Constants.GEOFENCE_LAST_EVENT_DICT_KEY,
         suppressionWindowMillis: Int64 = Constants.LAST_EVENT_SUPPRESSION_TTL_MILLIS
     ) {
