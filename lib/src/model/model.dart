@@ -243,8 +243,8 @@ class ActiveGeofence {
   final AndroidGeofenceSettings? androidSettings;
 
   /// The absolute Android expiration deadline represented by this active
-  /// snapshot. Null means the registration does not expire or the platform is
-  /// not Android.
+  /// snapshot. Null means the registration does not expire, the platform is
+  /// not Android, or a legacy queued callback did not contain deadline data.
   ///
   /// Unlike [AndroidGeofenceSettings.expiration], this value does not restart
   /// when a higher-level coordinator restores a failed multi-layer mutation.

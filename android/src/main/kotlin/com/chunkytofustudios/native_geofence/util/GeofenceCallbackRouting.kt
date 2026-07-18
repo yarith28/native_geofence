@@ -11,6 +11,11 @@ internal data class GeofenceCallbackRoutingResult(
     val staleIds: List<String> = emptyList()
 )
 
+internal data class GeofenceCallbackRegistration(
+    val configuredGeofence: GeofenceWire,
+    val expirationDeadlineMillis: Long?,
+)
+
 internal object GeofenceCallbackRouting {
     /**
      * Resolve every triggered request ID through durable canonical storage and
@@ -22,17 +27,18 @@ internal object GeofenceCallbackRouting {
         location: LocationWire?,
         eventAtMillis: Long,
         isCallbackFresh: (String) -> Boolean = { true },
-        lookup: (String) -> GeofenceWire?
+        lookup: (String) -> GeofenceCallbackRegistration?
     ): GeofenceCallbackRoutingResult {
-        val grouped = linkedMapOf<Long, MutableList<GeofenceWire>>()
+        val grouped = linkedMapOf<Long, MutableList<GeofenceCallbackRegistration>>()
         val orphanIds = mutableListOf<String>()
         val staleIds = mutableListOf<String>()
         triggeredIds.distinct().forEach { id ->
-            val configured = lookup(id)
-            if (configured == null) {
+            val registration = lookup(id)
+            if (registration == null) {
                 orphanIds.add(id)
                 return@forEach
             }
+            val configured = registration.configuredGeofence
             if (configured.callbackHandle == 0L) {
                 orphanIds.add(id)
                 return@forEach
@@ -41,16 +47,22 @@ internal object GeofenceCallbackRouting {
                 staleIds.add(id)
                 return@forEach
             }
-            grouped.getOrPut(configured.callbackHandle) { mutableListOf() }.add(configured)
+            grouped.getOrPut(configured.callbackHandle) { mutableListOf() }.add(registration)
         }
 
         return GeofenceCallbackRoutingResult(
             callbackGroups = grouped.map { (callbackHandle, geofences) ->
-                val callbackContexts = geofences.mapNotNull { geofence ->
+                val callbackContexts = geofences.mapNotNull { registration ->
+                    val geofence = registration.configuredGeofence
                     geofence.callbackContext?.let { geofence.id to it }
                 }.toMap()
                 GeofenceCallbackParamsWire(
-                    geofences = geofences.map(ActiveGeofenceWires::fromGeofenceWire),
+                    geofences = geofences.map { registration ->
+                        ActiveGeofenceWires.fromGeofenceWire(
+                            registration.configuredGeofence,
+                            registration.expirationDeadlineMillis,
+                        )
+                    },
                     event = event,
                     location = location,
                     eventAtMillis = eventAtMillis,
