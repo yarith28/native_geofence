@@ -11,11 +11,13 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
     private let log = Logger(subsystem: Constants.PACKAGE_NAME, category: "LocationManagerDelegate")
     private let deliverEvent: (
         GeofenceCallbackParamsWire,
-        @escaping () -> Bool,
-        @escaping () -> Void,
-        @escaping () -> Void
+        @escaping (Bool) -> Void
     ) -> Void
     private let eventDeduplicator: IosGeofenceEventDeduplicator
+    private let callbackJournal: IosGeofenceCallbackJournal
+    private let deliveryDiagnostics: IosNativeGeofenceDeliveryDiagnostics
+    private let callbackDeliveryLock = NSLock()
+    private var inFlightJournalEventIds: Set<String> = []
     let locationManager: CLLocationManager
     private lazy var regionRegistrationCoordinator = RegionRegistrationCoordinator(
         monitor: locationManager,
@@ -45,14 +47,16 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
     init(
         deliverEvent: @escaping (
             GeofenceCallbackParamsWire,
-            @escaping () -> Bool,
-            @escaping () -> Void,
-            @escaping () -> Void
+            @escaping (Bool) -> Void
         ) -> Void,
-        eventDeduplicator: IosGeofenceEventDeduplicator = IosGeofenceEventDeduplicator()
+        eventDeduplicator: IosGeofenceEventDeduplicator = IosGeofenceEventDeduplicator(),
+        callbackJournal: IosGeofenceCallbackJournal = IosGeofenceCallbackJournal(),
+        deliveryDiagnostics: IosNativeGeofenceDeliveryDiagnostics = .shared
     ) {
         self.deliverEvent = deliverEvent
         self.eventDeduplicator = eventDeduplicator
+        self.callbackJournal = callbackJournal
+        self.deliveryDiagnostics = deliveryDiagnostics
         locationManager = LocationManagerDelegate.sharedLocationManager ?? CLLocationManager()
         LocationManagerDelegate.sharedLocationManager = locationManager
         
@@ -157,11 +161,31 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
     }
     
     func locationManager(_ manager: CLLocationManager, didDetermineState state: CLRegionState, for region: CLRegion) {
+        let diagnosticEvent: String = switch state {
+        case .inside: "state_inside"
+        case .outside: "state_outside"
+        case .unknown: "state_unknown"
+        }
+        deliveryDiagnostics.record(
+            stage: "core_location_callback",
+            outcome: "received",
+            event: diagnosticEvent,
+            geofenceCount: 1,
+            owner: "ios_delegate"
+        )
         log.debug("didDetermineState: \(String(describing: state)) for geofence ID: \(region.identifier)")
         
         guard let publicRegion = initialStateRequestGate.consumeInitialStateResponse(
             for: region
         ) else {
+            deliveryDiagnostics.record(
+                stage: "initial_state_gate",
+                outcome: "rejected",
+                event: diagnosticEvent,
+                geofenceCount: 1,
+                owner: "ios_delegate",
+                reasonCode: "unrequested_state"
+            )
             log.debug("Ignoring unrequested state for geofence ID: \(region.identifier)")
             return
         }
@@ -171,14 +195,37 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         case .inside: .enter
         case .outside: .exit
         } else {
+            deliveryDiagnostics.record(
+                stage: "initial_state_gate",
+                outcome: "rejected",
+                event: diagnosticEvent,
+                geofenceCount: 1,
+                owner: "ios_delegate",
+                reasonCode: "unknown_state"
+            )
             log.error("Unknown CLRegionState: \(String(describing: state))")
             return
         }
+        deliveryDiagnostics.record(
+            stage: "initial_state_gate",
+            outcome: "accepted",
+            event: event == .enter ? "enter" : "exit",
+            geofenceCount: 1,
+            owner: "ios_delegate",
+            reasonCode: "explicit_private_probe"
+        )
         
         handleRegionEvent(event: event, region: publicRegion)
     }
 
     func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
+        deliveryDiagnostics.record(
+            stage: "core_location_callback",
+            outcome: "received",
+            event: "enter",
+            geofenceCount: 1,
+            owner: "ios_delegate"
+        )
         log.debug("didEnterRegion for geofence ID: \(region.identifier)")
         guard let publicRegion = admittedBoundaryRegion(
             for: region,
@@ -190,6 +237,13 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
     }
 
     func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
+        deliveryDiagnostics.record(
+            stage: "core_location_callback",
+            outcome: "received",
+            event: "exit",
+            geofenceCount: 1,
+            owner: "ios_delegate"
+        )
         log.debug("didExitRegion for geofence ID: \(region.identifier)")
         guard let publicRegion = admittedBoundaryRegion(
             for: region,
@@ -209,9 +263,25 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
             requireMonitoringSemanticsMatch: regionRegistrationCoordinator
                 .hasPendingMutation(id: region.identifier)
         ) {
-        case .accepted(let publicRegion, _):
+        case .accepted(let publicRegion, let reason):
+            deliveryDiagnostics.record(
+                stage: "boundary_gate",
+                outcome: "accepted",
+                event: event,
+                geofenceCount: 1,
+                owner: "ios_delegate",
+                reasonCode: reason.rawValue
+            )
             return publicRegion
         case .rejected(let reason):
+            deliveryDiagnostics.record(
+                stage: "boundary_gate",
+                outcome: "rejected",
+                event: event,
+                geofenceCount: 1,
+                owner: "ios_delegate",
+                reasonCode: reason.rawValue
+            )
             log.debug(
                 "Ignoring \(event) for geofence ID=\(region.identifier), reason=\(reason.rawValue)"
             )
@@ -221,11 +291,27 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
 
     private func handleRegionEvent(event: GeofenceEvent, region: CLRegion) {
         guard let activeGeofence = ActiveGeofenceWires.fromRegion(region) else {
+            deliveryDiagnostics.record(
+                stage: "event_resolution",
+                outcome: "rejected",
+                event: event == .enter ? "enter" : "exit",
+                geofenceCount: 1,
+                owner: "ios_delegate",
+                reasonCode: "unsupported_region_type"
+            )
             log.error("Unknown CLRegion type: \(String(describing: type(of: region)))")
             return
         }
 
         if !activeGeofence.triggers.contains(event) {
+            deliveryDiagnostics.record(
+                stage: "event_resolution",
+                outcome: "rejected",
+                event: event == .enter ? "enter" : "exit",
+                geofenceCount: 1,
+                owner: "ios_delegate",
+                reasonCode: "transition_not_configured"
+            )
             return
         }
         NativeGeofenceDiagnostics.record(
@@ -236,6 +322,14 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         )
         
         guard let callbackHandle = NativeGeofencePersistence.getRegionCallbackHandle(id: activeGeofence.id) else {
+            deliveryDiagnostics.record(
+                stage: "event_resolution",
+                outcome: "rejected",
+                event: event == .enter ? "enter" : "exit",
+                geofenceCount: 1,
+                owner: "ios_delegate",
+                reasonCode: "callback_missing"
+            )
             NativeGeofenceDiagnostics.record(
                 .broadcast,
                 succeeded: false,
@@ -248,48 +342,190 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         
         let transition = IosGeofenceTransition(event)
         let eventAtMillis = Int64(Date().timeIntervalSince1970 * 1000)
-        let admission = eventDeduplicator.admission(
+        if let ageMillis = eventDeduplicator.suppressedAgeMillis(
             id: activeGeofence.id,
             transition: transition,
             eventAtMillis: eventAtMillis
-        )
+        ) {
+            deliveryDiagnostics.record(
+                stage: "event_deduplication",
+                outcome: "rejected",
+                event: event == .enter ? "enter" : "exit",
+                geofenceCount: 1,
+                owner: "ios_delegate",
+                reasonCode: "same_direction_burst"
+            )
+            log.info(
+                "Suppressed repeat \(String(describing: event)) for geofence ID=\(activeGeofence.id); same direction completed \(ageMillis)ms ago."
+            )
+            return
+        }
 
         let eventId = UUID().uuidString
-        let params = GeofenceCallbackParamsWire(
-            geofences: [activeGeofence],
-            event: event,
+        let callbackContext = NativeGeofencePersistence
+            .getRegionCallbackContext(id: activeGeofence.id)
+        let envelope = callbackJournal.makeEnvelope(
+            eventId: eventId,
+            traceId: eventId,
+            geofence: .init(
+                id: activeGeofence.id,
+                latitude: activeGeofence.location.latitude,
+                longitude: activeGeofence.location.longitude,
+                radiusMeters: activeGeofence.radiusMeters,
+                triggers: activeGeofence.triggers.map(IosGeofenceTransition.init)
+            ),
+            transition: transition,
             eventAtMillis: eventAtMillis,
             callbackHandle: callbackHandle,
-            eventId: eventId,
-            callbackContextsByGeofenceId: NativeGeofencePersistence
-                .getRegionCallbackContext(id: activeGeofence.id)
-                .map { [activeGeofence.id: $0] },
-            traceId: eventId
+            callbackContext: callbackContext,
+            nowMillis: eventAtMillis
         )
+        switch callbackJournal.enqueue(envelope) {
+        case .stored:
+            deliveryDiagnostics.record(
+                stage: "callback_journal",
+                outcome: "stored",
+                event: event == .enter ? "enter" : "exit",
+                geofenceCount: 1,
+                owner: "ios_delegate"
+            )
+            NativeGeofenceDiagnostics.record(
+                .enqueue,
+                succeeded: true,
+                outcome: "ios_journaled",
+                geofenceCount: 1
+            )
+            drainPendingEvents()
+            log.debug("Geofence trigger event persisted in the callback journal.")
+        case .duplicate:
+            deliveryDiagnostics.record(
+                stage: "callback_journal",
+                outcome: "rejected",
+                event: event == .enter ? "enter" : "exit",
+                geofenceCount: 1,
+                owner: "ios_delegate",
+                reasonCode: "pending_duplicate"
+            )
+            log.info("Suppressed duplicate pending callback journal event.")
+        case .storageFailure:
+            deliveryDiagnostics.record(
+                stage: "callback_journal",
+                outcome: "failed",
+                event: event == .enter ? "enter" : "exit",
+                geofenceCount: 1,
+                owner: "ios_delegate",
+                reasonCode: "storage_failure"
+            )
+            NativeGeofenceDiagnostics.record(
+                .enqueue,
+                succeeded: false,
+                outcome: "ios_journal_write_failed",
+                geofenceCount: 1
+            )
+            log.error("Failed to persist the geofence callback journal event.")
+        }
+    }
 
-        deliverEvent(
-            params,
-            { [weak self] in
-                guard let self else {
-                    admission.cancel()
-                    return false
-                }
-                switch admission.attempt() {
-                case .admitted:
-                    return true
-                case .suppressed(let ageMillis):
-                    self.log.info(
-                        "Suppressed repeat \(String(describing: event)) for geofence ID=\(activeGeofence.id); same direction accepted \(ageMillis)ms ago."
-                    )
-                    return false
-                case .unavailable:
-                    return false
-                }
-            },
-            { admission.commit() },
-            { admission.cancel() }
-        )
-        log.debug("Geofence trigger event handed to the shared delivery router.")
+    /// Drains persisted events on plugin attachment and after bounded backoff.
+    func drainPendingEvents() {
+        let nowMillis = Int64(Date().timeIntervalSince1970 * 1000)
+        let batch = callbackJournal.drainBatch(nowMillis: nowMillis)
+        guard batch.storageReadable else {
+            NativeGeofenceDiagnostics.record(
+                .enqueue,
+                succeeded: false,
+                outcome: "ios_journal_read_failed"
+            )
+            return
+        }
+        for _ in batch.terminallyDiscardedEventIds {
+            NativeGeofenceDiagnostics.record(
+                .worker,
+                succeeded: false,
+                outcome: "ios_journal_terminal_expiry"
+            )
+        }
+        if let nextDueAtMillis = batch.nextDueAtMillis {
+            scheduleJournalDrain(
+                afterMillis: max(0, nextDueAtMillis - nowMillis)
+            )
+        }
+        for pending in batch.due {
+            guard reserveJournalDelivery(eventId: pending.eventId) else { continue }
+            guard let attempted = callbackJournal.beginAttempt(
+                eventId: pending.eventId,
+                nowMillis: nowMillis
+            ) else {
+                releaseJournalDelivery(eventId: pending.eventId)
+                continue
+            }
+            deliverEvent(attempted.callbackParamsWire) { [weak self] succeeded in
+                self?.completeJournalDelivery(
+                    attempted,
+                    succeeded: succeeded
+                )
+            }
+        }
+    }
+
+    private func completeJournalDelivery(
+        _ envelope: IosGeofenceCallbackJournalEnvelope,
+        succeeded: Bool
+    ) {
+        releaseJournalDelivery(eventId: envelope.eventId)
+        let nowMillis = Int64(Date().timeIntervalSince1970 * 1000)
+        if succeeded {
+            eventDeduplicator.recordAccepted(
+                id: envelope.geofence.id,
+                transition: envelope.transition,
+                eventAtMillis: envelope.eventAtMillis
+            )
+        }
+        switch callbackJournal.complete(
+            eventId: envelope.eventId,
+            succeeded: succeeded,
+            nowMillis: nowMillis
+        ) {
+        case .acknowledged:
+            log.debug("Acknowledged completed iOS callback journal event.")
+        case .failedWithoutRetry:
+            NativeGeofenceDiagnostics.record(
+                .worker,
+                succeeded: false,
+                outcome: "ios_journal_delivery_failed_not_retried"
+            )
+            log.error("Removed explicitly failed iOS callback journal event without retry.")
+        case .storageFailure:
+            NativeGeofenceDiagnostics.record(
+                .worker,
+                succeeded: false,
+                outcome: "ios_journal_update_failed"
+            )
+            scheduleJournalDrain(afterMillis: 5_000)
+        case .missing:
+            log.debug("Ignoring completion for a missing callback journal event.")
+        }
+    }
+
+    private func scheduleJournalDrain(afterMillis: Int64) {
+        let bounded = min(max(0, afterMillis), 60 * 60 * 1000)
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + .milliseconds(Int(bounded))
+        ) { [weak self] in
+            self?.drainPendingEvents()
+        }
+    }
+
+    private func reserveJournalDelivery(eventId: String) -> Bool {
+        callbackDeliveryLock.lock()
+        defer { callbackDeliveryLock.unlock() }
+        return inFlightJournalEventIds.insert(eventId).inserted
+    }
+
+    private func releaseJournalDelivery(eventId: String) {
+        callbackDeliveryLock.lock()
+        inFlightJournalEventIds.remove(eventId)
+        callbackDeliveryLock.unlock()
     }
 
     func locationManager(_ manager: CLLocationManager, didStartMonitoringFor region: CLRegion) {
@@ -340,5 +576,38 @@ private extension IosGeofenceTransition {
         case .exit: self = .exit
         case .dwell: self = .dwell
         }
+    }
+
+    var geofenceEvent: GeofenceEvent {
+        switch self {
+        case .enter: return .enter
+        case .exit: return .exit
+        case .dwell: return .dwell
+        }
+    }
+}
+
+private extension IosGeofenceCallbackJournalEnvelope {
+    var callbackParamsWire: GeofenceCallbackParamsWire {
+        let activeGeofence = ActiveGeofenceWire(
+            id: geofence.id,
+            location: LocationWire(
+                latitude: geofence.latitude,
+                longitude: geofence.longitude,
+                accuracyMeters: nil,
+                isMock: false
+            ),
+            radiusMeters: geofence.radiusMeters,
+            triggers: geofence.triggers.map(\.geofenceEvent)
+        )
+        return GeofenceCallbackParamsWire(
+            geofences: [activeGeofence],
+            event: transition.geofenceEvent,
+            eventAtMillis: eventAtMillis,
+            callbackHandle: callbackHandle,
+            eventId: eventId,
+            callbackContextsByGeofenceId: callbackContext.map { [geofence.id: $0] },
+            traceId: traceId
+        )
     }
 }

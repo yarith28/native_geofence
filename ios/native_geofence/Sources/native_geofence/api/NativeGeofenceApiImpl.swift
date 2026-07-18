@@ -237,6 +237,7 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
                     refreshState: refreshState,
                     monitoredCount: monitoredCount
                 )
+                let deliveryTrace = IosNativeGeofenceDeliveryDiagnostics.shared.snapshot()
                 completion(
                     .success(
                         NativeGeofenceStatusWire(
@@ -266,7 +267,31 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
                             lastEnqueueFact: NativeGeofenceDiagnostics.fact(.enqueue),
                             lastWorkerFact: NativeGeofenceDiagnostics.fact(.worker),
                             lastRecoveryFact: NativeGeofenceDiagnostics.fact(.recovery),
-                            lastForegroundFact: NativeGeofenceDiagnostics.fact(.foreground)
+                            lastForegroundFact: NativeGeofenceDiagnostics.fact(.foreground),
+                            deliveryTrace: deliveryTrace.entries.map { entry in
+                                NativeGeofenceDeliveryTraceWire(
+                                    sequence: entry.sequence,
+                                    occurredAtMillis: entry.occurredAtMillis,
+                                    elapsedRealtimeMillis: entry.elapsedRealtimeMillis,
+                                    traceId: nil,
+                                    stage: entry.stage,
+                                    outcome: entry.outcome,
+                                    event: entry.event,
+                                    geofenceCount: entry.geofenceCount.map(Int64.init),
+                                    attempt: nil,
+                                    owner: entry.owner,
+                                    reasonCode: entry.reasonCode,
+                                    durationMillis: nil,
+                                    queueAgeMillis: nil,
+                                    hasLocation: nil,
+                                    locationAgeMillis: nil,
+                                    accuracyMeters: nil,
+                                    processorSource: "ios_delegate",
+                                    processorClass: "CLLocationManagerDelegate",
+                                    errorType: nil
+                                )
+                            },
+                            deliveryTraceDroppedCount: deliveryTrace.droppedCount
                         )
                     )
                 )

@@ -71,16 +71,14 @@ final class IosGeofenceRuntimeHost {
 
     func installMainHandlers() {
         deliveryAttachment = mutationAuthority.attachEventDelivery {
-            [weak self] params, shouldAttempt, onAccepted, onRejected in
+            [weak self] params, completion in
             guard let self else {
-                onRejected()
+                completion(false)
                 return
             }
             self.deliveryRouter.enqueue(
                 params,
-                shouldAttempt: shouldAttempt,
-                onAccepted: onAccepted,
-                onRejected: onRejected
+                completion: completion
             )
         }
         NativeGeofenceApiSetup.setUp(binaryMessenger: mainMessenger, api: nativeApi)

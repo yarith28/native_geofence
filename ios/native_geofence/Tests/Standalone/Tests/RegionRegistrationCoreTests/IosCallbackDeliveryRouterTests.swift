@@ -29,6 +29,24 @@ final class IosCallbackDeliveryRouterTests: XCTestCase {
         XCTAssertNil(subject.withCurrent { $0("unavailable") })
     }
 
+    func testOnlyCurrentAttachmentCanAuthorizeDeferredWork() {
+        let subject = IosReattachableDelivery<(String) -> Void>()
+        let oldAttachment = subject.attach { _ in }
+
+        XCTAssertTrue(subject.isCurrent(oldAttachment))
+
+        let newAttachment = subject.attach { _ in }
+
+        XCTAssertFalse(subject.isCurrent(oldAttachment))
+        XCTAssertTrue(subject.isCurrent(newAttachment))
+
+        subject.detach(oldAttachment)
+        XCTAssertTrue(subject.isCurrent(newAttachment))
+
+        subject.detach(newAttachment)
+        XCTAssertFalse(subject.isCurrent(newAttachment))
+    }
+
     func testMainRouteOwnsDeliveryAndPreservesFifo() {
         var delivered: [String] = []
         var accepted: [String] = []
@@ -123,6 +141,38 @@ final class IosCallbackDeliveryRouterTests: XCTestCase {
         XCTAssertEqual(delivered, ["first", "second"])
         completions[1](true)
         XCTAssertEqual(delivered, ["first", "second", "third"])
+    }
+
+    func testJournalCompletionReceivesFinalDartOutcomeExactlyOnce() {
+        var routeCompletion: ((Bool) -> Void)?
+        var outcomes: [Bool] = []
+        let router = IosCallbackDeliveryRouter<String>(
+            selectRoute: { .main },
+            deliver: { _, _, completion in
+                routeCompletion = completion
+                return true
+            }
+        )
+
+        router.enqueue("event", completion: { outcomes.append($0) })
+        routeCompletion?(false)
+        routeCompletion?(true)
+
+        XCTAssertEqual(outcomes, [false])
+    }
+
+    func testCloseFailsActiveAndQueuedJournalDeliveries() {
+        var outcomes: [String] = []
+        let router = IosCallbackDeliveryRouter<String>(
+            selectRoute: { .headless },
+            deliver: { _, _, _ in true }
+        )
+
+        router.enqueue("active", completion: { outcomes.append("active:\($0)") })
+        router.enqueue("queued", completion: { outcomes.append("queued:\($0)") })
+        router.close()
+
+        XCTAssertEqual(Set(outcomes), Set(["active:false", "queued:false"]))
     }
 
     func testSynchronousCompletionPublishesAcceptanceBeforeAdvancingFifo() {
