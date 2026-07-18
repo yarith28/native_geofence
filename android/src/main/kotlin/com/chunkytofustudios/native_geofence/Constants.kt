@@ -5,6 +5,8 @@ class Constants {
         private const val PACKAGE_NAME = "com.chunkytofustudios.native_geofence"
 
         const val SHARED_PREFERENCES_KEY = "native_geofence_plugin_cache"
+        const val NO_BACKUP_STATE_DIRECTORY = "native_geofence"
+        const val NO_BACKUP_PREFERENCES_FILE = "preferences_v1.json"
         // Kept as the raw plugin-owned ID index for backward compatibility.
         const val PERSISTENT_GEOFENCES_IDS_KEY = "persistent_geofences_ids"
         const val PERSISTENT_CONFIGURED_GEOFENCES_IDS_KEY = "persistent_configured_geofences_ids"

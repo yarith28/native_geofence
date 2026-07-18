@@ -2,6 +2,7 @@
 
 * Owns the required non-exported Android callback receiver and foreground service, and reports a typed error if the receiver is removed or disabled in the merged manifest
 * Stores canonical Android registrations, absolute expiration deadlines, recovery eligibility, plugin-active state, and raw cleanup IDs with checked synchronous writes and exact rollback snapshots
+* Moves Android registration, callback-routing, recovery, and diagnostic state into no-backup storage, migrates it only on same-device updates, and discards restored legacy state so another installation cannot re-arm device-specific geofences
 * Routes Android shared-`PendingIntent` broadcasts by persisted geofence ID, splits mixed callbacks by handle, and restores exact prior storage when native registration fails
 * Serializes Android create, remove, remove-all, explicit recreation, and orphan cleanup through an exact-once FIFO boundary while retaining durable evidence until platform removal succeeds
 * Owns Android reboot, package-replacement, location-restoration, and `GEOFENCE_NOT_AVAILABLE` recovery; preserves finite lifetime, suppresses recovery initial triggers, and retries 14 times over a 660-minute horizon

@@ -35,8 +35,7 @@ object NativeGeofenceLogger {
 
     fun configure(context: Context, enabled: Boolean, maxBytes: Int) {
         initialize(context)
-        context.applicationContext
-            .getSharedPreferences(Constants.SHARED_PREFERENCES_KEY, Context.MODE_PRIVATE)
+        NativeGeofencePreferences.get(context)
             .edit()
             .putBoolean(Constants.LOG_FILE_ENABLED_KEY, enabled)
             .putInt(Constants.LOG_FILE_MAX_BYTES_KEY, normalizeMaxBytes(maxBytes))
@@ -176,11 +175,7 @@ object NativeGeofenceLogger {
     private fun normalizeMaxBytes(maxBytes: Int): Int =
         maxBytes.coerceIn(Constants.MIN_LOG_FILE_MAX_BYTES, Constants.MAX_LOG_FILE_MAX_BYTES)
 
-    private fun prefs(context: Context) =
-        context.applicationContext.getSharedPreferences(
-            Constants.SHARED_PREFERENCES_KEY,
-            Context.MODE_PRIVATE
-        )
+    private fun prefs(context: Context) = NativeGeofencePreferences.get(context)
 
     private fun logFile(context: Context): File =
         File(context.applicationContext.noBackupFilesDir, Constants.LOG_FILE_NAME)
