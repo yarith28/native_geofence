@@ -1201,6 +1201,10 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                             onFailure = ::fail
                         )
                     },
+                    // Forward synchronization is a real registration/update,
+                    // so it must honor the caller's configured initial events.
+                    // Recovery and rollback calls continue to pass/derive false.
+                    includeInitialTriggers = true,
                 )
             } catch (error: Throwable) {
                 fail(error)
