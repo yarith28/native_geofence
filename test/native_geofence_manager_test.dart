@@ -101,6 +101,35 @@ void main() {
       );
     }
   });
+
+  test('rejects expiration whose Duration construction overflowed', () async {
+    const maximumSignedInt64 = 9223372036854775807;
+
+    await expectLater(
+      NativeGeofenceManager.instance.createGeofence(
+        _geofence(
+          androidSettings: const AndroidGeofenceSettings(
+            initialTriggers: {GeofenceEvent.enter},
+            expiration: Duration(milliseconds: maximumSignedInt64),
+          ),
+        ),
+        geofenceCallback,
+      ),
+      throwsA(
+        isA<NativeGeofenceException>()
+            .having(
+              (exception) => exception.code,
+              'code',
+              NativeGeofenceErrorCode.invalidArguments,
+            )
+            .having(
+              (exception) => exception.message,
+              'message',
+              contains('expiration'),
+            ),
+      ),
+    );
+  });
 }
 
 Geofence _geofence({

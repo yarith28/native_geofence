@@ -15,6 +15,19 @@ import 'package:native_geofence/src/native_geofence_background_manager.dart';
 import 'package:native_geofence/src/platform/module.dart';
 import 'package:native_geofence/src/typedefs.dart';
 
+final BigInt _minimumSignedInt64 = BigInt.parse('-9223372036854775808');
+final BigInt _maximumSignedInt64 = BigInt.parse('9223372036854775807');
+
+bool _fitsSignedInt64(int value) {
+  final bigValue = BigInt.from(value);
+  return bigValue >= _minimumSignedInt64 && bigValue <= _maximumSignedInt64;
+}
+
+bool _sumFitsSignedInt64(int left, int right) {
+  final sum = BigInt.from(left) + BigInt.from(right);
+  return sum >= _minimumSignedInt64 && sum <= _maximumSignedInt64;
+}
+
 class _PreparedRegistration {
   final GeofenceWire wire;
 
@@ -329,10 +342,18 @@ class NativeGeofenceManager {
         callbackContext: callbackContext,
       ),
     );
+    final expirationDeadlineMillis = expirationDeadline?.millisecondsSinceEpoch;
+    if (expirationDeadlineMillis != null &&
+        !_fitsSignedInt64(expirationDeadlineMillis)) {
+      throw NativeGeofenceException.invalidArgument(
+        message: 'Android geofence expiration deadline must fit in a signed '
+            '64-bit millisecond value.',
+      );
+    }
     return _api
         .restoreGeofence(
           geofence: prepared.wire,
-          expirationDeadlineMillis: expirationDeadline?.millisecondsSinceEpoch,
+          expirationDeadlineMillis: expirationDeadlineMillis,
         )
         .catchError(NativeGeofenceExceptionMapper.catchError<void>);
   }
@@ -360,10 +381,28 @@ class NativeGeofenceManager {
     const maximumAndroidDurationMillis = 2147483647;
     final androidSettings = geofence.androidSettings;
     final expiration = androidSettings.expiration;
-    if (expiration != null && expiration.inMilliseconds <= 0) {
-      throw NativeGeofenceException.invalidArgument(
-          message:
-              'Android geofence expiration must be at least 1 millisecond.');
+    if (expiration != null) {
+      final expirationMillis = expiration.inMilliseconds;
+      if (expirationMillis <= 0) {
+        throw NativeGeofenceException.invalidArgument(
+            message:
+                'Android geofence expiration must be at least 1 millisecond.');
+      }
+      if (!_fitsSignedInt64(expirationMillis)) {
+        throw NativeGeofenceException.invalidArgument(
+          message: 'Android geofence expiration must fit in a signed 64-bit '
+              'millisecond value.',
+        );
+      }
+      if (!_sumFitsSignedInt64(
+        DateTime.now().millisecondsSinceEpoch,
+        expirationMillis,
+      )) {
+        throw NativeGeofenceException.invalidArgument(
+          message: 'Android geofence expiration is too large to form a signed '
+              '64-bit absolute deadline.',
+        );
+      }
     }
     final loiteringDelayMillis = androidSettings.loiteringDelay.inMilliseconds;
     if (androidSettings.loiteringDelay.isNegative ||
@@ -388,6 +427,12 @@ class NativeGeofenceManager {
         geofence.triggers.first == GeofenceEvent.dwell) {
       throw NativeGeofenceException.invalidArgument(
           message: 'iOS does not support "GeofenceEvent.dwell".');
+    }
+    final callbackContext = registration.callbackContext;
+    if (callbackContext != null && !_fitsSignedInt64(callbackContext)) {
+      throw NativeGeofenceException.invalidArgument(
+        message: 'Geofence callback context must fit in a signed 64-bit value.',
+      );
     }
     final CallbackHandle? callbackHandle;
     try {
