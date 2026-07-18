@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'native_geofence'
-  s.version          = '1.0.0'
+  s.version          = '1.3.1'
   s.summary          = 'iOS implementation for the Flutter native_geofence plugin.'
   s.description      = <<-DESC
 Battery efficient Flutter Geofencing that uses native iOS and Android APIs.
