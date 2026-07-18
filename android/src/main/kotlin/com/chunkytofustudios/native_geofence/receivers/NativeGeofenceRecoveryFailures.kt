@@ -53,7 +53,10 @@ internal object NativeGeofenceRecoveryFailures {
         val publicError = FlutterError(publicCode, message, details)
         return GeofenceRecoveryAggregateException(
             publicError = publicError,
-            retryable = failures.all { NativeGeofenceRecoveryPolicy.isRetryable(it.error) }
+            // Terminal failures remain in the structured aggregate, but they
+            // must not strand another registration that still has transient
+            // work to retry.
+            retryable = failures.any { NativeGeofenceRecoveryPolicy.isRetryable(it.error) }
         )
     }
 

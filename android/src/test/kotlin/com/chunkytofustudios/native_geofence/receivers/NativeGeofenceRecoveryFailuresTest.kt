@@ -21,7 +21,7 @@ class NativeGeofenceRecoveryFailuresTest {
     }
 
     @Test
-    fun `mixed typed and untyped failures use plugin internal`() {
+    fun `mixed failures use plugin internal and retry while any work is transient`() {
         val pluginInternal = NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString()
         val invalid = NativeGeofenceErrorCode.INVALID_ARGUMENTS.raw.toString()
 
@@ -41,9 +41,27 @@ class NativeGeofenceRecoveryFailuresTest {
         assertEquals(pluginInternal, mixedCodes.publicError.code)
         assertEquals(pluginInternal, mixedTypes.publicError.code)
         assertEquals(pluginInternal, untyped.publicError.code)
-        assertFalse(mixedCodes.retryable)
+        assertTrue(mixedCodes.retryable)
         assertTrue(mixedTypes.retryable)
         assertTrue(untyped.retryable)
+    }
+
+    @Test
+    fun `terminal registration does not suppress retry for a timed out registration`() {
+        val invalid = FlutterError(
+            NativeGeofenceErrorCode.INVALID_ARGUMENTS.raw.toString(),
+            "invalid registration",
+        )
+        val timeout = IllegalStateException("Play services mutation timed out")
+
+        val aggregate = aggregate(
+            failure("invalid", "rearm", invalid),
+            failure("timed-out", "rearm", timeout),
+        )
+
+        assertTrue(aggregate.retryable)
+        assertTrue(aggregate.publicError.details.toString().contains("id=invalid"))
+        assertTrue(aggregate.publicError.details.toString().contains("id=timed-out"))
     }
 
     @Test
