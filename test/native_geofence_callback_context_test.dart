@@ -10,7 +10,8 @@ Future<void> callbackWithContext(GeofenceCallbackParams params) async {}
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('manager forwards an optional callback context', () async {
+  test('manager forwards callback contexts including signed 64-bit boundaries',
+      () async {
     GeofenceWire? captured;
     final channel = BasicMessageChannel<Object?>(
       'dev.flutter.pigeon.native_geofence.NativeGeofenceApi.createGeofence',
@@ -22,14 +23,21 @@ void main() {
       return <Object?>[null];
     });
 
-    await NativeGeofenceManager.instance.createGeofence(
-      _geofence('office'),
-      callbackWithContext,
-      callbackContext: 771,
-    );
+    const callbackContexts = <int>[
+      771,
+      -9223372036854775808,
+      9223372036854775807,
+    ];
+    for (final callbackContext in callbackContexts) {
+      await NativeGeofenceManager.instance.createGeofence(
+        _geofence('office'),
+        callbackWithContext,
+        callbackContext: callbackContext,
+      );
 
-    expect(captured?.callbackContext, 771);
-    expect(captured?.callbackHandle, isNot(0));
+      expect(captured?.callbackContext, callbackContext);
+      expect(captured?.callbackHandle, isNot(0));
+    }
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockDecodedMessageHandler<Object?>(channel, null);
   });
