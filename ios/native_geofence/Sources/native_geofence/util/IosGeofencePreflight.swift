@@ -88,3 +88,54 @@ enum IosGeofenceSynchronizationPreflight {
         )
     }
 }
+
+enum IosGeofenceStatusHealth: Equatable {
+    case noRegistrations
+    case unavailable
+    case degraded
+    case unknown
+    case healthy
+}
+
+enum IosGeofenceCallbackRefreshHealth: Equatable {
+    case current
+    case notApplicable
+    case refreshRequired
+    case unknown
+}
+
+enum IosGeofenceStatusHealthPolicy {
+    static func compute(
+        persistedCount: Int,
+        locationPermission: Bool,
+        backgroundPermission: Bool,
+        preciseLocationPermission: Bool,
+        backgroundRefreshAvailable: Bool,
+        locationServicesEnabled: Bool,
+        monitoringAvailable: Bool,
+        dispatcherRegistered: Bool,
+        refreshState: IosGeofenceCallbackRefreshHealth,
+        monitoredCount: Int
+    ) -> IosGeofenceStatusHealth {
+        guard persistedCount > 0 else { return .noRegistrations }
+        guard locationPermission,
+              backgroundPermission,
+              preciseLocationPermission,
+              locationServicesEnabled,
+              monitoringAvailable,
+              dispatcherRegistered
+        else {
+            return .unavailable
+        }
+        if refreshState == .refreshRequired || monitoredCount != persistedCount {
+            return .degraded
+        }
+        if !backgroundRefreshAvailable {
+            return .degraded
+        }
+        if refreshState == .unknown {
+            return .unknown
+        }
+        return .healthy
+    }
+}
