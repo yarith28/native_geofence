@@ -187,13 +187,7 @@ class NativeGeofencePersistence {
         let build = bundle.object(
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String ?? "unknown"
-        let executableAttributes = bundle.executableURL.flatMap {
-            try? FileManager.default.attributesOfItem(atPath: $0.path)
-        }
-        let modifiedAt = (executableAttributes?[.modificationDate] as? Date)?
-            .timeIntervalSince1970 ?? 0
-        let size = (executableAttributes?[.size] as? NSNumber)?.int64Value ?? 0
-        return "\(identifier):\(version):\(build):\(modifiedAt):\(size)"
+        return "\(identifier):\(version):\(build)"
     }
 
     static func synchronizationSnapshot() -> IosSynchronizationPersistenceSnapshot {
