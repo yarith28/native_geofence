@@ -7,9 +7,7 @@ import Foundation
 final class IosGeofenceMutationAuthority {
     typealias EventDelivery = (
         GeofenceCallbackParamsWire,
-        @escaping () -> Bool,
-        @escaping () -> Void,
-        @escaping () -> Void
+        @escaping (Bool) -> Void
     ) -> Void
     typealias DeliveryAttachment = IosReattachableDelivery<EventDelivery>.Attachment
 
@@ -18,13 +16,13 @@ final class IosGeofenceMutationAuthority {
     private let eventDelivery = IosReattachableDelivery<EventDelivery>()
 
     private(set) lazy var locationManagerDelegate = LocationManagerDelegate(
-        deliverEvent: { [weak self] params, shouldAttempt, onAccepted, onRejected in
+        deliverEvent: { [weak self] params, completion in
             guard let self,
                   eventDelivery.withCurrent({ delivery in
-                      delivery(params, shouldAttempt, onAccepted, onRejected)
+                      delivery(params, completion)
                   }) != nil
             else {
-                onRejected()
+                completion(false)
                 return
             }
         }
@@ -36,7 +34,18 @@ final class IosGeofenceMutationAuthority {
     private init() {}
 
     func attachEventDelivery(_ delivery: @escaping EventDelivery) -> DeliveryAttachment {
-        eventDelivery.attach(delivery)
+        let attachment = eventDelivery.attach(delivery)
+        // Plugin attachment occurs inside GeneratedPluginRegistrant. Drain on
+        // the next main-loop turn so a pending callback cannot recursively
+        // bootstrap a headless engine while the main engine is still
+        // registering plugins.
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  eventDelivery.isCurrent(attachment)
+            else { return }
+            locationManagerDelegate.drainPendingEvents()
+        }
+        return attachment
     }
 
     func detachEventDelivery(_ attachment: DeliveryAttachment) {
