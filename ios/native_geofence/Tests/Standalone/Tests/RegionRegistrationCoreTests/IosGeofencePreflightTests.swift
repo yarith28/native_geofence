@@ -80,6 +80,29 @@ final class IosGeofencePreflightTests: XCTestCase {
         )
     }
 
+    func testRemovalOnlySynchronizationAllowsRevokedPermissionAndDisabledServices() {
+        XCTAssertNil(
+            IosGeofenceSynchronizationPreflight.failure(
+                requiresRegistrationPreflight: false,
+                locationServicesEnabled: false,
+                authorizationStatus: .denied,
+                accuracyAuthorization: .reducedAccuracy
+            )
+        )
+    }
+
+    func testSynchronizationRegistrationStillRequiresFullAccuracy() {
+        XCTAssertEqual(
+            IosGeofenceSynchronizationPreflight.failure(
+                requiresRegistrationPreflight: true,
+                locationServicesEnabled: true,
+                authorizationStatus: .authorizedAlways,
+                accuracyAuthorization: .reducedAccuracy
+            ),
+            .preciseLocationPermissionMissing
+        )
+    }
+
     func testOtherAuthorizationStatesRequireLocationPermission() {
         for status: CLAuthorizationStatus in [.denied, .notDetermined, .restricted] {
             XCTAssertEqual(
