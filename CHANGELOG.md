@@ -1,5 +1,13 @@
 ## Unreleased
 
+* Starts the iOS headless Flutter engine before installing Pigeon message handlers and defers initial journal replay until main-plugin registration unwinds, preventing a launch-time assertion when replaying a journaled geofence callback
+* Aligns the declared Dart and Flutter SDK floors with runtime and example dependencies and tests the minimum and current Flutter channels in CI
+* Removes iOS executable file-metadata fingerprinting so the privacy manifest no longer omits a required-reason file-timestamp API
+* Requires precise iOS location for creates and replacements, reports disabled Background App Refresh as degraded health, and still permits removal-only synchronization after permission loss
+* Persists uncertain Android removal intent, reconciles late outcomes, batches automatic recovery with cooperative cancellation, and continues retrying transient registrations in mixed-failure batches
+* Preserves Android callback expiration deadlines through queued delivery and includes configured initial triggers only for forward synchronization
+* Journals iOS callbacks before Flutter delivery with stable event IDs and bounded retry, acknowledges them only after Dart success, and scopes background execution time to every main or headless attempt
+* Validates signed 64-bit callback contexts and expiration arithmetic at the Dart API boundary so invalid values return typed argument errors
 * Owns the required non-exported Android callback receiver and foreground service, and reports a typed error if the receiver is removed or disabled in the merged manifest
 * Stores canonical Android registrations, absolute expiration deadlines, recovery eligibility, plugin-active state, and raw cleanup IDs with checked synchronous writes and exact rollback snapshots
 * Moves Android registration, callback-routing, recovery, and diagnostic state into no-backup storage, migrates it only on same-device updates, and discards restored legacy state so another installation cannot re-arm device-specific geofences
