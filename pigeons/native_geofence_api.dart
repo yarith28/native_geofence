@@ -192,6 +192,10 @@ enum NativeGeofenceErrorCode {
   /// request the permission from the user.
   missingBackgroundLocationPermission,
 
+  /// iOS Precise Location access is disabled, so Core Location cannot monitor
+  /// circular regions.
+  missingPreciseLocationPermission,
+
   /// The geofence deletion failed because the geofence was not found.
   /// This is safe to ignore.
   geofenceNotFound,
@@ -316,6 +320,10 @@ class NativeGeofenceStatusWire {
   final bool? locationPermissionGranted;
 
   final bool? backgroundLocationPermissionGranted;
+
+  /// Whether iOS granted full/precise location accuracy. Null on Android.
+  final bool? preciseLocationPermissionGranted;
+
   final bool? notificationPermissionGranted;
   final bool? locationServicesEnabled;
   final bool? monitoringAvailable;
@@ -345,6 +353,7 @@ class NativeGeofenceStatusWire {
     required this.persistedGeofenceCount,
     this.locationPermissionGranted,
     this.backgroundLocationPermissionGranted,
+    this.preciseLocationPermissionGranted,
     this.notificationPermissionGranted,
     this.locationServicesEnabled,
     this.monitoringAvailable,

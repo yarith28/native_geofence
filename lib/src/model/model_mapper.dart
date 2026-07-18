@@ -244,6 +244,7 @@ extension NativeGeofenceStatusWireMapper on NativeGeofenceStatusWire {
         locationPermissionGranted: locationPermissionGranted,
         backgroundLocationPermissionGranted:
             backgroundLocationPermissionGranted,
+        preciseLocationPermissionGranted: preciseLocationPermissionGranted,
         notificationPermissionGranted: notificationPermissionGranted,
         locationServicesEnabled: locationServicesEnabled,
         monitoringAvailable: monitoringAvailable,

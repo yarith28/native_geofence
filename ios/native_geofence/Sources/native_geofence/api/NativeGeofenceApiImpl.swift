@@ -145,7 +145,8 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
 
         if let failure = IosGeofencePreflight.failure(
             locationServicesEnabled: locationServicesEnabled,
-            authorizationStatus: locationManagerDelegate.locationManager.authorizationStatus
+            authorizationStatus: locationManagerDelegate.locationManager.authorizationStatus,
+            accuracyAuthorization: locationManagerDelegate.locationManager.accuracyAuthorization
         ) {
             completion(.failure(nativeGeofenceError(failure)))
             return
@@ -183,6 +184,7 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
         completion: @escaping (Result<NativeGeofenceStatusWire, Error>) -> Void
     ) {
         let authorizationStatus = locationManagerDelegate.locationManager.authorizationStatus
+        let accuracyAuthorization = locationManagerDelegate.locationManager.accuracyAuthorization
         let monitoringAvailable = CLLocationManager.isMonitoringAvailable(
             for: CLCircularRegion.self
         )
@@ -202,7 +204,10 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
         locationServicesQueue.async {
             let locationServicesEnabled = CLLocationManager.locationServicesEnabled()
             DispatchQueue.main.async {
-                let permission = IosLocationPermissionEvidence.from(authorizationStatus)
+                let permission = IosLocationPermissionEvidence.from(
+                    authorizationStatus,
+                    accuracyAuthorization: accuracyAuthorization
+                )
                 let refreshState: NativeGeofenceCallbackRefreshState
                 switch refreshDecision {
                 case .notApplicable:
@@ -216,6 +221,8 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
                     persistedCount: persistedIds.count,
                     locationPermission: permission.locationPermissionGranted,
                     backgroundPermission: permission.backgroundLocationPermissionGranted,
+                    preciseLocationPermission:
+                        permission.preciseLocationPermissionGranted,
                     locationServicesEnabled: locationServicesEnabled,
                     monitoringAvailable: monitoringAvailable,
                     dispatcherRegistered: dispatcherRegistered,
@@ -231,6 +238,8 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
                             locationPermissionGranted: permission.locationPermissionGranted,
                             backgroundLocationPermissionGranted:
                                 permission.backgroundLocationPermissionGranted,
+                            preciseLocationPermissionGranted:
+                                permission.preciseLocationPermissionGranted,
                             notificationPermissionGranted: nil,
                             locationServicesEnabled: locationServicesEnabled,
                             monitoringAvailable: monitoringAvailable,
@@ -611,7 +620,9 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
         if let failure = IosGeofencePreflight.failure(
             locationServicesEnabled: locationServicesEnabled,
             authorizationStatus: locationManagerDelegate.locationManager
-                .authorizationStatus
+                .authorizationStatus,
+            accuracyAuthorization: locationManagerDelegate.locationManager
+                .accuracyAuthorization
         ) {
             completion(.failure(nativeGeofenceError(failure)))
             return

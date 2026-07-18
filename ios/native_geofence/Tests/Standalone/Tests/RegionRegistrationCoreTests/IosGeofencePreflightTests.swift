@@ -16,7 +16,8 @@ final class IosGeofencePreflightTests: XCTestCase {
         XCTAssertNil(
             IosGeofencePreflight.failure(
                 locationServicesEnabled: true,
-                authorizationStatus: .authorizedAlways
+                authorizationStatus: .authorizedAlways,
+                accuracyAuthorization: .fullAccuracy
             )
         )
     }
@@ -25,7 +26,8 @@ final class IosGeofencePreflightTests: XCTestCase {
         XCTAssertEqual(
             IosGeofencePreflight.failure(
                 locationServicesEnabled: true,
-                authorizationStatus: authorizedWhenInUse
+                authorizationStatus: authorizedWhenInUse,
+                accuracyAuthorization: .fullAccuracy
             ),
             .backgroundLocationPermissionMissing
         )
@@ -33,25 +35,48 @@ final class IosGeofencePreflightTests: XCTestCase {
 
     func testPermissionEvidenceSeparatesLocationFromBackgroundAuthorization() {
         XCTAssertEqual(
-            IosLocationPermissionEvidence.from(.authorizedAlways),
+            IosLocationPermissionEvidence.from(
+                .authorizedAlways,
+                accuracyAuthorization: .fullAccuracy
+            ),
             IosLocationPermissionEvidence(
                 locationPermissionGranted: true,
-                backgroundLocationPermissionGranted: true
+                backgroundLocationPermissionGranted: true,
+                preciseLocationPermissionGranted: true
             )
         )
         XCTAssertEqual(
-            IosLocationPermissionEvidence.from(authorizedWhenInUse),
+            IosLocationPermissionEvidence.from(
+                authorizedWhenInUse,
+                accuracyAuthorization: .fullAccuracy
+            ),
             IosLocationPermissionEvidence(
                 locationPermissionGranted: true,
-                backgroundLocationPermissionGranted: false
+                backgroundLocationPermissionGranted: false,
+                preciseLocationPermissionGranted: true
             )
         )
         XCTAssertEqual(
-            IosLocationPermissionEvidence.from(.denied),
+            IosLocationPermissionEvidence.from(
+                .denied,
+                accuracyAuthorization: .reducedAccuracy
+            ),
             IosLocationPermissionEvidence(
                 locationPermissionGranted: false,
-                backgroundLocationPermissionGranted: false
+                backgroundLocationPermissionGranted: false,
+                preciseLocationPermissionGranted: false
             )
+        )
+    }
+
+    func testReducedAccuracyIsRejectedForRegionMonitoring() {
+        XCTAssertEqual(
+            IosGeofencePreflight.failure(
+                locationServicesEnabled: true,
+                authorizationStatus: .authorizedAlways,
+                accuracyAuthorization: .reducedAccuracy
+            ),
+            .preciseLocationPermissionMissing
         )
     }
 
@@ -60,7 +85,8 @@ final class IosGeofencePreflightTests: XCTestCase {
             XCTAssertEqual(
                 IosGeofencePreflight.failure(
                     locationServicesEnabled: true,
-                    authorizationStatus: status
+                    authorizationStatus: status,
+                    accuracyAuthorization: .fullAccuracy
                 ),
                 .locationPermissionMissing
             )
@@ -72,7 +98,8 @@ final class IosGeofencePreflightTests: XCTestCase {
             XCTAssertEqual(
                 IosGeofencePreflight.failure(
                     locationServicesEnabled: false,
-                    authorizationStatus: status
+                    authorizationStatus: status,
+                    accuracyAuthorization: .fullAccuracy
                 ),
                 .locationServicesDisabled
             )

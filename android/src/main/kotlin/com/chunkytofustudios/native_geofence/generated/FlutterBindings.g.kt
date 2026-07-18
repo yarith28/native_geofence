@@ -244,37 +244,42 @@ enum class NativeGeofenceErrorCode(val raw: Int) {
    */
   MISSING_BACKGROUND_LOCATION_PERMISSION(5),
   /**
+   * iOS Precise Location access is disabled, so Core Location cannot monitor
+   * circular regions.
+   */
+  MISSING_PRECISE_LOCATION_PERMISSION(6),
+  /**
    * The geofence deletion failed because the geofence was not found.
    * This is safe to ignore.
    */
-  GEOFENCE_NOT_FOUND(6),
+  GEOFENCE_NOT_FOUND(7),
   /**
    * The specified geofence callback was not found.
    * This can happen for old geofence callback functions that were
    * moved/renamed. Please re-create those geofences.
    */
-  CALLBACK_NOT_FOUND(7),
+  CALLBACK_NOT_FOUND(8),
   /**
    * The specified geofence callback function signature is invalid.
    * This can happen if the callback function signature has changed or due to
    * plugin contract changes.
    */
-  CALLBACK_INVALID(8),
+  CALLBACK_INVALID(9),
   /** iOS Core Location rejected or did not confirm region monitoring. */
-  IOS_REGION_MONITORING_FAILED(9),
+  IOS_REGION_MONITORING_FAILED(10),
   /**
    * An Android component required by the plugin was removed or disabled in
    * the merged application manifest.
    */
-  ANDROID_MANIFEST_COMPONENT_MISSING(10),
+  ANDROID_MANIFEST_COMPONENT_MISSING(11),
   /** Android rejected starting a foreground service from the current app state. */
-  ANDROID_FOREGROUND_SERVICE_START_NOT_ALLOWED(11),
+  ANDROID_FOREGROUND_SERVICE_START_NOT_ALLOWED(12),
   /** Android foreground-service manifest or runtime prerequisites are missing. */
-  ANDROID_FOREGROUND_SERVICE_CONFIGURATION_MISSING(12),
+  ANDROID_FOREGROUND_SERVICE_CONFIGURATION_MISSING(13),
   /** Notification permission or notification delivery is unavailable. */
-  MISSING_NOTIFICATION_PERMISSION(13),
+  MISSING_NOTIFICATION_PERMISSION(14),
   /** Android did not confirm foreground promotion before the watchdog expired. */
-  ANDROID_FOREGROUND_SERVICE_PROMOTION_TIMEOUT(14);
+  ANDROID_FOREGROUND_SERVICE_PROMOTION_TIMEOUT(15);
 
   companion object {
     fun ofRaw(raw: Int): NativeGeofenceErrorCode? {
@@ -846,6 +851,8 @@ data class NativeGeofenceStatusWire (
    */
   val locationPermissionGranted: Boolean? = null,
   val backgroundLocationPermissionGranted: Boolean? = null,
+  /** Whether iOS granted full/precise location accuracy. Null on Android. */
+  val preciseLocationPermissionGranted: Boolean? = null,
   val notificationPermissionGranted: Boolean? = null,
   val locationServicesEnabled: Boolean? = null,
   val monitoringAvailable: Boolean? = null,
@@ -877,29 +884,30 @@ data class NativeGeofenceStatusWire (
       val persistedGeofenceCount = pigeonVar_list[2] as Long
       val locationPermissionGranted = pigeonVar_list[3] as Boolean?
       val backgroundLocationPermissionGranted = pigeonVar_list[4] as Boolean?
-      val notificationPermissionGranted = pigeonVar_list[5] as Boolean?
-      val locationServicesEnabled = pigeonVar_list[6] as Boolean?
-      val monitoringAvailable = pigeonVar_list[7] as Boolean?
-      val playServicesAvailable = pigeonVar_list[8] as Boolean?
-      val callbackPendingIntentAvailable = pigeonVar_list[9] as Boolean?
-      val callbackReceiverAvailable = pigeonVar_list[10] as Boolean?
-      val canEnumerateLivePlatformRegistrations = pigeonVar_list[11] as Boolean?
-      val pluginOwnedMonitoringCount = pigeonVar_list[12] as Long?
-      val callbackDispatcherRegistered = pigeonVar_list[13] as Boolean?
-      val callbackRefreshState = pigeonVar_list[14] as NativeGeofenceCallbackRefreshState
-      val registrationHealth = pigeonVar_list[15] as NativeGeofenceRegistrationHealth
-      val lastRegistrationFact = pigeonVar_list[16] as NativeGeofenceLifecycleFactWire?
-      val lastRemovalFact = pigeonVar_list[17] as NativeGeofenceLifecycleFactWire?
-      val lastBroadcastFact = pigeonVar_list[18] as NativeGeofenceLifecycleFactWire?
-      val lastEnqueueFact = pigeonVar_list[19] as NativeGeofenceLifecycleFactWire?
-      val lastWorkerFact = pigeonVar_list[20] as NativeGeofenceLifecycleFactWire?
-      val lastRecoveryFact = pigeonVar_list[21] as NativeGeofenceLifecycleFactWire?
-      val lastForegroundFact = pigeonVar_list[22] as NativeGeofenceLifecycleFactWire?
-      val deliveryTrace = pigeonVar_list[23] as List<NativeGeofenceDeliveryTraceWire>?
-      val deliveryTraceDroppedCount = pigeonVar_list[24] as Long?
-      val packageVersion = pigeonVar_list[25] as String?
-      val buildRevision = pigeonVar_list[26] as String?
-      return NativeGeofenceStatusWire(platform, osVersion, persistedGeofenceCount, locationPermissionGranted, backgroundLocationPermissionGranted, notificationPermissionGranted, locationServicesEnabled, monitoringAvailable, playServicesAvailable, callbackPendingIntentAvailable, callbackReceiverAvailable, canEnumerateLivePlatformRegistrations, pluginOwnedMonitoringCount, callbackDispatcherRegistered, callbackRefreshState, registrationHealth, lastRegistrationFact, lastRemovalFact, lastBroadcastFact, lastEnqueueFact, lastWorkerFact, lastRecoveryFact, lastForegroundFact, deliveryTrace, deliveryTraceDroppedCount, packageVersion, buildRevision)
+      val preciseLocationPermissionGranted = pigeonVar_list[5] as Boolean?
+      val notificationPermissionGranted = pigeonVar_list[6] as Boolean?
+      val locationServicesEnabled = pigeonVar_list[7] as Boolean?
+      val monitoringAvailable = pigeonVar_list[8] as Boolean?
+      val playServicesAvailable = pigeonVar_list[9] as Boolean?
+      val callbackPendingIntentAvailable = pigeonVar_list[10] as Boolean?
+      val callbackReceiverAvailable = pigeonVar_list[11] as Boolean?
+      val canEnumerateLivePlatformRegistrations = pigeonVar_list[12] as Boolean?
+      val pluginOwnedMonitoringCount = pigeonVar_list[13] as Long?
+      val callbackDispatcherRegistered = pigeonVar_list[14] as Boolean?
+      val callbackRefreshState = pigeonVar_list[15] as NativeGeofenceCallbackRefreshState
+      val registrationHealth = pigeonVar_list[16] as NativeGeofenceRegistrationHealth
+      val lastRegistrationFact = pigeonVar_list[17] as NativeGeofenceLifecycleFactWire?
+      val lastRemovalFact = pigeonVar_list[18] as NativeGeofenceLifecycleFactWire?
+      val lastBroadcastFact = pigeonVar_list[19] as NativeGeofenceLifecycleFactWire?
+      val lastEnqueueFact = pigeonVar_list[20] as NativeGeofenceLifecycleFactWire?
+      val lastWorkerFact = pigeonVar_list[21] as NativeGeofenceLifecycleFactWire?
+      val lastRecoveryFact = pigeonVar_list[22] as NativeGeofenceLifecycleFactWire?
+      val lastForegroundFact = pigeonVar_list[23] as NativeGeofenceLifecycleFactWire?
+      val deliveryTrace = pigeonVar_list[24] as List<NativeGeofenceDeliveryTraceWire>?
+      val deliveryTraceDroppedCount = pigeonVar_list[25] as Long?
+      val packageVersion = pigeonVar_list[26] as String?
+      val buildRevision = pigeonVar_list[27] as String?
+      return NativeGeofenceStatusWire(platform, osVersion, persistedGeofenceCount, locationPermissionGranted, backgroundLocationPermissionGranted, preciseLocationPermissionGranted, notificationPermissionGranted, locationServicesEnabled, monitoringAvailable, playServicesAvailable, callbackPendingIntentAvailable, callbackReceiverAvailable, canEnumerateLivePlatformRegistrations, pluginOwnedMonitoringCount, callbackDispatcherRegistered, callbackRefreshState, registrationHealth, lastRegistrationFact, lastRemovalFact, lastBroadcastFact, lastEnqueueFact, lastWorkerFact, lastRecoveryFact, lastForegroundFact, deliveryTrace, deliveryTraceDroppedCount, packageVersion, buildRevision)
     }
   }
   fun toList(): List<Any?> {
@@ -909,6 +917,7 @@ data class NativeGeofenceStatusWire (
       persistedGeofenceCount,
       locationPermissionGranted,
       backgroundLocationPermissionGranted,
+      preciseLocationPermissionGranted,
       notificationPermissionGranted,
       locationServicesEnabled,
       monitoringAvailable,
@@ -941,7 +950,7 @@ data class NativeGeofenceStatusWire (
       return true
     }
     val other = other as NativeGeofenceStatusWire
-    return FlutterBindingsPigeonUtils.deepEquals(this.platform, other.platform) && FlutterBindingsPigeonUtils.deepEquals(this.osVersion, other.osVersion) && FlutterBindingsPigeonUtils.deepEquals(this.persistedGeofenceCount, other.persistedGeofenceCount) && FlutterBindingsPigeonUtils.deepEquals(this.locationPermissionGranted, other.locationPermissionGranted) && FlutterBindingsPigeonUtils.deepEquals(this.backgroundLocationPermissionGranted, other.backgroundLocationPermissionGranted) && FlutterBindingsPigeonUtils.deepEquals(this.notificationPermissionGranted, other.notificationPermissionGranted) && FlutterBindingsPigeonUtils.deepEquals(this.locationServicesEnabled, other.locationServicesEnabled) && FlutterBindingsPigeonUtils.deepEquals(this.monitoringAvailable, other.monitoringAvailable) && FlutterBindingsPigeonUtils.deepEquals(this.playServicesAvailable, other.playServicesAvailable) && FlutterBindingsPigeonUtils.deepEquals(this.callbackPendingIntentAvailable, other.callbackPendingIntentAvailable) && FlutterBindingsPigeonUtils.deepEquals(this.callbackReceiverAvailable, other.callbackReceiverAvailable) && FlutterBindingsPigeonUtils.deepEquals(this.canEnumerateLivePlatformRegistrations, other.canEnumerateLivePlatformRegistrations) && FlutterBindingsPigeonUtils.deepEquals(this.pluginOwnedMonitoringCount, other.pluginOwnedMonitoringCount) && FlutterBindingsPigeonUtils.deepEquals(this.callbackDispatcherRegistered, other.callbackDispatcherRegistered) && FlutterBindingsPigeonUtils.deepEquals(this.callbackRefreshState, other.callbackRefreshState) && FlutterBindingsPigeonUtils.deepEquals(this.registrationHealth, other.registrationHealth) && FlutterBindingsPigeonUtils.deepEquals(this.lastRegistrationFact, other.lastRegistrationFact) && FlutterBindingsPigeonUtils.deepEquals(this.lastRemovalFact, other.lastRemovalFact) && FlutterBindingsPigeonUtils.deepEquals(this.lastBroadcastFact, other.lastBroadcastFact) && FlutterBindingsPigeonUtils.deepEquals(this.lastEnqueueFact, other.lastEnqueueFact) && FlutterBindingsPigeonUtils.deepEquals(this.lastWorkerFact, other.lastWorkerFact) && FlutterBindingsPigeonUtils.deepEquals(this.lastRecoveryFact, other.lastRecoveryFact) && FlutterBindingsPigeonUtils.deepEquals(this.lastForegroundFact, other.lastForegroundFact) && FlutterBindingsPigeonUtils.deepEquals(this.deliveryTrace, other.deliveryTrace) && FlutterBindingsPigeonUtils.deepEquals(this.deliveryTraceDroppedCount, other.deliveryTraceDroppedCount) && FlutterBindingsPigeonUtils.deepEquals(this.packageVersion, other.packageVersion) && FlutterBindingsPigeonUtils.deepEquals(this.buildRevision, other.buildRevision)
+    return FlutterBindingsPigeonUtils.deepEquals(this.platform, other.platform) && FlutterBindingsPigeonUtils.deepEquals(this.osVersion, other.osVersion) && FlutterBindingsPigeonUtils.deepEquals(this.persistedGeofenceCount, other.persistedGeofenceCount) && FlutterBindingsPigeonUtils.deepEquals(this.locationPermissionGranted, other.locationPermissionGranted) && FlutterBindingsPigeonUtils.deepEquals(this.backgroundLocationPermissionGranted, other.backgroundLocationPermissionGranted) && FlutterBindingsPigeonUtils.deepEquals(this.preciseLocationPermissionGranted, other.preciseLocationPermissionGranted) && FlutterBindingsPigeonUtils.deepEquals(this.notificationPermissionGranted, other.notificationPermissionGranted) && FlutterBindingsPigeonUtils.deepEquals(this.locationServicesEnabled, other.locationServicesEnabled) && FlutterBindingsPigeonUtils.deepEquals(this.monitoringAvailable, other.monitoringAvailable) && FlutterBindingsPigeonUtils.deepEquals(this.playServicesAvailable, other.playServicesAvailable) && FlutterBindingsPigeonUtils.deepEquals(this.callbackPendingIntentAvailable, other.callbackPendingIntentAvailable) && FlutterBindingsPigeonUtils.deepEquals(this.callbackReceiverAvailable, other.callbackReceiverAvailable) && FlutterBindingsPigeonUtils.deepEquals(this.canEnumerateLivePlatformRegistrations, other.canEnumerateLivePlatformRegistrations) && FlutterBindingsPigeonUtils.deepEquals(this.pluginOwnedMonitoringCount, other.pluginOwnedMonitoringCount) && FlutterBindingsPigeonUtils.deepEquals(this.callbackDispatcherRegistered, other.callbackDispatcherRegistered) && FlutterBindingsPigeonUtils.deepEquals(this.callbackRefreshState, other.callbackRefreshState) && FlutterBindingsPigeonUtils.deepEquals(this.registrationHealth, other.registrationHealth) && FlutterBindingsPigeonUtils.deepEquals(this.lastRegistrationFact, other.lastRegistrationFact) && FlutterBindingsPigeonUtils.deepEquals(this.lastRemovalFact, other.lastRemovalFact) && FlutterBindingsPigeonUtils.deepEquals(this.lastBroadcastFact, other.lastBroadcastFact) && FlutterBindingsPigeonUtils.deepEquals(this.lastEnqueueFact, other.lastEnqueueFact) && FlutterBindingsPigeonUtils.deepEquals(this.lastWorkerFact, other.lastWorkerFact) && FlutterBindingsPigeonUtils.deepEquals(this.lastRecoveryFact, other.lastRecoveryFact) && FlutterBindingsPigeonUtils.deepEquals(this.lastForegroundFact, other.lastForegroundFact) && FlutterBindingsPigeonUtils.deepEquals(this.deliveryTrace, other.deliveryTrace) && FlutterBindingsPigeonUtils.deepEquals(this.deliveryTraceDroppedCount, other.deliveryTraceDroppedCount) && FlutterBindingsPigeonUtils.deepEquals(this.packageVersion, other.packageVersion) && FlutterBindingsPigeonUtils.deepEquals(this.buildRevision, other.buildRevision)
   }
 
   override fun hashCode(): Int {
@@ -951,6 +960,7 @@ data class NativeGeofenceStatusWire (
     result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.persistedGeofenceCount)
     result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.locationPermissionGranted)
     result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.backgroundLocationPermissionGranted)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.preciseLocationPermissionGranted)
     result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.notificationPermissionGranted)
     result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.locationServicesEnabled)
     result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.monitoringAvailable)
