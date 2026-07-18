@@ -191,6 +191,14 @@ Apple's temporary full-accuracy flow with
 `CLLocationManager.requestTemporaryFullAccuracyAuthorization(withPurposeKey:)`
 and the matching `NSLocationTemporaryUsageDescriptionDictionary` purpose key.
 
+Background App Refresh is reported separately through
+`NativeGeofenceStatus.backgroundRefreshStatus`. The plugin accepts creates and
+replacements when it is denied or restricted because Core Location can still
+monitor while the app runs, but registration health is `degraded`: iOS will not
+wake a terminated app for region events until Background App Refresh is
+available. The host app owns any explanation or Settings guidance; the plugin
+does not change this system preference.
+
 3. Update `AppDelegate.swift` to configure `NativeGeofencePlugin`.
 
 In your `AppDelegate.swift` file import the plugin:
@@ -534,6 +542,12 @@ optional count;
 the snapshot does not contain registration IDs, coordinates, callback handles,
 contexts, raw registration JSON, or synchronization fingerprints. The plugin
 does not automatically dump the snapshot into logs.
+
+On iOS, inspect `preciseLocationPermissionGranted` and
+`backgroundRefreshStatus` separately. Missing precise location makes persisted
+monitoring unavailable. Background App Refresh values `denied` and `restricted`
+keep registration available to a running app but make overall health degraded
+because terminated-app delivery is unavailable.
 
 On Android, registration health is derived from non-mutating lifecycle evidence:
 active, recoverable, pending-cleanup, corrupt/raw-only, and unknown records remain
