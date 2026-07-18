@@ -77,4 +77,28 @@ void main() {
     expect(status.toJson(), isNot(contains('fineLocationPermissionGranted')));
     expect(status.toJson(), isNot(contains('persistedGeofenceIds')));
   });
+
+  test('iOS status identifies denied and restricted Background App Refresh', () {
+    for (final refreshStatus in <NativeGeofenceBackgroundRefreshStatus>[
+      NativeGeofenceBackgroundRefreshStatus.denied,
+      NativeGeofenceBackgroundRefreshStatus.restricted,
+    ]) {
+      final status = NativeGeofenceStatusWire(
+        platform: NativeGeofencePlatform.ios,
+        persistedGeofenceCount: 1,
+        preciseLocationPermissionGranted: true,
+        backgroundRefreshStatus: refreshStatus,
+        canEnumerateLivePlatformRegistrations: true,
+        callbackRefreshState: NativeGeofenceCallbackRefreshState.current,
+        registrationHealth: NativeGeofenceRegistrationHealth.degraded,
+      ).fromWire();
+
+      expect(status.backgroundRefreshStatus, refreshStatus);
+      expect(
+        status.registrationHealth,
+        NativeGeofenceRegistrationHealth.degraded,
+      );
+      expect(status.toJson()['backgroundRefreshStatus'], refreshStatus.name);
+    }
+  });
 }
