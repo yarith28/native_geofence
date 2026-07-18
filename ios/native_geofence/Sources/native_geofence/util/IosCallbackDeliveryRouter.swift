@@ -44,6 +44,121 @@ final class IosReattachableDelivery<Delivery> {
     }
 }
 
+/// Owns scoped background-execution leases without exposing UIKit to the
+/// delivery state machine. Each acquired token ends its platform task exactly
+/// once on completion, explicit cleanup, or expiration.
+final class IosCallbackBackgroundLeaseRegistry<Identifier> {
+    typealias BeginTask = (@escaping () -> Void) -> Identifier?
+    typealias EndTask = (Identifier) -> Void
+
+    private enum LeaseState {
+        case starting
+        case active(Identifier)
+        case expiredBeforeActivation
+    }
+
+    private let lock = NSLock()
+    private let beginTask: BeginTask
+    private let endTask: EndTask
+    private var leases: [UUID: LeaseState] = [:]
+
+    init(
+        beginTask: @escaping BeginTask,
+        endTask: @escaping EndTask
+    ) {
+        self.beginTask = beginTask
+        self.endTask = endTask
+    }
+
+    func acquire(onExpired: @escaping () -> Void) -> UUID? {
+        let token = UUID()
+        withLock {
+            leases[token] = .starting
+        }
+        guard let identifier = beginTask({ [weak self] in
+            self?.expire(token: token, onExpired: onExpired)
+        }) else {
+            withLock {
+                _ = leases.removeValue(forKey: token)
+            }
+            return nil
+        }
+
+        let activated = withLock { () -> Bool in
+            switch leases[token] {
+            case .starting:
+                leases[token] = .active(identifier)
+                return true
+            case .expiredBeforeActivation:
+                leases.removeValue(forKey: token)
+                return false
+            case .active, .none:
+                return false
+            }
+        }
+        if !activated {
+            endTask(identifier)
+        }
+        return activated ? token : nil
+    }
+
+    func finish(_ token: UUID) {
+        guard let identifier = takeActiveIdentifier(token: token) else { return }
+        endTask(identifier)
+    }
+
+    func finishAll() {
+        let identifiers = withLock { () -> [Identifier] in
+            let identifiers = leases.values.compactMap { state -> Identifier? in
+                guard case .active(let identifier) = state else { return nil }
+                return identifier
+            }
+            leases.removeAll()
+            return identifiers
+        }
+        identifiers.forEach(endTask)
+    }
+
+    private func expire(
+        token: UUID,
+        onExpired: @escaping () -> Void
+    ) {
+        let expiration = withLock { () -> (Identifier?, Bool) in
+            switch leases[token] {
+            case .starting:
+                leases[token] = .expiredBeforeActivation
+                return (nil, true)
+            case .active(let identifier):
+                leases.removeValue(forKey: token)
+                return (identifier, true)
+            case .expiredBeforeActivation, .none:
+                return (nil, false)
+            }
+        }
+        if let identifier = expiration.0 {
+            endTask(identifier)
+        }
+        if expiration.1 {
+            onExpired()
+        }
+    }
+
+    private func takeActiveIdentifier(token: UUID) -> Identifier? {
+        withLock {
+            guard case .active(let identifier) = leases.removeValue(forKey: token) else {
+                return nil
+            }
+            return identifier
+        }
+    }
+
+    private func withLock<T>(_ body: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return body()
+    }
+}
+
 private final class IosCallbackDeliveryCompletionGate {
     private let lock = NSLock()
     private var accepted: Bool?
