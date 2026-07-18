@@ -435,13 +435,14 @@ runtime and applies a 30-second execution bound. Best-effort same-direction
 duplicate bursts are suppressed for 10 seconds, but business-level deduplication
 still belongs in the app or backend.
 
-Both native platforms attach an `eventId` for one delivery attempt. A retry or
-later delivery for the same physical transition may have a different value, so
-it is useful for tracing but is not a durable business idempotency key. Use an
-app-owned key and state machine for check-in, attendance, billing, or other
-irreversible actions. `eventAt` is the device wall-clock time captured when
-native code creates the event; on Android it can be much earlier than callback
-execution when WorkManager is delayed.
+Both native platforms attach an `eventId` to the native delivery envelope. An
+iOS journal retry preserves that value so repeated attempts can be correlated
+and handled idempotently. A later native observation of the same physical
+transition can still have a new value, so `eventId` is not a durable business
+idempotency key. Use an app-owned key and state machine for check-in, attendance,
+billing, or other irreversible actions. `eventAt` is the device wall-clock time
+captured when native code creates the event; on Android it can be much earlier
+than callback execution when WorkManager is delayed.
 
 #### [Android only] Optional native event bridge
 

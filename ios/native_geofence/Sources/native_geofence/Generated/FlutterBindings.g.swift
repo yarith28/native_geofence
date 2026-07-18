@@ -549,9 +549,11 @@ struct GeofenceCallbackParamsWire: Hashable {
   var location: LocationWire? = nil
   var eventAtMillis: Int64? = nil
   var callbackHandle: Int64
-  /// Unique ID for this native delivery attempt. Set on Android and iOS.
+  /// ID for this native delivery envelope. Set on Android and iOS.
   ///
-  /// This is not a durable business or physical-transition idempotency key.
+  /// iOS journal retries preserve this value. A later native observation of the
+  /// same physical transition can have a new value, so this is not a durable
+  /// business or physical-transition idempotency key.
   /// This nullable field retains its established wire position for compatibility;
   /// newer nullable fields may follow it and fields must not be reordered.
   var eventId: String? = nil
