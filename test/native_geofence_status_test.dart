@@ -12,6 +12,7 @@ void main() {
       locationPermissionGranted: true,
       backgroundLocationPermissionGranted: false,
       preciseLocationPermissionGranted: null,
+      backgroundRefreshStatus: null,
       notificationPermissionGranted: null,
       locationServicesEnabled: true,
       monitoringAvailable: null,
@@ -60,6 +61,7 @@ void main() {
     expect(status.persistedGeofenceCount, 1);
     expect(status.locationPermissionGranted, isTrue);
     expect(status.preciseLocationPermissionGranted, isNull);
+    expect(status.backgroundRefreshStatus, isNull);
     expect(status.notificationPermissionGranted, isNull);
     expect(status.canEnumerateLivePlatformRegistrations, isFalse);
     expect(status.lastRegistrationFact?.occurredAt.millisecondsSinceEpoch, 123);
@@ -71,6 +73,7 @@ void main() {
     expect(status.buildRevision, 'abc123');
     expect(status.toJson()['locationPermissionGranted'], isTrue);
     expect(status.toJson()['preciseLocationPermissionGranted'], isNull);
+    expect(status.toJson()['backgroundRefreshStatus'], isNull);
     expect(status.toJson(), isNot(contains('fineLocationPermissionGranted')));
     expect(status.toJson(), isNot(contains('persistedGeofenceIds')));
   });

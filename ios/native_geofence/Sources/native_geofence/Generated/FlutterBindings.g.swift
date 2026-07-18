@@ -263,6 +263,13 @@ enum NativeGeofenceCallbackRefreshState: Int {
   case notApplicable = 3
 }
 
+enum NativeGeofenceBackgroundRefreshStatus: Int {
+  case available = 0
+  case denied = 1
+  case restricted = 2
+  case unknown = 3
+}
+
 enum NativeGeofenceSynchronizationReasonWire: Int {
   case firstRun = 0
   case callbackFingerprintChanged = 1
@@ -794,6 +801,9 @@ struct NativeGeofenceStatusWire: Hashable {
   var backgroundLocationPermissionGranted: Bool? = nil
   /// Whether iOS granted full/precise location accuracy. Null on Android.
   var preciseLocationPermissionGranted: Bool? = nil
+  /// Whether iOS can wake the app to deliver region events in the background.
+  /// Null on Android.
+  var backgroundRefreshStatus: NativeGeofenceBackgroundRefreshStatus? = nil
   var notificationPermissionGranted: Bool? = nil
   var locationServicesEnabled: Bool? = nil
   var monitoringAvailable: Bool? = nil
@@ -826,28 +836,29 @@ struct NativeGeofenceStatusWire: Hashable {
     let locationPermissionGranted: Bool? = nilOrValue(pigeonVar_list[3])
     let backgroundLocationPermissionGranted: Bool? = nilOrValue(pigeonVar_list[4])
     let preciseLocationPermissionGranted: Bool? = nilOrValue(pigeonVar_list[5])
-    let notificationPermissionGranted: Bool? = nilOrValue(pigeonVar_list[6])
-    let locationServicesEnabled: Bool? = nilOrValue(pigeonVar_list[7])
-    let monitoringAvailable: Bool? = nilOrValue(pigeonVar_list[8])
-    let playServicesAvailable: Bool? = nilOrValue(pigeonVar_list[9])
-    let callbackPendingIntentAvailable: Bool? = nilOrValue(pigeonVar_list[10])
-    let callbackReceiverAvailable: Bool? = nilOrValue(pigeonVar_list[11])
-    let canEnumerateLivePlatformRegistrations: Bool? = nilOrValue(pigeonVar_list[12])
-    let pluginOwnedMonitoringCount: Int64? = nilOrValue(pigeonVar_list[13])
-    let callbackDispatcherRegistered: Bool? = nilOrValue(pigeonVar_list[14])
-    let callbackRefreshState = pigeonVar_list[15] as! NativeGeofenceCallbackRefreshState
-    let registrationHealth = pigeonVar_list[16] as! NativeGeofenceRegistrationHealth
-    let lastRegistrationFact: NativeGeofenceLifecycleFactWire? = nilOrValue(pigeonVar_list[17])
-    let lastRemovalFact: NativeGeofenceLifecycleFactWire? = nilOrValue(pigeonVar_list[18])
-    let lastBroadcastFact: NativeGeofenceLifecycleFactWire? = nilOrValue(pigeonVar_list[19])
-    let lastEnqueueFact: NativeGeofenceLifecycleFactWire? = nilOrValue(pigeonVar_list[20])
-    let lastWorkerFact: NativeGeofenceLifecycleFactWire? = nilOrValue(pigeonVar_list[21])
-    let lastRecoveryFact: NativeGeofenceLifecycleFactWire? = nilOrValue(pigeonVar_list[22])
-    let lastForegroundFact: NativeGeofenceLifecycleFactWire? = nilOrValue(pigeonVar_list[23])
-    let deliveryTrace: [NativeGeofenceDeliveryTraceWire]? = nilOrValue(pigeonVar_list[24])
-    let deliveryTraceDroppedCount: Int64? = nilOrValue(pigeonVar_list[25])
-    let packageVersion: String? = nilOrValue(pigeonVar_list[26])
-    let buildRevision: String? = nilOrValue(pigeonVar_list[27])
+    let backgroundRefreshStatus: NativeGeofenceBackgroundRefreshStatus? = nilOrValue(pigeonVar_list[6])
+    let notificationPermissionGranted: Bool? = nilOrValue(pigeonVar_list[7])
+    let locationServicesEnabled: Bool? = nilOrValue(pigeonVar_list[8])
+    let monitoringAvailable: Bool? = nilOrValue(pigeonVar_list[9])
+    let playServicesAvailable: Bool? = nilOrValue(pigeonVar_list[10])
+    let callbackPendingIntentAvailable: Bool? = nilOrValue(pigeonVar_list[11])
+    let callbackReceiverAvailable: Bool? = nilOrValue(pigeonVar_list[12])
+    let canEnumerateLivePlatformRegistrations: Bool? = nilOrValue(pigeonVar_list[13])
+    let pluginOwnedMonitoringCount: Int64? = nilOrValue(pigeonVar_list[14])
+    let callbackDispatcherRegistered: Bool? = nilOrValue(pigeonVar_list[15])
+    let callbackRefreshState = pigeonVar_list[16] as! NativeGeofenceCallbackRefreshState
+    let registrationHealth = pigeonVar_list[17] as! NativeGeofenceRegistrationHealth
+    let lastRegistrationFact: NativeGeofenceLifecycleFactWire? = nilOrValue(pigeonVar_list[18])
+    let lastRemovalFact: NativeGeofenceLifecycleFactWire? = nilOrValue(pigeonVar_list[19])
+    let lastBroadcastFact: NativeGeofenceLifecycleFactWire? = nilOrValue(pigeonVar_list[20])
+    let lastEnqueueFact: NativeGeofenceLifecycleFactWire? = nilOrValue(pigeonVar_list[21])
+    let lastWorkerFact: NativeGeofenceLifecycleFactWire? = nilOrValue(pigeonVar_list[22])
+    let lastRecoveryFact: NativeGeofenceLifecycleFactWire? = nilOrValue(pigeonVar_list[23])
+    let lastForegroundFact: NativeGeofenceLifecycleFactWire? = nilOrValue(pigeonVar_list[24])
+    let deliveryTrace: [NativeGeofenceDeliveryTraceWire]? = nilOrValue(pigeonVar_list[25])
+    let deliveryTraceDroppedCount: Int64? = nilOrValue(pigeonVar_list[26])
+    let packageVersion: String? = nilOrValue(pigeonVar_list[27])
+    let buildRevision: String? = nilOrValue(pigeonVar_list[28])
 
     return NativeGeofenceStatusWire(
       platform: platform,
@@ -856,6 +867,7 @@ struct NativeGeofenceStatusWire: Hashable {
       locationPermissionGranted: locationPermissionGranted,
       backgroundLocationPermissionGranted: backgroundLocationPermissionGranted,
       preciseLocationPermissionGranted: preciseLocationPermissionGranted,
+      backgroundRefreshStatus: backgroundRefreshStatus,
       notificationPermissionGranted: notificationPermissionGranted,
       locationServicesEnabled: locationServicesEnabled,
       monitoringAvailable: monitoringAvailable,
@@ -888,6 +900,7 @@ struct NativeGeofenceStatusWire: Hashable {
       locationPermissionGranted,
       backgroundLocationPermissionGranted,
       preciseLocationPermissionGranted,
+      backgroundRefreshStatus,
       notificationPermissionGranted,
       locationServicesEnabled,
       monitoringAvailable,
@@ -916,7 +929,7 @@ struct NativeGeofenceStatusWire: Hashable {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsFlutterBindings(lhs.platform, rhs.platform) && deepEqualsFlutterBindings(lhs.osVersion, rhs.osVersion) && deepEqualsFlutterBindings(lhs.persistedGeofenceCount, rhs.persistedGeofenceCount) && deepEqualsFlutterBindings(lhs.locationPermissionGranted, rhs.locationPermissionGranted) && deepEqualsFlutterBindings(lhs.backgroundLocationPermissionGranted, rhs.backgroundLocationPermissionGranted) && deepEqualsFlutterBindings(lhs.preciseLocationPermissionGranted, rhs.preciseLocationPermissionGranted) && deepEqualsFlutterBindings(lhs.notificationPermissionGranted, rhs.notificationPermissionGranted) && deepEqualsFlutterBindings(lhs.locationServicesEnabled, rhs.locationServicesEnabled) && deepEqualsFlutterBindings(lhs.monitoringAvailable, rhs.monitoringAvailable) && deepEqualsFlutterBindings(lhs.playServicesAvailable, rhs.playServicesAvailable) && deepEqualsFlutterBindings(lhs.callbackPendingIntentAvailable, rhs.callbackPendingIntentAvailable) && deepEqualsFlutterBindings(lhs.callbackReceiverAvailable, rhs.callbackReceiverAvailable) && deepEqualsFlutterBindings(lhs.canEnumerateLivePlatformRegistrations, rhs.canEnumerateLivePlatformRegistrations) && deepEqualsFlutterBindings(lhs.pluginOwnedMonitoringCount, rhs.pluginOwnedMonitoringCount) && deepEqualsFlutterBindings(lhs.callbackDispatcherRegistered, rhs.callbackDispatcherRegistered) && deepEqualsFlutterBindings(lhs.callbackRefreshState, rhs.callbackRefreshState) && deepEqualsFlutterBindings(lhs.registrationHealth, rhs.registrationHealth) && deepEqualsFlutterBindings(lhs.lastRegistrationFact, rhs.lastRegistrationFact) && deepEqualsFlutterBindings(lhs.lastRemovalFact, rhs.lastRemovalFact) && deepEqualsFlutterBindings(lhs.lastBroadcastFact, rhs.lastBroadcastFact) && deepEqualsFlutterBindings(lhs.lastEnqueueFact, rhs.lastEnqueueFact) && deepEqualsFlutterBindings(lhs.lastWorkerFact, rhs.lastWorkerFact) && deepEqualsFlutterBindings(lhs.lastRecoveryFact, rhs.lastRecoveryFact) && deepEqualsFlutterBindings(lhs.lastForegroundFact, rhs.lastForegroundFact) && deepEqualsFlutterBindings(lhs.deliveryTrace, rhs.deliveryTrace) && deepEqualsFlutterBindings(lhs.deliveryTraceDroppedCount, rhs.deliveryTraceDroppedCount) && deepEqualsFlutterBindings(lhs.packageVersion, rhs.packageVersion) && deepEqualsFlutterBindings(lhs.buildRevision, rhs.buildRevision)
+    return deepEqualsFlutterBindings(lhs.platform, rhs.platform) && deepEqualsFlutterBindings(lhs.osVersion, rhs.osVersion) && deepEqualsFlutterBindings(lhs.persistedGeofenceCount, rhs.persistedGeofenceCount) && deepEqualsFlutterBindings(lhs.locationPermissionGranted, rhs.locationPermissionGranted) && deepEqualsFlutterBindings(lhs.backgroundLocationPermissionGranted, rhs.backgroundLocationPermissionGranted) && deepEqualsFlutterBindings(lhs.preciseLocationPermissionGranted, rhs.preciseLocationPermissionGranted) && deepEqualsFlutterBindings(lhs.backgroundRefreshStatus, rhs.backgroundRefreshStatus) && deepEqualsFlutterBindings(lhs.notificationPermissionGranted, rhs.notificationPermissionGranted) && deepEqualsFlutterBindings(lhs.locationServicesEnabled, rhs.locationServicesEnabled) && deepEqualsFlutterBindings(lhs.monitoringAvailable, rhs.monitoringAvailable) && deepEqualsFlutterBindings(lhs.playServicesAvailable, rhs.playServicesAvailable) && deepEqualsFlutterBindings(lhs.callbackPendingIntentAvailable, rhs.callbackPendingIntentAvailable) && deepEqualsFlutterBindings(lhs.callbackReceiverAvailable, rhs.callbackReceiverAvailable) && deepEqualsFlutterBindings(lhs.canEnumerateLivePlatformRegistrations, rhs.canEnumerateLivePlatformRegistrations) && deepEqualsFlutterBindings(lhs.pluginOwnedMonitoringCount, rhs.pluginOwnedMonitoringCount) && deepEqualsFlutterBindings(lhs.callbackDispatcherRegistered, rhs.callbackDispatcherRegistered) && deepEqualsFlutterBindings(lhs.callbackRefreshState, rhs.callbackRefreshState) && deepEqualsFlutterBindings(lhs.registrationHealth, rhs.registrationHealth) && deepEqualsFlutterBindings(lhs.lastRegistrationFact, rhs.lastRegistrationFact) && deepEqualsFlutterBindings(lhs.lastRemovalFact, rhs.lastRemovalFact) && deepEqualsFlutterBindings(lhs.lastBroadcastFact, rhs.lastBroadcastFact) && deepEqualsFlutterBindings(lhs.lastEnqueueFact, rhs.lastEnqueueFact) && deepEqualsFlutterBindings(lhs.lastWorkerFact, rhs.lastWorkerFact) && deepEqualsFlutterBindings(lhs.lastRecoveryFact, rhs.lastRecoveryFact) && deepEqualsFlutterBindings(lhs.lastForegroundFact, rhs.lastForegroundFact) && deepEqualsFlutterBindings(lhs.deliveryTrace, rhs.deliveryTrace) && deepEqualsFlutterBindings(lhs.deliveryTraceDroppedCount, rhs.deliveryTraceDroppedCount) && deepEqualsFlutterBindings(lhs.packageVersion, rhs.packageVersion) && deepEqualsFlutterBindings(lhs.buildRevision, rhs.buildRevision)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -927,6 +940,7 @@ struct NativeGeofenceStatusWire: Hashable {
     deepHashFlutterBindings(value: locationPermissionGranted, hasher: &hasher)
     deepHashFlutterBindings(value: backgroundLocationPermissionGranted, hasher: &hasher)
     deepHashFlutterBindings(value: preciseLocationPermissionGranted, hasher: &hasher)
+    deepHashFlutterBindings(value: backgroundRefreshStatus, hasher: &hasher)
     deepHashFlutterBindings(value: notificationPermissionGranted, hasher: &hasher)
     deepHashFlutterBindings(value: locationServicesEnabled, hasher: &hasher)
     deepHashFlutterBindings(value: monitoringAvailable, hasher: &hasher)
@@ -1111,30 +1125,36 @@ private class FlutterBindingsPigeonCodecReader: FlutterStandardReader {
     case 134:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return NativeGeofenceSynchronizationReasonWire(rawValue: enumResultAsInt)
+        return NativeGeofenceBackgroundRefreshStatus(rawValue: enumResultAsInt)
       }
       return nil
     case 135:
-      return LocationWire.fromList(self.readValue() as! [Any?])
+      let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
+      if let enumResultAsInt = enumResultAsInt {
+        return NativeGeofenceSynchronizationReasonWire(rawValue: enumResultAsInt)
+      }
+      return nil
     case 136:
-      return IosGeofenceSettingsWire.fromList(self.readValue() as! [Any?])
+      return LocationWire.fromList(self.readValue() as! [Any?])
     case 137:
-      return AndroidGeofenceSettingsWire.fromList(self.readValue() as! [Any?])
+      return IosGeofenceSettingsWire.fromList(self.readValue() as! [Any?])
     case 138:
-      return GeofenceWire.fromList(self.readValue() as! [Any?])
+      return AndroidGeofenceSettingsWire.fromList(self.readValue() as! [Any?])
     case 139:
-      return ActiveGeofenceWire.fromList(self.readValue() as! [Any?])
+      return GeofenceWire.fromList(self.readValue() as! [Any?])
     case 140:
-      return GeofenceCallbackParamsWire.fromList(self.readValue() as! [Any?])
+      return ActiveGeofenceWire.fromList(self.readValue() as! [Any?])
     case 141:
-      return NativeGeofenceLifecycleFactWire.fromList(self.readValue() as! [Any?])
+      return GeofenceCallbackParamsWire.fromList(self.readValue() as! [Any?])
     case 142:
-      return NativeGeofenceDeliveryTraceWire.fromList(self.readValue() as! [Any?])
+      return NativeGeofenceLifecycleFactWire.fromList(self.readValue() as! [Any?])
     case 143:
-      return NativeGeofenceStatusWire.fromList(self.readValue() as! [Any?])
+      return NativeGeofenceDeliveryTraceWire.fromList(self.readValue() as! [Any?])
     case 144:
-      return NativeGeofenceSynchronizationStateWire.fromList(self.readValue() as! [Any?])
+      return NativeGeofenceStatusWire.fromList(self.readValue() as! [Any?])
     case 145:
+      return NativeGeofenceSynchronizationStateWire.fromList(self.readValue() as! [Any?])
+    case 146:
       return NativeGeofenceSynchronizationResultWire.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
@@ -1159,41 +1179,44 @@ private class FlutterBindingsPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? NativeGeofenceCallbackRefreshState {
       super.writeByte(133)
       super.writeValue(value.rawValue)
-    } else if let value = value as? NativeGeofenceSynchronizationReasonWire {
+    } else if let value = value as? NativeGeofenceBackgroundRefreshStatus {
       super.writeByte(134)
       super.writeValue(value.rawValue)
-    } else if let value = value as? LocationWire {
+    } else if let value = value as? NativeGeofenceSynchronizationReasonWire {
       super.writeByte(135)
-      super.writeValue(value.toList())
-    } else if let value = value as? IosGeofenceSettingsWire {
+      super.writeValue(value.rawValue)
+    } else if let value = value as? LocationWire {
       super.writeByte(136)
       super.writeValue(value.toList())
-    } else if let value = value as? AndroidGeofenceSettingsWire {
+    } else if let value = value as? IosGeofenceSettingsWire {
       super.writeByte(137)
       super.writeValue(value.toList())
-    } else if let value = value as? GeofenceWire {
+    } else if let value = value as? AndroidGeofenceSettingsWire {
       super.writeByte(138)
       super.writeValue(value.toList())
-    } else if let value = value as? ActiveGeofenceWire {
+    } else if let value = value as? GeofenceWire {
       super.writeByte(139)
       super.writeValue(value.toList())
-    } else if let value = value as? GeofenceCallbackParamsWire {
+    } else if let value = value as? ActiveGeofenceWire {
       super.writeByte(140)
       super.writeValue(value.toList())
-    } else if let value = value as? NativeGeofenceLifecycleFactWire {
+    } else if let value = value as? GeofenceCallbackParamsWire {
       super.writeByte(141)
       super.writeValue(value.toList())
-    } else if let value = value as? NativeGeofenceDeliveryTraceWire {
+    } else if let value = value as? NativeGeofenceLifecycleFactWire {
       super.writeByte(142)
       super.writeValue(value.toList())
-    } else if let value = value as? NativeGeofenceStatusWire {
+    } else if let value = value as? NativeGeofenceDeliveryTraceWire {
       super.writeByte(143)
       super.writeValue(value.toList())
-    } else if let value = value as? NativeGeofenceSynchronizationStateWire {
+    } else if let value = value as? NativeGeofenceStatusWire {
       super.writeByte(144)
       super.writeValue(value.toList())
-    } else if let value = value as? NativeGeofenceSynchronizationResultWire {
+    } else if let value = value as? NativeGeofenceSynchronizationStateWire {
       super.writeByte(145)
+      super.writeValue(value.toList())
+    } else if let value = value as? NativeGeofenceSynchronizationResultWire {
+      super.writeByte(146)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)

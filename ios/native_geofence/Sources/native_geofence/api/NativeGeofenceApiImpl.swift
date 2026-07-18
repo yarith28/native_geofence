@@ -185,6 +185,13 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
     ) {
         let authorizationStatus = locationManagerDelegate.locationManager.authorizationStatus
         let accuracyAuthorization = locationManagerDelegate.locationManager.accuracyAuthorization
+        let backgroundRefreshStatus: NativeGeofenceBackgroundRefreshStatus = switch UIApplication
+            .shared.backgroundRefreshStatus {
+        case .available: .available
+        case .denied: .denied
+        case .restricted: .restricted
+        @unknown default: .unknown
+        }
         let monitoringAvailable = CLLocationManager.isMonitoringAvailable(
             for: CLCircularRegion.self
         )
@@ -223,6 +230,7 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
                     backgroundPermission: permission.backgroundLocationPermissionGranted,
                     preciseLocationPermission:
                         permission.preciseLocationPermissionGranted,
+                    backgroundRefreshAvailable: backgroundRefreshStatus == .available,
                     locationServicesEnabled: locationServicesEnabled,
                     monitoringAvailable: monitoringAvailable,
                     dispatcherRegistered: dispatcherRegistered,
@@ -240,6 +248,7 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
                                 permission.backgroundLocationPermissionGranted,
                             preciseLocationPermissionGranted:
                                 permission.preciseLocationPermissionGranted,
+                            backgroundRefreshStatus: backgroundRefreshStatus,
                             notificationPermissionGranted: nil,
                             locationServicesEnabled: locationServicesEnabled,
                             monitoringAvailable: monitoringAvailable,

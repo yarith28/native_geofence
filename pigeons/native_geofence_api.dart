@@ -3,17 +3,19 @@ import 'package:pigeon/pigeon.dart';
 // After modifying this file run:
 // dart run pigeon --input pigeons/native_geofence_api.dart && dart format .
 
-@ConfigurePigeon(PigeonOptions(
-  dartOut: 'lib/src/generated/platform_bindings.g.dart',
-  dartPackageName: 'native_geofence',
-  swiftOut:
-      'ios/native_geofence/Sources/native_geofence/Generated/FlutterBindings.g.swift',
-  kotlinOut:
-      'android/src/main/kotlin/com/chunkytofustudios/native_geofence/generated/FlutterBindings.g.kt',
-  kotlinOptions:
-      KotlinOptions(package: 'com.chunkytofustudios.native_geofence.generated'),
-))
-
+@ConfigurePigeon(
+  PigeonOptions(
+    dartOut: 'lib/src/generated/platform_bindings.g.dart',
+    dartPackageName: 'native_geofence',
+    swiftOut:
+        'ios/native_geofence/Sources/native_geofence/Generated/FlutterBindings.g.swift',
+    kotlinOut:
+        'android/src/main/kotlin/com/chunkytofustudios/native_geofence/generated/FlutterBindings.g.kt',
+    kotlinOptions: KotlinOptions(
+      package: 'com.chunkytofustudios.native_geofence.generated',
+    ),
+  ),
+)
 /// Geofencing events.
 ///
 /// See the helpful illustration at:
@@ -23,7 +25,7 @@ enum GeofenceEvent {
   exit(),
 
   /// Not supported on iOS.
-  dwell();
+  dwell(),
 }
 
 class LocationWire {
@@ -55,9 +57,7 @@ class LocationWire {
 class IosGeofenceSettingsWire {
   final bool initialTrigger;
 
-  const IosGeofenceSettingsWire({
-    required this.initialTrigger,
-  });
+  const IosGeofenceSettingsWire({required this.initialTrigger});
 }
 
 class AndroidGeofenceSettingsWire {
@@ -230,10 +230,7 @@ enum NativeGeofenceErrorCode {
   androidForegroundServicePromotionTimeout,
 }
 
-enum NativeGeofencePlatform {
-  android,
-  ios,
-}
+enum NativeGeofencePlatform { android, ios }
 
 enum NativeGeofenceRegistrationHealth {
   noRegistrations,
@@ -248,6 +245,13 @@ enum NativeGeofenceCallbackRefreshState {
   refreshRequired,
   unknown,
   notApplicable,
+}
+
+enum NativeGeofenceBackgroundRefreshStatus {
+  available,
+  denied,
+  restricted,
+  unknown,
 }
 
 class NativeGeofenceLifecycleFactWire {
@@ -324,6 +328,10 @@ class NativeGeofenceStatusWire {
   /// Whether iOS granted full/precise location accuracy. Null on Android.
   final bool? preciseLocationPermissionGranted;
 
+  /// Whether iOS can wake the app to deliver region events in the background.
+  /// Null on Android.
+  final NativeGeofenceBackgroundRefreshStatus? backgroundRefreshStatus;
+
   final bool? notificationPermissionGranted;
   final bool? locationServicesEnabled;
   final bool? monitoringAvailable;
@@ -354,6 +362,7 @@ class NativeGeofenceStatusWire {
     this.locationPermissionGranted,
     this.backgroundLocationPermissionGranted,
     this.preciseLocationPermissionGranted,
+    this.backgroundRefreshStatus,
     this.notificationPermissionGranted,
     this.locationServicesEnabled,
     this.monitoringAvailable,
