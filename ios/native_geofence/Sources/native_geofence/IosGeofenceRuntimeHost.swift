@@ -9,13 +9,9 @@ import UIKit
 final class IosGeofenceRuntimeHost {
     private struct MainDelivery {
         let token: UUID
+        let backgroundLeaseToken: UUID
         let completion: (Bool) -> Void
         let watchdog: DispatchWorkItem
-    }
-
-    private struct CallbackBackgroundTask {
-        let sessionId: UUID
-        let identifier: UIBackgroundTaskIdentifier
     }
 
     private let log = Logger(
@@ -33,9 +29,30 @@ final class IosGeofenceRuntimeHost {
     private var headlessFlutterEngine: FlutterEngine?
     private var headlessBackgroundApi: NativeGeofenceBackgroundApiImpl?
     private var headlessSessionId: UUID?
-    private var callbackBackgroundTask: CallbackBackgroundTask?
     private var deliveryAttachment: IosGeofenceMutationAuthority.DeliveryAttachment?
     private var detached = false
+
+    private lazy var callbackBackgroundLeases =
+        IosCallbackBackgroundLeaseRegistry<UIBackgroundTaskIdentifier>(
+            beginTask: { [weak self] expiration in
+                guard let self else { return nil }
+                let identifier = UIApplication.shared.beginBackgroundTask(
+                    withName: self.callbackBackgroundTaskName,
+                    expirationHandler: expiration
+                )
+                return identifier == .invalid ? nil : identifier
+            },
+            endTask: { identifier in
+                let end = {
+                    UIApplication.shared.endBackgroundTask(identifier)
+                }
+                if Thread.isMainThread {
+                    end()
+                } else {
+                    DispatchQueue.main.async(execute: end)
+                }
+            }
+        )
 
     private lazy var mainTriggerApi = NativeGeofenceTriggerApi(
         binaryMessenger: mainMessenger
@@ -67,6 +84,10 @@ final class IosGeofenceRuntimeHost {
     ) {
         self.mainMessenger = mainMessenger
         self.registerPlugins = registerPlugins
+    }
+
+    deinit {
+        callbackBackgroundLeases.finishAll()
     }
 
     func installMainHandlers() {
@@ -118,6 +139,7 @@ final class IosGeofenceRuntimeHost {
             )
             cleanupHeadlessFlutterEngine(sessionId: sessionId)
         }
+        callbackBackgroundLeases.finishAll()
     }
 
     private var shouldUseMainEngine: Bool {
@@ -131,19 +153,46 @@ final class IosGeofenceRuntimeHost {
     ) -> Bool {
         guard shouldUseMainEngine else { return false }
         let token = UUID()
+        guard let backgroundLeaseToken = beginCallbackBackgroundLease(
+            onExpired: { [weak self] in
+                self?.finishMainDelivery(
+                    token: token,
+                    succeeded: false,
+                    timedOut: false,
+                    backgroundTaskExpired: true
+                )
+            }
+        ) else {
+            NativeGeofenceDiagnostics.record(
+                .enqueue,
+                succeeded: false,
+                outcome: "main_background_task_unavailable",
+                geofenceCount: params.geofences.count
+            )
+            return false
+        }
         let watchdog = DispatchWorkItem { [weak self] in
-            self?.finishMainDelivery(token: token, succeeded: false, timedOut: true)
+            self?.finishMainDelivery(
+                token: token,
+                succeeded: false,
+                timedOut: true,
+                backgroundTaskExpired: false
+            )
         }
         let installed = withStateLock {
             guard activeMainDelivery == nil else { return false }
             activeMainDelivery = MainDelivery(
                 token: token,
+                backgroundLeaseToken: backgroundLeaseToken,
                 completion: completion,
                 watchdog: watchdog
             )
             return true
         }
-        guard installed else { return false }
+        guard installed else {
+            callbackBackgroundLeases.finish(backgroundLeaseToken)
+            return false
+        }
 
         DispatchQueue.main.asyncAfter(
             deadline: .now() + .seconds(30),
@@ -159,7 +208,8 @@ final class IosGeofenceRuntimeHost {
             self?.finishMainDelivery(
                 token: token,
                 succeeded: succeeded,
-                timedOut: false
+                timedOut: false,
+                backgroundTaskExpired: false
             )
         }
         NativeGeofenceDiagnostics.record(
@@ -174,7 +224,8 @@ final class IosGeofenceRuntimeHost {
     private func finishMainDelivery(
         token: UUID,
         succeeded: Bool,
-        timedOut: Bool
+        timedOut: Bool,
+        backgroundTaskExpired: Bool
     ) {
         let delivery: MainDelivery? = withStateLock {
             guard activeMainDelivery?.token == token else { return nil }
@@ -186,12 +237,17 @@ final class IosGeofenceRuntimeHost {
             return
         }
         delivery.watchdog.cancel()
+        callbackBackgroundLeases.finish(delivery.backgroundLeaseToken)
         NativeGeofenceDiagnostics.record(
             .worker,
             succeeded: succeeded,
-            outcome: timedOut
-                ? "main_callback_timeout"
-                : (succeeded ? "main_callback_completed" : "main_callback_failed")
+            outcome: backgroundTaskExpired
+                ? "main_background_task_expired"
+                : (
+                    timedOut
+                        ? "main_callback_timeout"
+                        : (succeeded ? "main_callback_completed" : "main_callback_failed")
+                )
         )
         delivery.completion(succeeded)
     }
@@ -199,7 +255,12 @@ final class IosGeofenceRuntimeHost {
     private func cancelActiveMainDelivery() {
         let token = withStateLock { activeMainDelivery?.token }
         if let token {
-            finishMainDelivery(token: token, succeeded: false, timedOut: false)
+            finishMainDelivery(
+                token: token,
+                succeeded: false,
+                timedOut: false,
+                backgroundTaskExpired: false
+            )
         }
     }
 
@@ -215,7 +276,21 @@ final class IosGeofenceRuntimeHost {
             }
             return accepted
         }
+        guard let backgroundLeaseToken = beginCallbackBackgroundLease(
+            onExpired: { [weak self] in
+                self?.expireHeadlessCallbackBackgroundLease()
+            }
+        ) else {
+            NativeGeofenceDiagnostics.record(
+                .enqueue,
+                succeeded: false,
+                outcome: "headless_background_task_unavailable",
+                geofenceCount: params.geofences.count
+            )
+            return false
+        }
         guard let backgroundApi = headlessBackgroundApi ?? createHeadlessFlutterEngine() else {
+            callbackBackgroundLeases.finish(backgroundLeaseToken)
             NativeGeofenceDiagnostics.record(
                 .enqueue,
                 succeeded: false,
@@ -226,8 +301,14 @@ final class IosGeofenceRuntimeHost {
         }
         let accepted = backgroundApi.geofenceTriggered(
             params: params,
-            completion: completion
+            completion: { [weak self] succeeded in
+                self?.callbackBackgroundLeases.finish(backgroundLeaseToken)
+                completion(succeeded)
+            }
         )
+        if !accepted {
+            callbackBackgroundLeases.finish(backgroundLeaseToken)
+        }
         NativeGeofenceDiagnostics.record(
             .enqueue,
             succeeded: accepted,
@@ -267,8 +348,6 @@ final class IosGeofenceRuntimeHost {
             headlessFlutterEngine = engine
             headlessBackgroundApi = backgroundApi
         }
-        beginCallbackBackgroundTask(sessionId: sessionId)
-
         // Install both host surfaces before Dart begins executing. The API is
         // the same object registered with the main messenger.
         NativeGeofenceApiSetup.setUp(
@@ -292,34 +371,28 @@ final class IosGeofenceRuntimeHost {
         return backgroundApi
     }
 
-    private func beginCallbackBackgroundTask(sessionId: UUID) {
-        guard withStateLock({
-            headlessSessionId == sessionId && callbackBackgroundTask == nil
-        }) else { return }
-        let identifier = UIApplication.shared.beginBackgroundTask(
-            withName: callbackBackgroundTaskName
-        ) { [weak self] in
-            guard let self,
-                  self.withStateLock({ self.headlessSessionId == sessionId })
-            else { return }
-            self.headlessBackgroundApi?.forceCleanup(
-                reason: "iOS expired the geofence callback background task."
-            )
+    private func beginCallbackBackgroundLease(
+        onExpired: @escaping () -> Void
+    ) -> UUID? {
+        if Thread.isMainThread {
+            return callbackBackgroundLeases.acquire(onExpired: onExpired)
         }
-        guard identifier != .invalid else {
-            log.error("Failed to begin iOS callback background task.")
-            return
+        var token: UUID?
+        DispatchQueue.main.sync {
+            token = callbackBackgroundLeases.acquire(onExpired: onExpired)
         }
-        withStateLock {
-            guard headlessSessionId == sessionId else {
-                UIApplication.shared.endBackgroundTask(identifier)
-                return
-            }
-            callbackBackgroundTask = CallbackBackgroundTask(
-                sessionId: sessionId,
-                identifier: identifier
-            )
-        }
+        return token
+    }
+
+    private func expireHeadlessCallbackBackgroundLease() {
+        NativeGeofenceDiagnostics.record(
+            .worker,
+            succeeded: false,
+            outcome: "headless_background_task_expired"
+        )
+        headlessBackgroundApi?.forceCleanup(
+            reason: "iOS expired the geofence callback background task."
+        )
     }
 
     private func cleanupHeadlessFlutterEngine(sessionId: UUID) {
@@ -329,22 +402,16 @@ final class IosGeofenceRuntimeHost {
             }
             return
         }
-        let resources: (FlutterEngine, CallbackBackgroundTask?)? = withStateLock {
+        let engine: FlutterEngine? = withStateLock {
             guard headlessSessionId == sessionId,
                   let engine = headlessFlutterEngine
             else { return nil }
-            let task = callbackBackgroundTask?.sessionId == sessionId
-                ? callbackBackgroundTask
-                : nil
             headlessBackgroundApi = nil
             headlessFlutterEngine = nil
             headlessSessionId = nil
-            if task != nil {
-                callbackBackgroundTask = nil
-            }
-            return (engine, task)
+            return engine
         }
-        guard let (engine, task) = resources else {
+        guard let engine else {
             log.debug("Ignoring cleanup from an inactive headless session.")
             return
         }
@@ -354,9 +421,6 @@ final class IosGeofenceRuntimeHost {
         )
         NativeGeofenceApiSetup.setUp(binaryMessenger: engine.binaryMessenger, api: nil)
         engine.destroyContext()
-        if let task {
-            UIApplication.shared.endBackgroundTask(task.identifier)
-        }
         log.debug("Headless Flutter callback session cleaned up.")
     }
 
