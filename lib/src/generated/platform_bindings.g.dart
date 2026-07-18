@@ -34,8 +34,11 @@ Object? _extractReplyValueOrThrow(
   return replyList.firstOrNull;
 }
 
-List<Object?> wrapResponse(
-    {Object? result, PlatformException? error, bool empty = false}) {
+List<Object?> wrapResponse({
+  Object? result,
+  PlatformException? error,
+  bool empty = false,
+}) {
   if (empty) {
     return <Object?>[];
   }
@@ -57,8 +60,9 @@ bool _deepEquals(Object? a, Object? b) {
   }
   if (a is List && b is List) {
     return a.length == b.length &&
-        a.indexed
-            .every(((int, dynamic) item) => _deepEquals(item.$2, b[item.$1]));
+        a.indexed.every(
+          ((int, dynamic) item) => _deepEquals(item.$2, b[item.$1]),
+        );
   }
   if (a is Map && b is Map) {
     if (a.length != b.length) {
@@ -150,6 +154,10 @@ enum NativeGeofenceErrorCode {
   /// request the permission from the user.
   missingBackgroundLocationPermission,
 
+  /// iOS Precise Location access is disabled, so Core Location cannot monitor
+  /// circular regions.
+  missingPreciseLocationPermission,
+
   /// The geofence deletion failed because the geofence was not found.
   /// This is safe to ignore.
   geofenceNotFound,
@@ -184,10 +192,7 @@ enum NativeGeofenceErrorCode {
   androidForegroundServicePromotionTimeout,
 }
 
-enum NativeGeofencePlatform {
-  android,
-  ios,
-}
+enum NativeGeofencePlatform { android, ios }
 
 enum NativeGeofenceRegistrationHealth {
   noRegistrations,
@@ -286,16 +291,12 @@ class LocationWire {
 }
 
 class IosGeofenceSettingsWire {
-  IosGeofenceSettingsWire({
-    required this.initialTrigger,
-  });
+  IosGeofenceSettingsWire({required this.initialTrigger});
 
   bool initialTrigger;
 
   List<Object?> _toList() {
-    return <Object?>[
-      initialTrigger,
-    ];
+    return <Object?>[initialTrigger];
   }
 
   Object encode() {
@@ -304,9 +305,7 @@ class IosGeofenceSettingsWire {
 
   static IosGeofenceSettingsWire decode(Object result) {
     result as List<Object?>;
-    return IosGeofenceSettingsWire(
-      initialTrigger: result[0]! as bool,
-    );
+    return IosGeofenceSettingsWire(initialTrigger: result[0]! as bool);
   }
 
   @override
@@ -378,8 +377,10 @@ class AndroidGeofenceSettingsWire {
     return _deepEquals(initialTriggers, other.initialTriggers) &&
         _deepEquals(expirationDurationMillis, other.expirationDurationMillis) &&
         _deepEquals(loiteringDelayMillis, other.loiteringDelayMillis) &&
-        _deepEquals(notificationResponsivenessMillis,
-            other.notificationResponsivenessMillis);
+        _deepEquals(
+          notificationResponsivenessMillis,
+          other.notificationResponsivenessMillis,
+        );
   }
 
   @override
@@ -614,8 +615,8 @@ class GeofenceCallbackParamsWire {
       eventAtMillis: result[3] as int?,
       callbackHandle: result[4]! as int,
       eventId: result[5] as String?,
-      callbackContextsByGeofenceId:
-          (result[6] as Map<Object?, Object?>?)?.cast<String, int>(),
+      callbackContextsByGeofenceId: (result[6] as Map<Object?, Object?>?)
+          ?.cast<String, int>(),
       traceId: result[7] as String?,
     );
   }
@@ -637,7 +638,9 @@ class GeofenceCallbackParamsWire {
         _deepEquals(callbackHandle, other.callbackHandle) &&
         _deepEquals(eventId, other.eventId) &&
         _deepEquals(
-            callbackContextsByGeofenceId, other.callbackContextsByGeofenceId) &&
+          callbackContextsByGeofenceId,
+          other.callbackContextsByGeofenceId,
+        ) &&
         _deepEquals(traceId, other.traceId);
   }
 
@@ -663,12 +666,7 @@ class NativeGeofenceLifecycleFactWire {
   int? geofenceCount;
 
   List<Object?> _toList() {
-    return <Object?>[
-      occurredAtMillis,
-      succeeded,
-      outcome,
-      geofenceCount,
-    ];
+    return <Object?>[occurredAtMillis, succeeded, outcome, geofenceCount];
   }
 
   Object encode() {
@@ -864,6 +862,7 @@ class NativeGeofenceStatusWire {
     required this.persistedGeofenceCount,
     this.locationPermissionGranted,
     this.backgroundLocationPermissionGranted,
+    this.preciseLocationPermissionGranted,
     this.notificationPermissionGranted,
     this.locationServicesEnabled,
     this.monitoringAvailable,
@@ -900,6 +899,9 @@ class NativeGeofenceStatusWire {
   bool? locationPermissionGranted;
 
   bool? backgroundLocationPermissionGranted;
+
+  /// Whether iOS granted full/precise location accuracy. Null on Android.
+  bool? preciseLocationPermissionGranted;
 
   bool? notificationPermissionGranted;
 
@@ -952,6 +954,7 @@ class NativeGeofenceStatusWire {
       persistedGeofenceCount,
       locationPermissionGranted,
       backgroundLocationPermissionGranted,
+      preciseLocationPermissionGranted,
       notificationPermissionGranted,
       locationServicesEnabled,
       monitoringAvailable,
@@ -989,29 +992,30 @@ class NativeGeofenceStatusWire {
       persistedGeofenceCount: result[2]! as int,
       locationPermissionGranted: result[3] as bool?,
       backgroundLocationPermissionGranted: result[4] as bool?,
-      notificationPermissionGranted: result[5] as bool?,
-      locationServicesEnabled: result[6] as bool?,
-      monitoringAvailable: result[7] as bool?,
-      playServicesAvailable: result[8] as bool?,
-      callbackPendingIntentAvailable: result[9] as bool?,
-      callbackReceiverAvailable: result[10] as bool?,
-      canEnumerateLivePlatformRegistrations: result[11] as bool?,
-      pluginOwnedMonitoringCount: result[12] as int?,
-      callbackDispatcherRegistered: result[13] as bool?,
-      callbackRefreshState: result[14]! as NativeGeofenceCallbackRefreshState,
-      registrationHealth: result[15]! as NativeGeofenceRegistrationHealth,
-      lastRegistrationFact: result[16] as NativeGeofenceLifecycleFactWire?,
-      lastRemovalFact: result[17] as NativeGeofenceLifecycleFactWire?,
-      lastBroadcastFact: result[18] as NativeGeofenceLifecycleFactWire?,
-      lastEnqueueFact: result[19] as NativeGeofenceLifecycleFactWire?,
-      lastWorkerFact: result[20] as NativeGeofenceLifecycleFactWire?,
-      lastRecoveryFact: result[21] as NativeGeofenceLifecycleFactWire?,
-      lastForegroundFact: result[22] as NativeGeofenceLifecycleFactWire?,
-      deliveryTrace: (result[23] as List<Object?>?)
+      preciseLocationPermissionGranted: result[5] as bool?,
+      notificationPermissionGranted: result[6] as bool?,
+      locationServicesEnabled: result[7] as bool?,
+      monitoringAvailable: result[8] as bool?,
+      playServicesAvailable: result[9] as bool?,
+      callbackPendingIntentAvailable: result[10] as bool?,
+      callbackReceiverAvailable: result[11] as bool?,
+      canEnumerateLivePlatformRegistrations: result[12] as bool?,
+      pluginOwnedMonitoringCount: result[13] as int?,
+      callbackDispatcherRegistered: result[14] as bool?,
+      callbackRefreshState: result[15]! as NativeGeofenceCallbackRefreshState,
+      registrationHealth: result[16]! as NativeGeofenceRegistrationHealth,
+      lastRegistrationFact: result[17] as NativeGeofenceLifecycleFactWire?,
+      lastRemovalFact: result[18] as NativeGeofenceLifecycleFactWire?,
+      lastBroadcastFact: result[19] as NativeGeofenceLifecycleFactWire?,
+      lastEnqueueFact: result[20] as NativeGeofenceLifecycleFactWire?,
+      lastWorkerFact: result[21] as NativeGeofenceLifecycleFactWire?,
+      lastRecoveryFact: result[22] as NativeGeofenceLifecycleFactWire?,
+      lastForegroundFact: result[23] as NativeGeofenceLifecycleFactWire?,
+      deliveryTrace: (result[24] as List<Object?>?)
           ?.cast<NativeGeofenceDeliveryTraceWire>(),
-      deliveryTraceDroppedCount: result[24] as int?,
-      packageVersion: result[25] as String?,
-      buildRevision: result[26] as String?,
+      deliveryTraceDroppedCount: result[25] as int?,
+      packageVersion: result[26] as String?,
+      buildRevision: result[27] as String?,
     );
   }
 
@@ -1029,24 +1033,44 @@ class NativeGeofenceStatusWire {
         _deepEquals(osVersion, other.osVersion) &&
         _deepEquals(persistedGeofenceCount, other.persistedGeofenceCount) &&
         _deepEquals(
-            locationPermissionGranted, other.locationPermissionGranted) &&
-        _deepEquals(backgroundLocationPermissionGranted,
-            other.backgroundLocationPermissionGranted) &&
-        _deepEquals(notificationPermissionGranted,
-            other.notificationPermissionGranted) &&
+          locationPermissionGranted,
+          other.locationPermissionGranted,
+        ) &&
+        _deepEquals(
+          backgroundLocationPermissionGranted,
+          other.backgroundLocationPermissionGranted,
+        ) &&
+        _deepEquals(
+          preciseLocationPermissionGranted,
+          other.preciseLocationPermissionGranted,
+        ) &&
+        _deepEquals(
+          notificationPermissionGranted,
+          other.notificationPermissionGranted,
+        ) &&
         _deepEquals(locationServicesEnabled, other.locationServicesEnabled) &&
         _deepEquals(monitoringAvailable, other.monitoringAvailable) &&
         _deepEquals(playServicesAvailable, other.playServicesAvailable) &&
-        _deepEquals(callbackPendingIntentAvailable,
-            other.callbackPendingIntentAvailable) &&
         _deepEquals(
-            callbackReceiverAvailable, other.callbackReceiverAvailable) &&
-        _deepEquals(canEnumerateLivePlatformRegistrations,
-            other.canEnumerateLivePlatformRegistrations) &&
+          callbackPendingIntentAvailable,
+          other.callbackPendingIntentAvailable,
+        ) &&
         _deepEquals(
-            pluginOwnedMonitoringCount, other.pluginOwnedMonitoringCount) &&
+          callbackReceiverAvailable,
+          other.callbackReceiverAvailable,
+        ) &&
         _deepEquals(
-            callbackDispatcherRegistered, other.callbackDispatcherRegistered) &&
+          canEnumerateLivePlatformRegistrations,
+          other.canEnumerateLivePlatformRegistrations,
+        ) &&
+        _deepEquals(
+          pluginOwnedMonitoringCount,
+          other.pluginOwnedMonitoringCount,
+        ) &&
+        _deepEquals(
+          callbackDispatcherRegistered,
+          other.callbackDispatcherRegistered,
+        ) &&
         _deepEquals(callbackRefreshState, other.callbackRefreshState) &&
         _deepEquals(registrationHealth, other.registrationHealth) &&
         _deepEquals(lastRegistrationFact, other.lastRegistrationFact) &&
@@ -1058,7 +1082,9 @@ class NativeGeofenceStatusWire {
         _deepEquals(lastForegroundFact, other.lastForegroundFact) &&
         _deepEquals(deliveryTrace, other.deliveryTrace) &&
         _deepEquals(
-            deliveryTraceDroppedCount, other.deliveryTraceDroppedCount) &&
+          deliveryTraceDroppedCount,
+          other.deliveryTraceDroppedCount,
+        ) &&
         _deepEquals(packageVersion, other.packageVersion) &&
         _deepEquals(buildRevision, other.buildRevision);
   }
@@ -1145,12 +1171,18 @@ class NativeGeofenceSynchronizationStateWire {
         _deepEquals(registrations, other.registrations) &&
         _deepEquals(inactiveRegistrationIds, other.inactiveRegistrationIds) &&
         _deepEquals(registrationFingerprint, other.registrationFingerprint) &&
-        _deepEquals(desiredRegistrationFingerprint,
-            other.desiredRegistrationFingerprint) &&
         _deepEquals(
-            callbackFingerprintCurrent, other.callbackFingerprintCurrent) &&
-        _deepEquals(iosMaximumRegionMonitoringDistance,
-            other.iosMaximumRegionMonitoringDistance);
+          desiredRegistrationFingerprint,
+          other.desiredRegistrationFingerprint,
+        ) &&
+        _deepEquals(
+          callbackFingerprintCurrent,
+          other.callbackFingerprintCurrent,
+        ) &&
+        _deepEquals(
+          iosMaximumRegionMonitoringDistance,
+          other.iosMaximumRegionMonitoringDistance,
+        );
   }
 
   @override
@@ -1336,10 +1368,12 @@ class _PigeonCodec extends StandardMessageCodec {
         return NativeGeofenceStatusWire.decode(readValue(buffer)!);
       case 144:
         return NativeGeofenceSynchronizationStateWire.decode(
-            readValue(buffer)!);
+          readValue(buffer)!,
+        );
       case 145:
         return NativeGeofenceSynchronizationResultWire.decode(
-            readValue(buffer)!);
+          readValue(buffer)!,
+        );
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -1350,11 +1384,13 @@ class NativeGeofenceApi {
   /// Constructor for [NativeGeofenceApi].  The [binaryMessenger] named argument is
   /// available for dependency injection.  If it is left null, the default
   /// BinaryMessenger will be used which routes to the host platform.
-  NativeGeofenceApi(
-      {BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
-      : pigeonVar_binaryMessenger = binaryMessenger,
-        pigeonVar_messageChannelSuffix =
-            messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  NativeGeofenceApi({
+    BinaryMessenger? binaryMessenger,
+    String messageChannelSuffix = '',
+  }) : pigeonVar_binaryMessenger = binaryMessenger,
+       pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty
+           ? '.$messageChannelSuffix'
+           : '';
   final BinaryMessenger? pigeonVar_binaryMessenger;
 
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
@@ -1369,8 +1405,9 @@ class NativeGeofenceApi {
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture =
-        pigeonVar_channel.send(<Object?>[callbackDispatcherHandle]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[callbackDispatcherHandle],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
@@ -1388,8 +1425,9 @@ class NativeGeofenceApi {
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture =
-        pigeonVar_channel.send(<Object?>[geofence]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[geofence],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
@@ -1402,8 +1440,10 @@ class NativeGeofenceApi {
   /// Restores a canonical registration while preserving its existing Android
   /// absolute expiration deadline. Intended for higher-level transactional
   /// coordinators that already own an exact before-image.
-  Future<void> restoreGeofence(
-      {required GeofenceWire geofence, int? expirationDeadlineMillis}) async {
+  Future<void> restoreGeofence({
+    required GeofenceWire geofence,
+    int? expirationDeadlineMillis,
+  }) async {
     final pigeonVar_channelName =
         'dev.flutter.pigeon.native_geofence.NativeGeofenceApi.restoreGeofence$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
@@ -1411,8 +1451,9 @@ class NativeGeofenceApi {
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture =
-        pigeonVar_channel.send(<Object?>[geofence, expirationDeadlineMillis]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[geofence, expirationDeadlineMillis],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
@@ -1459,8 +1500,9 @@ class NativeGeofenceApi {
     return pigeonVar_replyValue! as NativeGeofenceStatusWire;
   }
 
-  Future<NativeGeofenceSynchronizationStateWire> getSynchronizationState(
-      {required List<GeofenceWire> desiredRegistrations}) async {
+  Future<NativeGeofenceSynchronizationStateWire> getSynchronizationState({
+    required List<GeofenceWire> desiredRegistrations,
+  }) async {
     final pigeonVar_channelName =
         'dev.flutter.pigeon.native_geofence.NativeGeofenceApi.getSynchronizationState$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
@@ -1468,8 +1510,9 @@ class NativeGeofenceApi {
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture =
-        pigeonVar_channel.send(<Object?>[desiredRegistrations]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[desiredRegistrations],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
@@ -1480,9 +1523,10 @@ class NativeGeofenceApi {
     return pigeonVar_replyValue! as NativeGeofenceSynchronizationStateWire;
   }
 
-  Future<NativeGeofenceSynchronizationResultWire> synchronizeGeofences(
-      {required List<GeofenceWire> desiredRegistrations,
-      required bool removeUnlisted}) async {
+  Future<NativeGeofenceSynchronizationResultWire> synchronizeGeofences({
+    required List<GeofenceWire> desiredRegistrations,
+    required bool removeUnlisted,
+  }) async {
     final pigeonVar_channelName =
         'dev.flutter.pigeon.native_geofence.NativeGeofenceApi.synchronizeGeofences$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
@@ -1490,8 +1534,9 @@ class NativeGeofenceApi {
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture =
-        pigeonVar_channel.send(<Object?>[desiredRegistrations, removeUnlisted]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[desiredRegistrations, removeUnlisted],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
@@ -1548,8 +1593,9 @@ class NativeGeofenceApi {
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture =
-        pigeonVar_channel.send(<Object?>[id]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[id],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
@@ -1582,11 +1628,13 @@ class NativeGeofenceBackgroundApi {
   /// Constructor for [NativeGeofenceBackgroundApi].  The [binaryMessenger] named argument is
   /// available for dependency injection.  If it is left null, the default
   /// BinaryMessenger will be used which routes to the host platform.
-  NativeGeofenceBackgroundApi(
-      {BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
-      : pigeonVar_binaryMessenger = binaryMessenger,
-        pigeonVar_messageChannelSuffix =
-            messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  NativeGeofenceBackgroundApi({
+    BinaryMessenger? binaryMessenger,
+    String messageChannelSuffix = '',
+  }) : pigeonVar_binaryMessenger = binaryMessenger,
+       pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty
+           ? '.$messageChannelSuffix'
+           : '';
   final BinaryMessenger? pigeonVar_binaryMessenger;
 
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
@@ -1658,13 +1706,15 @@ abstract class NativeGeofenceTriggerApi {
     BinaryMessenger? binaryMessenger,
     String messageChannelSuffix = '',
   }) {
-    messageChannelSuffix =
-        messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+    messageChannelSuffix = messageChannelSuffix.isNotEmpty
+        ? '.$messageChannelSuffix'
+        : '';
     {
       final pigeonVar_channel = BasicMessageChannel<Object?>(
-          'dev.flutter.pigeon.native_geofence.NativeGeofenceTriggerApi.geofenceTriggered$messageChannelSuffix',
-          pigeonChannelCodec,
-          binaryMessenger: binaryMessenger);
+        'dev.flutter.pigeon.native_geofence.NativeGeofenceTriggerApi.geofenceTriggered$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
       if (api == null) {
         pigeonVar_channel.setMessageHandler(null);
       } else {
@@ -1679,7 +1729,8 @@ abstract class NativeGeofenceTriggerApi {
             return wrapResponse(error: e);
           } catch (e) {
             return wrapResponse(
-                error: PlatformException(code: 'error', message: e.toString()));
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
           }
         });
       }

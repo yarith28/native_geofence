@@ -119,6 +119,10 @@ class NativeGeofenceStatus {
   final bool? locationPermissionGranted;
 
   final bool? backgroundLocationPermissionGranted;
+
+  /// Whether iOS granted full/precise location accuracy. Null on Android.
+  final bool? preciseLocationPermissionGranted;
+
   final bool? notificationPermissionGranted;
   final bool? locationServicesEnabled;
   final bool? monitoringAvailable;
@@ -148,6 +152,7 @@ class NativeGeofenceStatus {
     required this.persistedGeofenceCount,
     this.locationPermissionGranted,
     this.backgroundLocationPermissionGranted,
+    this.preciseLocationPermissionGranted,
     this.notificationPermissionGranted,
     this.locationServicesEnabled,
     this.monitoringAvailable,
@@ -179,6 +184,7 @@ class NativeGeofenceStatus {
         'locationPermissionGranted': locationPermissionGranted,
         'backgroundLocationPermissionGranted':
             backgroundLocationPermissionGranted,
+        'preciseLocationPermissionGranted': preciseLocationPermissionGranted,
         'notificationPermissionGranted': notificationPermissionGranted,
         'locationServicesEnabled': locationServicesEnabled,
         'monitoringAvailable': monitoringAvailable,
