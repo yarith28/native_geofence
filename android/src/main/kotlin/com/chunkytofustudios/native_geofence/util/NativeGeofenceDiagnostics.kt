@@ -1,7 +1,6 @@
 package com.chunkytofustudios.native_geofence.util
 
 import android.content.Context
-import android.content.SharedPreferences
 import com.chunkytofustudios.native_geofence.Constants
 import com.chunkytofustudios.native_geofence.generated.NativeGeofenceLifecycleFactWire
 import kotlinx.serialization.Serializable
@@ -104,17 +103,14 @@ internal object NativeGeofenceDiagnostics {
     ): NativeGeofenceLifecycleFactWire? = store(context).read(stage)?.toWire()
 
     private fun store(context: Context) = NativeGeofenceDiagnosticFactStore(
-        SharedPreferencesDiagnosticFactBackend(
-            context.applicationContext.getSharedPreferences(
-                Constants.SHARED_PREFERENCES_KEY,
-                Context.MODE_PRIVATE
-            )
+        NoBackupDiagnosticFactBackend(
+            NativeGeofencePreferences.get(context)
         )
     )
 }
 
-private class SharedPreferencesDiagnosticFactBackend(
-    private val preferences: SharedPreferences
+private class NoBackupDiagnosticFactBackend(
+    private val preferences: NoBackupNativeGeofencePreferences
 ) : DiagnosticFactBackend {
     override fun put(stage: NativeGeofenceDiagnosticStage, encoded: String): Boolean =
         preferences.edit()

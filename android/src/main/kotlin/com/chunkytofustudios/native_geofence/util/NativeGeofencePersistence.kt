@@ -1,7 +1,6 @@
 package com.chunkytofustudios.native_geofence.util
 
 import android.content.Context
-import android.content.SharedPreferences
 import com.chunkytofustudios.native_geofence.Constants
 import com.chunkytofustudios.native_geofence.generated.GeofenceWire
 
@@ -320,18 +319,15 @@ class NativeGeofencePersistence {
 
         private fun store(context: Context): GeofenceRegistrationStore =
             GeofenceRegistrationStore(
-                SharedPreferencesGeofencePersistenceBackend(
-                    context.getSharedPreferences(
-                        Constants.SHARED_PREFERENCES_KEY,
-                        Context.MODE_PRIVATE
-                    )
+                NoBackupGeofencePersistenceBackend(
+                    NativeGeofencePreferences.get(context)
                 )
             )
     }
 }
 
-private class SharedPreferencesGeofencePersistenceBackend(
-    private val preferences: SharedPreferences
+private class NoBackupGeofencePersistenceBackend(
+    private val preferences: NoBackupNativeGeofencePreferences
 ) : GeofencePersistenceBackend {
     override fun keys(): Set<String> = preferences.all.keys
 
@@ -350,13 +346,13 @@ private class SharedPreferencesGeofencePersistenceBackend(
 
     override fun edit(block: GeofencePersistenceEditor.() -> Unit): Boolean {
         val editor = preferences.edit()
-        SharedPreferencesGeofencePersistenceEditor(editor).block()
+        NoBackupGeofencePersistenceEditor(editor).block()
         return editor.commit()
     }
 }
 
-private class SharedPreferencesGeofencePersistenceEditor(
-    private val editor: SharedPreferences.Editor
+private class NoBackupGeofencePersistenceEditor(
+    private val editor: NoBackupNativeGeofencePreferences.Editor
 ) : GeofencePersistenceEditor {
     override fun putString(key: String, value: String) {
         editor.putString(key, value)

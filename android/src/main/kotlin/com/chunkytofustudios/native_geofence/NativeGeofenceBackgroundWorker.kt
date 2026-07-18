@@ -40,6 +40,7 @@ import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnostics
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceDeliveryDiagnostics
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 import com.chunkytofustudios.native_geofence.util.NativeGeofencePersistence
+import com.chunkytofustudios.native_geofence.util.NativeGeofencePreferences
 import com.chunkytofustudios.native_geofence.util.Notifications
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -445,10 +446,7 @@ class NativeGeofenceBackgroundWorker(
     private fun startFlutterEngine() {
         if (completed.get() || stopped.get()) return
 
-        val preferences = context.getSharedPreferences(
-            Constants.SHARED_PREFERENCES_KEY,
-            Context.MODE_PRIVATE
-        )
+        val preferences = NativeGeofencePreferences.get(context)
         val callbackHandle = preferences.getLong(
             Constants.CALLBACK_DISPATCHER_HANDLE_KEY,
             0L
