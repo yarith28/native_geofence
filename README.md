@@ -177,7 +177,19 @@ the setup below.
 <string>USER_VISIBLE_STRING__DESCRIBE_HOW_YOUR_APP_USES_BACKGROUND_LOCATION.</string>
 ```
 
-*Explanation: iOS geofence monitoring in this plugin requires Always location authorization before calling `createGeofence()`. When-In-Use authorization is not enough because the plugin is designed for background and terminated-app geofence delivery.*
+*Explanation: iOS geofence monitoring in this plugin requires Always location
+authorization and Precise Location before calling `createGeofence()` or replacing
+a region through synchronization. When-In-Use or reduced-accuracy authorization
+is not enough for Core Location region monitoring.*
+
+The plugin reports reduced accuracy through
+`NativeGeofenceStatus.preciseLocationPermissionGranted` and returns
+`missingPreciseLocationPermission` for a create or replacement. It does not
+change authorization itself. The host app owns the user explanation and may
+direct the user to enable Precise Location permanently in Settings, or implement
+Apple's temporary full-accuracy flow with
+`CLLocationManager.requestTemporaryFullAccuracyAuthorization(withPurposeKey:)`
+and the matching `NSLocationTemporaryUsageDescriptionDictionary` purpose key.
 
 3. Update `AppDelegate.swift` to configure `NativeGeofencePlugin`.
 
@@ -238,6 +250,10 @@ As noted in the setup section you will need to obtain the following permissions:
   Android 10+ before registration
 * `Permission.notification`: required on Android 13+ before calling
   `promoteToForeground()`
+
+On iOS, also confirm that the resulting authorization is precise/full accuracy;
+granting Always permission while Precise Location is disabled is insufficient
+for region monitoring.
 
 ### Create geofence
 

@@ -11,25 +11,29 @@ enum IosNativeGeofenceStatusHealth {
         refreshState: NativeGeofenceCallbackRefreshState,
         monitoredCount: Int
     ) -> NativeGeofenceRegistrationHealth {
-        guard persistedCount > 0 else { return .noRegistrations }
-        guard locationPermission,
-              backgroundPermission,
-              preciseLocationPermission,
-              locationServicesEnabled,
-              monitoringAvailable,
-              dispatcherRegistered
-        else {
-            return .unavailable
+        let policyRefreshState: IosGeofenceCallbackRefreshHealth = switch refreshState {
+        case .current: .current
+        case .notApplicable: .notApplicable
+        case .refreshRequired: .refreshRequired
+        case .unknown: .unknown
         }
-        if refreshState == .refreshRequired || monitoredCount != persistedCount {
-            return .degraded
+        return switch IosGeofenceStatusHealthPolicy.compute(
+            persistedCount: persistedCount,
+            locationPermission: locationPermission,
+            backgroundPermission: backgroundPermission,
+            preciseLocationPermission: preciseLocationPermission,
+            backgroundRefreshAvailable: backgroundRefreshAvailable,
+            locationServicesEnabled: locationServicesEnabled,
+            monitoringAvailable: monitoringAvailable,
+            dispatcherRegistered: dispatcherRegistered,
+            refreshState: policyRefreshState,
+            monitoredCount: monitoredCount
+        ) {
+        case .noRegistrations: .noRegistrations
+        case .unavailable: .unavailable
+        case .degraded: .degraded
+        case .unknown: .unknown
+        case .healthy: .healthy
         }
-        if !backgroundRefreshAvailable {
-            return .degraded
-        }
-        if refreshState == .unknown {
-            return .unknown
-        }
-        return .healthy
     }
 }
