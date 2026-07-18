@@ -27,9 +27,9 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Required for Native Geofence Plugin.</string>
+	<string>Allow background location so this example can notify you when you enter or leave a saved area, even while the app is closed.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Required for Native Geofence Plugin.</string>
+	<string>Allow location access to create and test arrival and departure alerts for saved areas.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
