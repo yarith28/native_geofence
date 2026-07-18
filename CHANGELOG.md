@@ -13,6 +13,7 @@
 * Adds an asynchronous, read-only `NativeGeofenceStatus` API with privacy-safe prerequisite evidence, plugin-owned registration counts, computed health, callback refresh state, platform-specific monitoring evidence, and structured authoritative lifecycle facts without raw registration IDs
 * Fails Android initialization when the callback dispatcher handle cannot be durably persisted
 * Shares one FIFO iOS callback runtime across foreground and headless delivery, with bounded startup/execution and exact cleanup
+* Prefixes iOS UserDefaults keys with the package identifier and migrates callback, synchronization, deduplication, journal, and diagnostic state from the legacy generic keys
 * Adds iOS delivery IDs and suppresses same-direction duplicate bursts within 10 seconds
 * Exposes the native event-creation time on geofence callback parameters
 * Adds optional opaque signed 64-bit callback contexts per registration and returns them keyed by triggering geofence ID without unnecessary native restarts
