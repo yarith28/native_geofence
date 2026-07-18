@@ -45,6 +45,9 @@ class Constants {
         const val RECOVERY_SCHEDULED_GENERATION_KEY =
             "$PACKAGE_NAME.recovery_scheduled_generation"
         const val RECOVERY_SCHEDULED_ATTEMPT_KEY = "$PACKAGE_NAME.recovery_scheduled_attempt"
+        const val RECOVERY_PROGRESS_GENERATION_KEY =
+            "$PACKAGE_NAME.recovery_progress_generation"
+        const val RECOVERY_COMPLETED_IDS_KEY = "$PACKAGE_NAME.recovery_completed_ids"
         const val RECOVERY_RETRY_WORK_NAME = "$PACKAGE_NAME.recovery_retry"
         const val RECOVERY_RETRY_GENERATION_INPUT_KEY = "$PACKAGE_NAME.recovery_retry_generation"
         const val RECOVERY_RETRY_ATTEMPT_INPUT_KEY = "$PACKAGE_NAME.recovery_retry_attempt"

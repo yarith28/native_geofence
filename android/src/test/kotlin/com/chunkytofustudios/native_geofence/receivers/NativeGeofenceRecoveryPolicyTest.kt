@@ -80,6 +80,53 @@ class NativeGeofenceRecoveryPolicyTest {
     )
 }
 
+class NativeGeofenceRecoveryOperationBudgetTest {
+    @Test
+    fun `one ordinary worker admits at most ten of one hundred platform operations`() {
+        val budget = NativeGeofenceRecoveryOperationBudget(
+            maxOperations = NativeGeofenceRecoveryPolicy.MAX_OPERATIONS_PER_WORKER_BATCH,
+            shouldContinue = { true },
+        )
+
+        val admissions = (1..100).map { budget.admitNext() }
+
+        assertEquals(
+            List(10) { RecoveryOperationAdmission.START } +
+                List(90) { RecoveryOperationAdmission.BATCH_EXHAUSTED },
+            admissions,
+        )
+        assertEquals(10, budget.startedOperations)
+    }
+
+    @Test
+    fun `cancellation prevents every later operation admission`() {
+        var running = true
+        val budget = NativeGeofenceRecoveryOperationBudget(10) { running }
+
+        assertEquals(RecoveryOperationAdmission.START, budget.admitNext())
+        running = false
+
+        assertEquals(RecoveryOperationAdmission.CANCELLED, budget.admitNext())
+        assertEquals(RecoveryOperationAdmission.CANCELLED, budget.admitNext())
+        assertEquals(1, budget.startedOperations)
+        assertTrue(budget.isCancelled())
+    }
+
+    @Test
+    fun `durable completed IDs are skipped by the next batch`() {
+        val candidates = (1..100).map { "fence-$it" }
+        val completed = candidates.take(10).toSet()
+
+        val resumed = candidates.filter {
+            NativeGeofenceRecoveryProgressPolicy.shouldProcess(it, completed)
+        }
+
+        assertEquals("fence-11", resumed.first())
+        assertEquals(90, resumed.size)
+        assertTrue(resumed.none(completed::contains))
+    }
+}
+
 class NativeGeofenceRecoverySchedulePolicyTest {
     @Test
     fun `first ticket accepts only attempt one`() {
