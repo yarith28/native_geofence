@@ -396,3 +396,86 @@ final class IosCallbackDeliveryRouterTests: XCTestCase {
         XCTAssertTrue(accepted.isEmpty)
     }
 }
+
+final class IosCallbackBackgroundLeaseRegistryTests: XCTestCase {
+    func testCompletionEndsLeaseExactlyOnceAndIgnoresLateExpiration() {
+        var expiration: (() -> Void)?
+        var ended: [Int] = []
+        var expirationCount = 0
+        let registry = IosCallbackBackgroundLeaseRegistry<Int>(
+            beginTask: { handler in
+                expiration = handler
+                return 7
+            },
+            endTask: { ended.append($0) }
+        )
+
+        let token = registry.acquire(onExpired: { expirationCount += 1 })
+        XCTAssertNotNil(token)
+        registry.finish(token!)
+        registry.finish(token!)
+        expiration?()
+
+        XCTAssertEqual(ended, [7])
+        XCTAssertEqual(expirationCount, 0)
+    }
+
+    func testExpirationEndsLeaseAndNotifiesExactlyOnce() {
+        var expiration: (() -> Void)?
+        var ended: [Int] = []
+        var expirationCount = 0
+        let registry = IosCallbackBackgroundLeaseRegistry<Int>(
+            beginTask: { handler in
+                expiration = handler
+                return 11
+            },
+            endTask: { ended.append($0) }
+        )
+
+        let token = registry.acquire(onExpired: { expirationCount += 1 })
+        XCTAssertNotNil(token)
+        expiration?()
+        expiration?()
+        registry.finish(token!)
+
+        XCTAssertEqual(ended, [11])
+        XCTAssertEqual(expirationCount, 1)
+    }
+
+    func testSynchronousExpirationRejectsAndEndsNewPlatformTask() {
+        var ended: [Int] = []
+        var expirationCount = 0
+        let registry = IosCallbackBackgroundLeaseRegistry<Int>(
+            beginTask: { expiration in
+                expiration()
+                return 13
+            },
+            endTask: { ended.append($0) }
+        )
+
+        let token = registry.acquire(onExpired: { expirationCount += 1 })
+
+        XCTAssertNil(token)
+        XCTAssertEqual(ended, [13])
+        XCTAssertEqual(expirationCount, 1)
+    }
+
+    func testFailedAcquireAndFinishAllDoNotLeakPlatformTasks() {
+        var nextIdentifier: Int? = nil
+        var ended: [Int] = []
+        let registry = IosCallbackBackgroundLeaseRegistry<Int>(
+            beginTask: { _ in nextIdentifier },
+            endTask: { ended.append($0) }
+        )
+
+        XCTAssertNil(registry.acquire(onExpired: {}))
+        nextIdentifier = 17
+        XCTAssertNotNil(registry.acquire(onExpired: {}))
+        nextIdentifier = 19
+        XCTAssertNotNil(registry.acquire(onExpired: {}))
+        registry.finishAll()
+        registry.finishAll()
+
+        XCTAssertEqual(Set(ended), Set([17, 19]))
+    }
+}
