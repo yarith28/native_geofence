@@ -1,13 +1,14 @@
 package com.chunkytofustudios.native_geofence.receivers
 
 import android.content.Context
-import android.content.SharedPreferences
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.chunkytofustudios.native_geofence.Constants
 import com.chunkytofustudios.native_geofence.NativeGeofenceRecoveryWorker
+import com.chunkytofustudios.native_geofence.util.NativeGeofencePreferences
+import com.chunkytofustudios.native_geofence.util.NoBackupNativeGeofencePreferences
 import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -242,7 +243,9 @@ internal object NativeGeofenceRecoveryScheduler {
         return cleared
     }
 
-    private fun scheduledTicket(preferences: SharedPreferences): RecoveryRetryTicket? {
+    private fun scheduledTicket(
+        preferences: NoBackupNativeGeofencePreferences
+    ): RecoveryRetryTicket? {
         if (
             !preferences.contains(Constants.RECOVERY_SCHEDULED_GENERATION_KEY) ||
             !preferences.contains(Constants.RECOVERY_SCHEDULED_ATTEMPT_KEY)
@@ -256,7 +259,7 @@ internal object NativeGeofenceRecoveryScheduler {
     }
 
     private fun restorePreviousTicketIfCurrent(
-        preferences: SharedPreferences,
+        preferences: NoBackupNativeGeofencePreferences,
         requested: RecoveryRetryTicket,
         previous: RecoveryRetryTicket?
     ) {
@@ -274,10 +277,7 @@ internal object NativeGeofenceRecoveryScheduler {
         editor.commit()
     }
 
-    private fun preferences(context: Context) = context.applicationContext.getSharedPreferences(
-        Constants.SHARED_PREFERENCES_KEY,
-        Context.MODE_PRIVATE
-    )
+    private fun preferences(context: Context) = NativeGeofencePreferences.get(context)
 
     private const val MAX_REASON_LENGTH = 160
 }

@@ -1,9 +1,7 @@
 package com.chunkytofustudios.native_geofence.util
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.os.SystemClock
-import com.chunkytofustudios.native_geofence.Constants
 import com.chunkytofustudios.native_geofence.generated.NativeGeofenceDeliveryTraceWire
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -147,7 +145,7 @@ object NativeGeofenceDeliveryDiagnostics {
         val corruptEntryCount: Long,
     )
 
-    private fun readStored(preferences: SharedPreferences): StoredRead {
+    private fun readStored(preferences: NoBackupNativeGeofencePreferences): StoredRead {
         val encoded = preferences.getString(JOURNAL_KEY, null)
             ?: return StoredRead(emptyList(), 0L)
         return try {
@@ -157,8 +155,8 @@ object NativeGeofenceDeliveryDiagnostics {
         }
     }
 
-    private fun prefs(context: Context): SharedPreferences =
-        context.getSharedPreferences(Constants.SHARED_PREFERENCES_KEY, Context.MODE_PRIVATE)
+    private fun prefs(context: Context): NoBackupNativeGeofencePreferences =
+        NativeGeofencePreferences.get(context)
 
     private fun code(value: String): String = codeOrNull(value) ?: "unknown"
 

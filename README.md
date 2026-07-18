@@ -132,6 +132,14 @@ it cannot resolve live Dart functions from a newly installed app build. Call
 `ensureSynchronized()` with your app-owned registration list to perform that
 refresh.
 
+Registration geometry, callback handles and contexts, recovery state, and
+diagnostics are stored under Android's `noBackupFilesDir`; they do not
+participate in Auto Backup. A same-device app update migrates the plugin's
+legacy SharedPreferences state once and then removes the backed-up copy. A
+fresh install or restore discards legacy restored state instead of re-arming
+device-specific geofences on another installation. Host applications do not
+need to add backup-rule exclusions for plugin state.
+
 5. Understand Android background-delivery limits
 
 Geofence broadcasts are handed to expedited WorkManager work. Android may still
