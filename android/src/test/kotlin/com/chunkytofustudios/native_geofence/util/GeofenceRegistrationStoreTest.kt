@@ -409,6 +409,24 @@ class GeofenceRegistrationStoreTest {
     }
 
     @Test
+    fun `bulk cleanup marker atomically makes every registration ineligible`() {
+        val backend = FakeGeofencePersistenceBackend()
+        val store = GeofenceRegistrationStore(backend) { 1_000L }
+        assertTrue(store.saveConfiguredGeofence(geofence(id = "office")))
+        assertTrue(store.saveConfiguredGeofence(geofence(id = "home")))
+
+        assertTrue(store.markAllForPlatformCleanup(listOf("office", "home")))
+
+        assertEquals(
+            listOf(
+                GeofenceRecoveryDisposition.PENDING_CLEANUP,
+                GeofenceRecoveryDisposition.PENDING_CLEANUP,
+            ),
+            store.recoveryInventory().map { it.disposition },
+        )
+    }
+
+    @Test
     fun `recovery marker retains canonical bytes and adds missing raw id`() {
         val backend = FakeGeofencePersistenceBackend()
         val canonical = Json.encodeToString(GeofenceStorage.fromWire(geofence()))

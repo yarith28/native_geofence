@@ -35,6 +35,7 @@ import com.chunkytofustudios.native_geofence.util.AndroidCallbackRefreshPolicy
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceAsyncOperation
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceFailureMapper
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceMutationKind
+import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRemovalTransaction
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRecoveryPlanner
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationFailureStage
 import com.chunkytofustudios.native_geofence.util.AndroidGeofenceRegistrationPersistence
@@ -490,58 +491,44 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
     }
 
     private fun removeGeofenceByIdLocked(id: String, callback: (Result<Unit>) -> Unit) {
-        val completed = AtomicBoolean(false)
-        fun fail(error: Throwable) {
-            if (!completed.compareAndSet(false, true)) return
-            val failure = AndroidGeofenceFailureMapper.from(error)
-            NativeGeofenceLogger.e(
-                context,
-                TAG,
-                "Failure when removing Geofence ID=$id: $error",
-                error,
-            )
-            callback(
-                Result.failure(
-                    FlutterError(
-                        NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
-                        failure.message,
-                        failure.details
-                    )
-                )
-            )
-        }
-
-        val task = try {
-            geofencingClient.removeGeofences(listOf(id))
-        } catch (error: Throwable) {
-            fail(error)
-            return
-        }
-        try {
-            task.attachWithGeofenceMutationDeadline(
-                kind = AndroidGeofenceMutationKind.REMOVAL,
-                onSuccess = onSuccess@{
-                    if (!completed.compareAndSet(false, true)) return@onSuccess
-                    if (!NativeGeofencePersistence.removeGeofence(context, id)) {
+        AndroidGeofenceRemovalTransaction(
+            snapshot = NativeGeofencePersistence.snapshot(context, id),
+            markRemovalPending = {
+                NativeGeofencePersistence.markGeofenceForPlatformCleanup(context, id)
+            },
+            restoreSnapshot = { NativeGeofencePersistence.restore(context, it) },
+            beginRemoval = { beginGeofenceRemoval(id) },
+            clearDurableState = { NativeGeofencePersistence.removeGeofence(context, id) },
+            scheduleReconciliation = {
+                scheduleRemovalReconciliation("single_removal_uncertain")
+            },
+            completion = { result ->
+                result.fold(
+                    onSuccess = {
+                        NativeGeofenceLogger.d(context, TAG, "Removed Geofence ID=$id.")
+                        callback(Result.success(Unit))
+                    },
+                    onFailure = { error ->
+                        val failure = AndroidGeofenceFailureMapper.from(error)
+                        NativeGeofenceLogger.e(
+                            context,
+                            TAG,
+                            "Failure when removing Geofence ID=$id: $error",
+                            error,
+                        )
                         callback(
                             Result.failure(
                                 FlutterError(
                                     NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
-                                    "The geofence was removed from Play services, but durable " +
-                                        "plugin state could not be updated."
+                                    failure.message,
+                                    failure.details,
                                 )
                             )
                         )
-                        return@onSuccess
-                    }
-                    NativeGeofenceLogger.d(context, TAG, "Removed Geofence ID=$id.")
-                    callback(Result.success(Unit))
-                },
-                onFailure = ::fail
-            )
-        } catch (error: Throwable) {
-            fail(error)
-        }
+                    },
+                )
+            },
+        ).start()
     }
 
     override fun removeAllGeofences(callback: (Result<Unit>) -> Unit) {
@@ -578,45 +565,71 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
             return
         }
 
-        fun fail(error: Throwable) {
-            val failure = AndroidGeofenceFailureMapper.from(error)
-            NativeGeofenceLogger.e(
-                context,
-                TAG,
-                "Failed to remove all geofences: $error",
-                error,
-            )
-            callback.invoke(
-                Result.failure(
-                    FlutterError(
-                        NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
-                        failure.message,
-                        failure.details
-                    )
-                )
-            )
-        }
-
-        runAndroidGeofenceAsyncOperation(
-            begin = { beginGeofenceRemoval(rawIds) },
-            onSuccess = onSuccess@{
-                if (!NativeGeofencePersistence.removeAllGeofences(context)) {
-                    callback.invoke(
-                        Result.failure(
-                            FlutterError(
-                                NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
-                                "All geofences were removed from Play services, but durable " +
-                                    "plugin state could not be updated."
+        AndroidGeofenceRemovalTransaction(
+            snapshot = rawIds.map { NativeGeofencePersistence.snapshot(context, it) },
+            markRemovalPending = {
+                NativeGeofencePersistence.markAllGeofencesForPlatformCleanup(context, rawIds)
+            },
+            restoreSnapshot = { snapshots ->
+                var restored = true
+                for (snapshot in snapshots) {
+                    if (!NativeGeofencePersistence.restore(context, snapshot)) {
+                        restored = false
+                    }
+                }
+                restored
+            },
+            beginRemoval = { beginGeofenceRemoval(rawIds) },
+            clearDurableState = { NativeGeofencePersistence.removeAllGeofences(context) },
+            scheduleReconciliation = {
+                scheduleRemovalReconciliation("bulk_removal_uncertain")
+            },
+            completion = { result ->
+                result.fold(
+                    onSuccess = {
+                        NativeGeofenceLogger.d(
+                            context,
+                            TAG,
+                            "Removed all geofences (if any)."
+                        )
+                        callback(Result.success(Unit))
+                    },
+                    onFailure = { error ->
+                        val failure = AndroidGeofenceFailureMapper.from(error)
+                        NativeGeofenceLogger.e(
+                            context,
+                            TAG,
+                            "Failed to remove all geofences: $error",
+                            error,
+                        )
+                        callback(
+                            Result.failure(
+                                FlutterError(
+                                    NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                                    failure.message,
+                                    failure.details,
+                                )
                             )
                         )
-                    )
-                    return@onSuccess
-                }
-                NativeGeofenceLogger.d(context, TAG, "Removed all geofences (if any).")
-                callback.invoke(Result.success(Unit))
+                    },
+                )
             },
-            onFailure = ::fail,
-        )
+        ).start()
+    }
+
+    private fun scheduleRemovalReconciliation(reason: String) {
+        Handler(Looper.getMainLooper()).post {
+            startAutomaticRecovery(reason) { result ->
+                result.exceptionOrNull()?.let { error ->
+                    NativeGeofenceLogger.e(
+                        context,
+                        TAG,
+                        "Failed to reconcile uncertain Android geofence removal.",
+                        error,
+                    )
+                }
+            }
+        }
     }
 
     private fun recoverLocked(reason: String, callback: (Result<Unit>) -> Unit) {
