@@ -117,6 +117,16 @@ final class IosGeofencePreflightTests: XCTestCase {
         )
     }
 
+    func testUnavailableBackgroundRefreshDegradesOtherwiseHealthyRegistration() {
+        XCTAssertEqual(
+            statusHealth(
+                preciseLocationPermission: true,
+                backgroundRefreshAvailable: false
+            ),
+            .degraded
+        )
+    }
+
     func testOtherAuthorizationStatesRequireLocationPermission() {
         for status: CLAuthorizationStatus in [.denied, .notDetermined, .restricted] {
             XCTAssertEqual(
@@ -144,14 +154,15 @@ final class IosGeofencePreflightTests: XCTestCase {
     }
 
     private func statusHealth(
-        preciseLocationPermission: Bool
+        preciseLocationPermission: Bool,
+        backgroundRefreshAvailable: Bool = true
     ) -> IosGeofenceStatusHealth {
         IosGeofenceStatusHealthPolicy.compute(
             persistedCount: 1,
             locationPermission: true,
             backgroundPermission: true,
             preciseLocationPermission: preciseLocationPermission,
-            backgroundRefreshAvailable: true,
+            backgroundRefreshAvailable: backgroundRefreshAvailable,
             locationServicesEnabled: true,
             monitoringAvailable: true,
             dispatcherRegistered: true,
