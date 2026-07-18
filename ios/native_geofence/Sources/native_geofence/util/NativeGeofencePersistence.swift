@@ -50,7 +50,16 @@ enum NativeGeofenceUserDefaults {
 }
 
 class NativeGeofencePersistence {
-    private static let persistentState = NativeGeofenceUserDefaults.standard()
+    private static var persistentState = NativeGeofenceUserDefaults.standard()
+
+    @discardableResult
+    static func replacePersistentStateForTesting(
+        _ replacement: UserDefaults
+    ) -> UserDefaults {
+        let previous = persistentState
+        persistentState = replacement
+        return previous
+    }
     
     static func setCallbackDispatcherHandle(_ handle: Int64) {
         persistentState.set(
