@@ -32,5 +32,10 @@ func nativeGeofenceError(_ failure: IosGeofencePreflightFailure) -> PigeonError 
             .missingBackgroundLocationPermission,
             message: "Always location authorization is required to monitor geofences on iOS."
         )
+    case .preciseLocationPermissionMissing:
+        return nativeGeofenceError(
+            .missingPreciseLocationPermission,
+            message: "Precise Location access is required to monitor geofences on iOS."
+        )
     }
 }

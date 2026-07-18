@@ -3,6 +3,7 @@ enum IosNativeGeofenceStatusHealth {
         persistedCount: Int,
         locationPermission: Bool,
         backgroundPermission: Bool,
+        preciseLocationPermission: Bool,
         locationServicesEnabled: Bool,
         monitoringAvailable: Bool,
         dispatcherRegistered: Bool,
@@ -12,6 +13,7 @@ enum IosNativeGeofenceStatusHealth {
         guard persistedCount > 0 else { return .noRegistrations }
         guard locationPermission,
               backgroundPermission,
+              preciseLocationPermission,
               locationServicesEnabled,
               monitoringAvailable,
               dispatcherRegistered
