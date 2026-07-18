@@ -271,6 +271,14 @@ class NativeGeofencePersistence {
             }
 
         @JvmStatic
+        fun markAllGeofencesForPlatformCleanup(
+            context: Context,
+            ids: Collection<String>
+        ): Boolean = synchronized(sharedPreferencesLock) {
+            store(context).markAllForPlatformCleanup(ids)
+        }
+
+        @JvmStatic
         fun markGeofenceForRecovery(context: Context, id: String): Boolean =
             synchronized(sharedPreferencesLock) {
                 store(context).markForRecovery(id)
