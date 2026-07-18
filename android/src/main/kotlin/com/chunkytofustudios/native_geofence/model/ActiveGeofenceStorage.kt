@@ -11,6 +11,8 @@ class ActiveGeofenceStorage(
     private val radiusMeters: Double,
     private val triggers: List<GeofenceEvent>,
     private val androidSettings: AndroidGeofenceSettingsStorage?,
+    // Defaulted for callback payloads queued before absolute deadlines existed.
+    private val expirationDeadlineMillis: Long? = null,
 ) {
     companion object {
         fun fromWire(e: ActiveGeofenceWire): ActiveGeofenceStorage {
@@ -20,6 +22,7 @@ class ActiveGeofenceStorage(
                 e.radiusMeters,
                 e.triggers,
                 e.androidSettings?.let { AndroidGeofenceSettingsStorage.fromWire(it) },
+                e.expirationDeadlineMillis,
             )
         }
     }
@@ -31,6 +34,7 @@ class ActiveGeofenceStorage(
             radiusMeters,
             triggers,
             androidSettings?.toWire(),
+            expirationDeadlineMillis,
         )
     }
 }

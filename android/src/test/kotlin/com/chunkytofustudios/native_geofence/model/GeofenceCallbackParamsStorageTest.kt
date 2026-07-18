@@ -52,10 +52,45 @@ class GeofenceCallbackParamsStorageTest {
         assertEquals(mapOf("office" to 71L), restored.callbackContextsByGeofenceId)
     }
 
+    @Test
+    fun `preserves absolute expiration deadline through queued payload round trip`() {
+        val params = callbackParams(
+            eventAtMillis = 1_720_000_030_000L,
+            expirationDeadlineMillis = 1_720_000_060_000L,
+        )
+
+        val encoded = Json.encodeToString(GeofenceCallbackParamsStorage.fromWire(params))
+        val restored = Json.decodeFromString<GeofenceCallbackParamsStorage>(encoded).toWire()
+
+        assertEquals(
+            1_720_000_060_000L,
+            restored.geofences.single().expirationDeadlineMillis,
+        )
+        assertEquals(
+            30_000L,
+            restored.geofences.single().expirationDeadlineMillis!! - restored.eventAtMillis!!,
+        )
+    }
+
+    @Test
+    fun `legacy queued geofence without expiration deadline decodes as unknown`() {
+        val encoded = Json.encodeToString(
+            GeofenceCallbackParamsStorage.fromWire(
+                callbackParams(eventAtMillis = 1_720_000_030_000L)
+            )
+        )
+        assertFalse(encoded.contains("expirationDeadlineMillis"))
+
+        val restored = Json.decodeFromString<GeofenceCallbackParamsStorage>(encoded).toWire()
+
+        assertEquals(null, restored.geofences.single().expirationDeadlineMillis)
+    }
+
     private fun callbackParams(
         eventAtMillis: Long?,
         eventId: String? = null,
         callbackContextsByGeofenceId: Map<String, Long>? = null,
+        expirationDeadlineMillis: Long? = null,
     ): GeofenceCallbackParamsWire =
         GeofenceCallbackParamsWire(
             geofences = listOf(
@@ -68,6 +103,7 @@ class GeofenceCallbackParamsStorageTest {
                     ),
                     radiusMeters = 120.0,
                     triggers = listOf(GeofenceEvent.ENTER),
+                    expirationDeadlineMillis = expirationDeadlineMillis,
                 )
             ),
             event = GeofenceEvent.ENTER,

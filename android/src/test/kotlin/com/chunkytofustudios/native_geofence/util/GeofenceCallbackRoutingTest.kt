@@ -75,7 +75,7 @@ class GeofenceCallbackRoutingTest {
             event = GeofenceEvent.ENTER,
             location = deviceFix,
             eventAtMillis = 123L,
-            lookup = mapOf("a" to configured)::get
+            lookup = callbackRegistrations(mapOf("a" to configured))::get
         ).callbackGroups.single()
 
         val center = params.geofences.single().location
@@ -84,6 +84,28 @@ class GeofenceCallbackRoutingTest {
         assertEquals(null, center.accuracyMeters)
         assertEquals(false, center.isMock)
         assertEquals(deviceFix, params.location)
+    }
+
+    @Test
+    fun `finite callback snapshot retains its original absolute expiration deadline`() {
+        val eventAtMillis = 130_000L
+        val expirationDeadlineMillis = 160_000L
+
+        val params = GeofenceCallbackRouting.route(
+            triggeredIds = listOf("finite"),
+            event = GeofenceEvent.ENTER,
+            location = null,
+            eventAtMillis = eventAtMillis,
+            lookup = mapOf(
+                "finite" to GeofenceCallbackRegistration(
+                    configuredGeofence = geofence("finite", 42),
+                    expirationDeadlineMillis = expirationDeadlineMillis,
+                )
+            )::get,
+        ).callbackGroups.single()
+
+        assertEquals(expirationDeadlineMillis, params.geofences.single().expirationDeadlineMillis)
+        assertEquals(30_000L, expirationDeadlineMillis - eventAtMillis)
     }
 
     @Test
@@ -115,7 +137,14 @@ class GeofenceCallbackRoutingTest {
             event = GeofenceEvent.ENTER,
             location = null,
             eventAtMillis = 1_001L
-        ) { id -> store.getConfiguredGeofence(id)?.configuredGeofence }
+        ) { id ->
+            store.getConfiguredGeofence(id)?.let {
+                GeofenceCallbackRegistration(
+                    configuredGeofence = it.configuredGeofence,
+                    expirationDeadlineMillis = it.expirationDeadlineMillis,
+                )
+            }
+        }
 
         assertEquals(42L, routed.callbackGroups.single().callbackHandle)
         assertEquals(listOf("immediate"), ids(routed.callbackGroups.single()))
@@ -135,7 +164,7 @@ class GeofenceCallbackRoutingTest {
             event = GeofenceEvent.ENTER,
             location = null,
             eventAtMillis = 99L,
-            lookup = registrations::get,
+            lookup = callbackRegistrations(registrations)::get,
             isCallbackFresh = { id ->
                 freshnessChecks += id
                 id == "current"
@@ -156,8 +185,14 @@ class GeofenceCallbackRoutingTest {
         event = GeofenceEvent.EXIT,
         location = null,
         eventAtMillis = 123_456L,
-        lookup = registrations::get
+        lookup = callbackRegistrations(registrations)::get
     )
+
+    private fun callbackRegistrations(
+        registrations: Map<String, GeofenceWire>
+    ): Map<String, GeofenceCallbackRegistration> = registrations.mapValues { (_, geofence) ->
+        GeofenceCallbackRegistration(geofence, expirationDeadlineMillis = null)
+    }
 
     private fun ids(params: com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWire) =
         params.geofences.map { it.id }
