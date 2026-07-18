@@ -103,6 +103,20 @@ final class IosGeofencePreflightTests: XCTestCase {
         )
     }
 
+    func testReducedAccuracyMakesPersistedRegistrationUnavailable() {
+        XCTAssertEqual(
+            statusHealth(preciseLocationPermission: false),
+            .unavailable
+        )
+    }
+
+    func testFullAccuracyRetainsHealthyRegistrationStatus() {
+        XCTAssertEqual(
+            statusHealth(preciseLocationPermission: true),
+            .healthy
+        )
+    }
+
     func testOtherAuthorizationStatesRequireLocationPermission() {
         for status: CLAuthorizationStatus in [.denied, .notDetermined, .restricted] {
             XCTAssertEqual(
@@ -127,5 +141,22 @@ final class IosGeofencePreflightTests: XCTestCase {
                 .locationServicesDisabled
             )
         }
+    }
+
+    private func statusHealth(
+        preciseLocationPermission: Bool
+    ) -> IosGeofenceStatusHealth {
+        IosGeofenceStatusHealthPolicy.compute(
+            persistedCount: 1,
+            locationPermission: true,
+            backgroundPermission: true,
+            preciseLocationPermission: preciseLocationPermission,
+            backgroundRefreshAvailable: true,
+            locationServicesEnabled: true,
+            monitoringAvailable: true,
+            dispatcherRegistered: true,
+            refreshState: .current,
+            monitoredCount: 1
+        )
     }
 }
