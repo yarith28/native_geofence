@@ -17,6 +17,50 @@ internal data class RecoveryRetryTicket(
     val attempt: Int
 )
 
+internal class GeofenceRecoveryBatchIncompleteException :
+    RuntimeException("Android geofence recovery has more work in the next bounded batch.")
+
+internal class GeofenceRecoveryCancelledException :
+    RuntimeException("Android geofence recovery was cancelled.")
+
+internal enum class RecoveryOperationAdmission {
+    START,
+    BATCH_EXHAUSTED,
+    CANCELLED,
+}
+
+/**
+ * Owns the cooperative cancellation check and the per-worker platform-operation
+ * budget. An admission is consumed before any durable preparation for that
+ * platform operation, so a stopped worker cannot begin another mutation.
+ */
+internal class NativeGeofenceRecoveryOperationBudget(
+    private val maxOperations: Int,
+    private val shouldContinue: () -> Boolean,
+) {
+    init {
+        require(maxOperations > 0) { "Recovery operation budget must be positive." }
+    }
+
+    var startedOperations: Int = 0
+        private set
+
+    fun admitNext(): RecoveryOperationAdmission = when {
+        !shouldContinue() -> RecoveryOperationAdmission.CANCELLED
+        startedOperations >= maxOperations -> RecoveryOperationAdmission.BATCH_EXHAUSTED
+        else -> {
+            startedOperations += 1
+            RecoveryOperationAdmission.START
+        }
+    }
+
+    fun isCancelled(): Boolean = !shouldContinue()
+}
+
+internal object NativeGeofenceRecoveryProgressPolicy {
+    fun shouldProcess(id: String, completedIds: Set<String>): Boolean = id !in completedIds
+}
+
 internal enum class RecoveryWorkerTerminalOutcome(
     val succeeded: Boolean,
     val storageName: String
@@ -31,6 +75,7 @@ internal enum class RecoveryWorkerTerminalOutcome(
 
 internal object NativeGeofenceRecoveryPolicy {
     const val MAX_ATTEMPTS = 14
+    const val MAX_OPERATIONS_PER_WORKER_BATCH = 10
 
     fun retryDelayMillis(attempt: Int): Long {
         val delayMinutes = when (attempt) {

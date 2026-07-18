@@ -96,7 +96,10 @@ class NativeGeofenceRecoveryWorker(
             RecoveryRetryStep.RECOVER -> {
                 NativeGeofenceApiImpl(context).recoverForGeneration(
                     generation = generation,
-                    reason = "$reason:attempt=$attempt"
+                    reason = "$reason:attempt=$attempt",
+                    maxOperations = NativeGeofenceRecoveryPolicy
+                        .MAX_OPERATIONS_PER_WORKER_BATCH,
+                    shouldContinue = { !stopped.get() },
                 ) { recoveryResult ->
                     if (generation != NativeGeofenceRecoveryScheduler.currentGeneration(context)) {
                         finish(Result.success(), RecoveryWorkerTerminalOutcome.STALE_GENERATION)

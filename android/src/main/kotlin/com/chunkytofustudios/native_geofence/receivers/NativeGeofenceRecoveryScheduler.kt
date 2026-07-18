@@ -31,6 +31,8 @@ internal object NativeGeofenceRecoveryScheduler {
                 .putLong(Constants.RECOVERY_GENERATION_KEY, next)
                 .remove(Constants.RECOVERY_SCHEDULED_GENERATION_KEY)
                 .remove(Constants.RECOVERY_SCHEDULED_ATTEMPT_KEY)
+                .putLong(Constants.RECOVERY_PROGRESS_GENERATION_KEY, next)
+                .remove(Constants.RECOVERY_COMPLETED_IDS_KEY)
                 .commit()
         ) { "Failed to persist a geofence recovery generation." }
         WorkManager.getInstance(context.applicationContext)
@@ -47,6 +49,38 @@ internal object NativeGeofenceRecoveryScheduler {
                 scheduled = scheduledTicket(preferences(context)),
                 worker = RecoveryRetryTicket(generation, attempt)
             )
+        }
+
+    fun completedIds(context: Context, generation: Long): Set<String> = synchronized(lock) {
+        val preferences = preferences(context)
+        if (
+            preferences.getLong(Constants.RECOVERY_PROGRESS_GENERATION_KEY, 0L) != generation
+        ) {
+            emptySet()
+        } else {
+            preferences.getStringSet(Constants.RECOVERY_COMPLETED_IDS_KEY, emptySet())
+                ?.toSet()
+                .orEmpty()
+        }
+    }
+
+    fun markCompleted(context: Context, generation: Long, id: String): Boolean =
+        synchronized(lock) {
+            val preferences = preferences(context)
+            if (
+                preferences.getLong(Constants.RECOVERY_GENERATION_KEY, 0L) != generation ||
+                preferences.getLong(Constants.RECOVERY_PROGRESS_GENERATION_KEY, 0L) != generation
+            ) {
+                return false
+            }
+            val completed = preferences
+                .getStringSet(Constants.RECOVERY_COMPLETED_IDS_KEY, emptySet())
+                ?.toMutableSet()
+                ?: mutableSetOf()
+            completed.add(id)
+            preferences.edit()
+                .putStringSet(Constants.RECOVERY_COMPLETED_IDS_KEY, completed)
+                .commit()
         }
 
     fun scheduleRetry(
@@ -158,6 +192,8 @@ internal object NativeGeofenceRecoveryScheduler {
             preferences.edit()
                 .remove(Constants.RECOVERY_SCHEDULED_GENERATION_KEY)
                 .remove(Constants.RECOVERY_SCHEDULED_ATTEMPT_KEY)
+                .remove(Constants.RECOVERY_PROGRESS_GENERATION_KEY)
+                .remove(Constants.RECOVERY_COMPLETED_IDS_KEY)
                 .commit()
         }
         if (cleared) {
@@ -195,6 +231,8 @@ internal object NativeGeofenceRecoveryScheduler {
             preferences.edit()
                 .remove(Constants.RECOVERY_SCHEDULED_GENERATION_KEY)
                 .remove(Constants.RECOVERY_SCHEDULED_ATTEMPT_KEY)
+                .remove(Constants.RECOVERY_PROGRESS_GENERATION_KEY)
+                .remove(Constants.RECOVERY_COMPLETED_IDS_KEY)
                 .commit()
         }
         if (cleared) {

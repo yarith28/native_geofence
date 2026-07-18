@@ -25,10 +25,15 @@ import com.chunkytofustudios.native_geofence.generated.NativeGeofenceSynchroniza
 import com.chunkytofustudios.native_geofence.generated.NativeGeofenceSynchronizationStateWire
 import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceBroadcastReceiver
 import com.chunkytofustudios.native_geofence.receivers.GeofenceRecoveryAggregateException
+import com.chunkytofustudios.native_geofence.receivers.GeofenceRecoveryBatchIncompleteException
+import com.chunkytofustudios.native_geofence.receivers.GeofenceRecoveryCancelledException
 import com.chunkytofustudios.native_geofence.receivers.GeofenceRecoveryFailure
 import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceRecoveryFailures
 import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceRecoveryPolicy
+import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceRecoveryOperationBudget
+import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceRecoveryProgressPolicy
 import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceRecoveryScheduler
+import com.chunkytofustudios.native_geofence.receivers.RecoveryOperationAdmission
 import com.chunkytofustudios.native_geofence.receivers.RecoveryScheduleOutcome
 import com.chunkytofustudios.native_geofence.util.ActiveGeofenceWires
 import com.chunkytofustudios.native_geofence.util.AndroidCallbackRefreshPolicy
@@ -417,7 +422,15 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         automatic: Boolean,
         finish: (Result<Unit>) -> Unit
     ) {
-        recoverForGeneration(generation, reason) { result ->
+        recoverForGeneration(
+            generation = generation,
+            reason = reason,
+            maxOperations = if (automatic) {
+                NativeGeofenceRecoveryPolicy.MAX_OPERATIONS_PER_WORKER_BATCH
+            } else {
+                Int.MAX_VALUE
+            },
+        ) { result ->
             if (generation != NativeGeofenceRecoveryScheduler.currentGeneration(context)) {
                 finish(publicRecoveryResult(result))
                 return@recoverForGeneration
@@ -447,6 +460,8 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
     internal fun recoverForGeneration(
         generation: Long,
         reason: String,
+        maxOperations: Int = Int.MAX_VALUE,
+        shouldContinue: () -> Boolean = { true },
         callback: (Result<Unit>) -> Unit
     ) {
         if (generation != NativeGeofenceRecoveryScheduler.currentGeneration(context)) {
@@ -454,10 +469,18 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
             return
         }
         mutationRunner.run(callback) { complete ->
-            if (generation == NativeGeofenceRecoveryScheduler.currentGeneration(context)) {
-                recoverLocked(reason, complete)
-            } else {
+            if (generation != NativeGeofenceRecoveryScheduler.currentGeneration(context)) {
                 complete(Result.success(Unit))
+            } else if (shouldContinue()) {
+                recoverLocked(
+                    generation = generation,
+                    reason = reason,
+                    maxOperations = maxOperations,
+                    shouldContinue = shouldContinue,
+                    callback = complete,
+                )
+            } else {
+                complete(Result.failure(GeofenceRecoveryCancelledException()))
             }
         }
     }
@@ -632,12 +655,27 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         }
     }
 
-    private fun recoverLocked(reason: String, callback: (Result<Unit>) -> Unit) {
+    private fun recoverLocked(
+        generation: Long,
+        reason: String,
+        maxOperations: Int,
+        shouldContinue: () -> Boolean,
+        callback: (Result<Unit>) -> Unit,
+    ) {
         val recoveryInventory = NativeGeofencePersistence.getRecoveryInventory(context)
         val recoveryPlan = AndroidGeofenceRecoveryPlanner.plan(recoveryInventory)
-        val recoverable = recoveryPlan.recoverable
-        val orphanIds = recoveryPlan.cleanupIds
+        val completedIds = NativeGeofenceRecoveryScheduler.completedIds(context, generation)
+        val recoverable = recoveryPlan.recoverable.filter {
+            NativeGeofenceRecoveryProgressPolicy.shouldProcess(it.id, completedIds)
+        }
+        val orphanIds = recoveryPlan.cleanupIds.filter {
+            NativeGeofenceRecoveryProgressPolicy.shouldProcess(it, completedIds)
+        }
         val failures = mutableListOf<GeofenceRecoveryFailure>()
+        val operationBudget = NativeGeofenceRecoveryOperationBudget(
+            maxOperations = maxOperations,
+            shouldContinue = shouldContinue,
+        )
         for (id in recoveryPlan.unknownLifecycleIds) {
             failures.add(
                 GeofenceRecoveryFailure(
@@ -671,11 +709,46 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
             )
         }
 
+        fun stopBeforeNextOperation(): Boolean {
+            val error: Throwable = when (operationBudget.admitNext()) {
+                RecoveryOperationAdmission.START -> return false
+                RecoveryOperationAdmission.BATCH_EXHAUSTED ->
+                    GeofenceRecoveryBatchIncompleteException()
+                RecoveryOperationAdmission.CANCELLED -> GeofenceRecoveryCancelledException()
+            }
+            failures.add(
+                GeofenceRecoveryFailure(
+                    id = "bounded_batch",
+                    operation = "continue_recovery",
+                    error = error,
+                )
+            )
+            finish()
+            return true
+        }
+
+        fun recordCompleted(id: String): Boolean {
+            if (NativeGeofenceRecoveryScheduler.markCompleted(context, generation, id)) {
+                return true
+            }
+            failures.add(
+                GeofenceRecoveryFailure(
+                    id = id,
+                    operation = "record_recovery_progress",
+                    error = IllegalStateException(
+                        "Failed to persist completed Android geofence recovery progress."
+                    ),
+                )
+            )
+            return false
+        }
+
         fun rearm(index: Int) {
             if (index >= recoverable.size) {
                 finish()
                 return
             }
+            if (stopBeforeNextOperation()) return
 
             val geofence = recoverable[index]
             if (!NativeGeofencePersistence.setLifecycleState(
@@ -699,18 +772,44 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                 return
             }
 
+            if (operationBudget.isCancelled()) {
+                failures.add(
+                    GeofenceRecoveryFailure(
+                        id = geofence.id,
+                        operation = "rearm_cancelled",
+                        error = GeofenceRecoveryCancelledException(),
+                    )
+                )
+                finish()
+                return
+            }
+
             val completed = AtomicBoolean(false)
             fun advance(result: Result<Unit>) {
                 if (completed.compareAndSet(false, true)) {
-                    result.exceptionOrNull()?.let { error ->
+                    if (operationBudget.isCancelled()) {
                         failures.add(
                             GeofenceRecoveryFailure(
                                 id = geofence.id,
-                                operation = "rearm",
-                                error = error
+                                operation = "rearm_cancelled",
+                                error = GeofenceRecoveryCancelledException(),
                             )
                         )
+                        finish()
+                        return
                     }
+                    result.fold(
+                        onSuccess = { recordCompleted(geofence.id) },
+                        onFailure = { error ->
+                            failures.add(
+                                GeofenceRecoveryFailure(
+                                    id = geofence.id,
+                                    operation = "rearm",
+                                    error = error
+                                )
+                            )
+                        },
+                    )
                     rearm(index + 1)
                 }
             }
@@ -728,6 +827,7 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                 rearm(0)
                 return
             }
+            if (stopBeforeNextOperation()) return
 
             val id = orphanIds[index]
             if (!NativeGeofencePersistence.markGeofenceForPlatformCleanup(context, id)) {
@@ -744,18 +844,43 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                 cleanOrphan(index + 1)
                 return
             }
+            if (operationBudget.isCancelled()) {
+                failures.add(
+                    GeofenceRecoveryFailure(
+                        id = id,
+                        operation = "cleanup_cancelled",
+                        error = GeofenceRecoveryCancelledException(),
+                    )
+                )
+                finish()
+                return
+            }
             val completed = AtomicBoolean(false)
             fun advance(result: Result<Unit>) {
                 if (completed.compareAndSet(false, true)) {
-                    result.exceptionOrNull()?.let { error ->
+                    if (operationBudget.isCancelled()) {
                         failures.add(
                             GeofenceRecoveryFailure(
                                 id = id,
-                                operation = "clean_orphan",
-                                error = error
+                                operation = "cleanup_cancelled",
+                                error = GeofenceRecoveryCancelledException(),
                             )
                         )
+                        finish()
+                        return
                     }
+                    result.fold(
+                        onSuccess = { recordCompleted(id) },
+                        onFailure = { error ->
+                            failures.add(
+                                GeofenceRecoveryFailure(
+                                    id = id,
+                                    operation = "clean_orphan",
+                                    error = error
+                                )
+                            )
+                        },
+                    )
                     cleanOrphan(index + 1)
                 }
             }
