@@ -305,11 +305,12 @@ class GeofenceCallbackParams {
   /// diagnostic metadata, not a monotonic clock or unique event ID.
   final DateTime? eventAt;
 
-  /// Unique ID for this native delivery attempt.
+  /// ID for this native delivery envelope.
   ///
-  /// A later delivery for the same physical transition can have a different
-  /// ID, so this is not a durable business idempotency key. Apps and backends
-  /// should still enforce their own state rules. Set on Android and iOS.
+  /// iOS journal retries preserve this value. A later native observation of the
+  /// same physical transition can have a different ID, so this is not a durable
+  /// business idempotency key. Apps and backends should still enforce their own
+  /// state rules. Set on Android and iOS.
   final String? eventId;
 
   /// Root delivery identity shared by native, confirmation, and application
