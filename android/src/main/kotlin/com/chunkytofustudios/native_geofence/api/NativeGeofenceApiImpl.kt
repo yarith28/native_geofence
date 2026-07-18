@@ -66,6 +66,7 @@ import com.chunkytofustudios.native_geofence.util.PersistedValue
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 import com.chunkytofustudios.native_geofence.util.LocationState
 import com.chunkytofustudios.native_geofence.util.NativeGeofencePersistence
+import com.chunkytofustudios.native_geofence.util.NativeGeofencePreferences
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceIo
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnosticStage
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceDiagnostics
@@ -108,10 +109,7 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         initializeCallbackDispatcher(
             callbackDispatcherHandle = callbackDispatcherHandle,
             persist = { handle ->
-                context.getSharedPreferences(
-                    Constants.SHARED_PREFERENCES_KEY,
-                    Context.MODE_PRIVATE
-                )
+                NativeGeofencePreferences.get(context)
                     .edit()
                     .putLong(Constants.CALLBACK_DISPATCHER_HANDLE_KEY, handle)
                     .putString(
@@ -951,10 +949,8 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         val storedById = stored.associateBy { it.configuredGeofence.id }
         val scopedRegistrations = desired.mapNotNull { storedById[it.id] }
         val currentPackageFingerprint = AndroidPackageFingerprint.current(context)
-        val dispatcherPackageFingerprint = context.getSharedPreferences(
-            Constants.SHARED_PREFERENCES_KEY,
-            Context.MODE_PRIVATE
-        ).getString(Constants.CALLBACK_DISPATCHER_PACKAGE_FINGERPRINT_KEY, null)
+        val dispatcherPackageFingerprint = NativeGeofencePreferences.get(context)
+            .getString(Constants.CALLBACK_DISPATCHER_PACKAGE_FINGERPRINT_KEY, null)
         val refreshState = AndroidCallbackRefreshPolicy.evaluate(
             currentFingerprint = currentPackageFingerprint,
             dispatcherFingerprint = dispatcherPackageFingerprint,

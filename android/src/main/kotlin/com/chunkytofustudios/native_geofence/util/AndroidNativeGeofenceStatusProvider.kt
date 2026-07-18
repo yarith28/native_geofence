@@ -179,8 +179,5 @@ internal class AndroidNativeGeofenceStatusProvider(private val context: Context)
     private fun fact(context: Context, stage: NativeGeofenceDiagnosticStage) =
         NativeGeofenceDiagnostics.fact(context, stage)
 
-    private fun preferences(context: Context) = context.getSharedPreferences(
-        Constants.SHARED_PREFERENCES_KEY,
-        Context.MODE_PRIVATE
-    )
+    private fun preferences(context: Context) = NativeGeofencePreferences.get(context)
 }
