@@ -9,8 +9,48 @@ struct IosSynchronizationPersistenceSnapshot {
     let packageFingerprint: Any?
 }
 
+enum NativeGeofenceUserDefaults {
+    private static let lock = NSLock()
+
+    static func standard() -> UserDefaults {
+        let defaults = UserDefaults.standard
+        migrate(defaults)
+        return defaults
+    }
+
+    static func migrate(_ defaults: UserDefaults) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !defaults.bool(forKey: Constants.USER_DEFAULTS_MIGRATION_KEY) else { return }
+
+        var legacyKeys = Set<String>()
+        for migration in Constants.LEGACY_USER_DEFAULTS_KEY_MIGRATIONS {
+            legacyKeys.insert(migration.legacy)
+            guard defaults.object(forKey: migration.current) == nil,
+                  let legacyValue = defaults.object(forKey: migration.legacy)
+            else { continue }
+            defaults.set(legacyValue, forKey: migration.current)
+        }
+
+        for legacyKey in defaults.dictionaryRepresentation().keys where
+            legacyKey.hasPrefix(Constants.LEGACY_DIAGNOSTIC_FACT_KEY_PREFIX)
+        {
+            legacyKeys.insert(legacyKey)
+            let suffix = legacyKey.dropFirst(Constants.LEGACY_DIAGNOSTIC_FACT_KEY_PREFIX.count)
+            let currentKey = Constants.DIAGNOSTIC_FACT_KEY_PREFIX + suffix
+            guard defaults.object(forKey: currentKey) == nil,
+                  let legacyValue = defaults.object(forKey: legacyKey)
+            else { continue }
+            defaults.set(legacyValue, forKey: currentKey)
+        }
+
+        legacyKeys.forEach(defaults.removeObject(forKey:))
+        defaults.set(true, forKey: Constants.USER_DEFAULTS_MIGRATION_KEY)
+    }
+}
+
 class NativeGeofencePersistence {
-    private static let persistentState: UserDefaults = .standard
+    private static let persistentState = NativeGeofenceUserDefaults.standard()
     
     static func setCallbackDispatcherHandle(_ handle: Int64) {
         persistentState.set(

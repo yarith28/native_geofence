@@ -12,7 +12,7 @@ enum NativeGeofenceDiagnosticStage: String {
 
 enum NativeGeofenceDiagnostics {
     private static let lock = NSLock()
-    private static let defaults = UserDefaults.standard
+    private static let defaults = NativeGeofenceUserDefaults.standard()
 
     static func record(
         _ stage: NativeGeofenceDiagnosticStage,
