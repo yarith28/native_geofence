@@ -33,6 +33,8 @@ class Constants {
 
         const val WORKER_PAYLOAD_KEY = "$PACKAGE_NAME.worker_payload"
         const val WORKER_PAYLOAD_REFERENCE_KEY = "$PACKAGE_NAME.worker_payload_reference"
+        const val WORKER_DELIVERY_ROUTE_KEY = "$PACKAGE_NAME.worker_delivery_route"
+        const val WORKER_DELIVERY_SOURCE_KEY = "$PACKAGE_NAME.worker_delivery_source"
         const val LEGACY_WORKER_PAYLOAD_FILE_KEY = "$PACKAGE_NAME.worker_payload_file"
         const val CALLBACK_PAYLOAD_DIRECTORY = "native_geofence_callback_payloads"
         const val LEGACY_CALLBACK_PAYLOAD_DIRECTORY = "geofence_callback_payloads"
@@ -50,6 +52,7 @@ class Constants {
         const val RECOVERY_PROGRESS_GENERATION_KEY =
             "$PACKAGE_NAME.recovery_progress_generation"
         const val RECOVERY_COMPLETED_IDS_KEY = "$PACKAGE_NAME.recovery_completed_ids"
+        const val RECOVERY_REQUIRED_KEY = "$PACKAGE_NAME.recovery_required"
         const val RECOVERY_RETRY_WORK_NAME = "$PACKAGE_NAME.recovery_retry"
         const val RECOVERY_RETRY_GENERATION_INPUT_KEY = "$PACKAGE_NAME.recovery_retry_generation"
         const val RECOVERY_RETRY_ATTEMPT_INPUT_KEY = "$PACKAGE_NAME.recovery_retry_attempt"

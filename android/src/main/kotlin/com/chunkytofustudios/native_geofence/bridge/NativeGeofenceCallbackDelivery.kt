@@ -3,7 +3,6 @@ package com.chunkytofustudios.native_geofence.bridge
 import android.content.Context
 import android.os.SystemClock
 import androidx.work.BackoffPolicy
-import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
@@ -69,6 +68,37 @@ object NativeGeofenceCallbackDelivery {
         context: Context,
         params: GeofenceCallbackParamsWire,
         completion: (NativeGeofenceCallbackEnqueueResult) -> Unit,
+    ) = enqueue(
+        context = context,
+        params = params,
+        deliverySpec = nativeBridgeCallbackDeliverySpec(),
+        completion = completion,
+    )
+
+    /**
+     * Enqueues an event already finalized by a higher-level geofence processor.
+     *
+     * Final callbacks bypass the native event processor so they cannot loop
+     * back through the processor that produced them.
+     */
+    @JvmStatic
+    fun enqueueFinalCallback(
+        context: Context,
+        params: GeofenceCallbackParamsWire,
+        source: String,
+        completion: (NativeGeofenceCallbackEnqueueResult) -> Unit,
+    ) = enqueue(
+        context = context,
+        params = params,
+        deliverySpec = enqueueFinalCallbackDeliverySpec(source),
+        completion = completion,
+    )
+
+    private fun enqueue(
+        context: Context,
+        params: GeofenceCallbackParamsWire,
+        deliverySpec: NativeGeofenceCallbackDeliverySpec,
+        completion: (NativeGeofenceCallbackEnqueueResult) -> Unit,
     ) {
         val guardedCompletion = NativeGeofenceCallbackCompletion(completion)
         val appContext = context.applicationContext
@@ -81,7 +111,12 @@ object NativeGeofenceCallbackDelivery {
         try {
             NativeGeofenceIo.execute {
                 try {
-                    enqueuePersisted(appContext, identified, guardedCompletion::complete)
+                    enqueuePersisted(
+                        appContext,
+                        identified,
+                        deliverySpec,
+                        guardedCompletion::complete,
+                    )
                 } catch (error: Throwable) {
                     guardedCompletion.complete(NativeGeofenceCallbackEnqueueResult.REJECTED)
                     recordDelivery(
@@ -110,6 +145,7 @@ object NativeGeofenceCallbackDelivery {
     private fun enqueuePersisted(
         context: Context,
         params: GeofenceCallbackParamsWire,
+        deliverySpec: NativeGeofenceCallbackDeliverySpec,
         completion: (NativeGeofenceCallbackEnqueueResult) -> Unit,
     ) {
         val packageFingerprint: String
@@ -169,11 +205,7 @@ object NativeGeofenceCallbackDelivery {
             payloadReference = reference,
             start = {
                 val workRequest = OneTimeWorkRequestBuilder<NativeGeofenceBackgroundWorker>()
-                    .setInputData(
-                        Data.Builder()
-                            .putString(Constants.WORKER_PAYLOAD_REFERENCE_KEY, reference)
-                            .build(),
-                    )
+                    .setInputData(callbackWorkerInputData(reference, deliverySpec))
                     .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30L, TimeUnit.SECONDS)
                     .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                     .build()

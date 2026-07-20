@@ -82,18 +82,28 @@ class NativeGeofencePlugin : FlutterPlugin {
         }
         if (
             NativeGeofenceRecoveryRuntime.shouldRunInitializationRepair(
-                binding.applicationContext
+                api.hasInitializationRecoveryEvidence()
             )
         ) {
-            api.startAutomaticRecovery("plugin_initialization") { result ->
-                result.exceptionOrNull()?.let { error ->
-                    NativeGeofenceLogger.e(
-                        binding.applicationContext,
-                        TAG,
-                        "Initialization-time geofence repair did not complete.",
-                        error
-                    )
+            try {
+                api.startAutomaticRecovery("plugin_initialization") { result ->
+                    result.exceptionOrNull()?.let { error ->
+                        NativeGeofenceLogger.e(
+                            binding.applicationContext,
+                            TAG,
+                            "Initialization-time geofence repair did not complete.",
+                            error
+                        )
+                    }
                 }
+            } catch (error: Throwable) {
+                NativeGeofenceRecoveryRuntime.releaseInitializationRepairAfterStartFailure()
+                NativeGeofenceLogger.e(
+                    binding.applicationContext,
+                    TAG,
+                    "Initialization-time geofence repair could not start.",
+                    error,
+                )
             }
         }
         NativeGeofenceLogger.d(

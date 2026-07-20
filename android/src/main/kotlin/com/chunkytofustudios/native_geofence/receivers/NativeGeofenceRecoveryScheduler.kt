@@ -19,6 +19,11 @@ internal enum class RecoveryScheduleOutcome {
     UNCONFIRMED
 }
 
+internal data class RecoveryInitializationState(
+    val required: Boolean,
+    val scheduled: Boolean,
+)
+
 internal object NativeGeofenceRecoveryScheduler {
     private val lock = Object()
     private val directExecutor = Executor { command -> command.run() }
@@ -43,6 +48,25 @@ internal object NativeGeofenceRecoveryScheduler {
 
     fun currentGeneration(context: Context): Long =
         preferences(context).getLong(Constants.RECOVERY_GENERATION_KEY, 0L)
+
+    fun markRecoveryRequired(context: Context): Boolean = synchronized(lock) {
+        preferences(context).edit()
+            .putBoolean(Constants.RECOVERY_REQUIRED_KEY, true)
+            .commit()
+    }
+
+    fun initializationState(context: Context): RecoveryInitializationState = synchronized(lock) {
+        val preferences = preferences(context)
+        val scheduledTicket = scheduledTicket(preferences)
+        RecoveryInitializationState(
+            required = preferences.getBoolean(Constants.RECOVERY_REQUIRED_KEY, false),
+            scheduled = scheduledTicket != null &&
+                scheduledTicket.generation == preferences.getLong(
+                    Constants.RECOVERY_GENERATION_KEY,
+                    0L,
+                ),
+        )
+    }
 
     fun isCurrentTicket(context: Context, generation: Long, attempt: Int): Boolean =
         synchronized(lock) {
@@ -184,18 +208,25 @@ internal object NativeGeofenceRecoveryScheduler {
         }
     }
 
-    fun completeGeneration(context: Context, generation: Long): Boolean {
+    fun completeGeneration(
+        context: Context,
+        generation: Long,
+        recoverySatisfied: Boolean = false,
+    ): Boolean {
         val cleared = synchronized(lock) {
             val preferences = preferences(context)
             if (preferences.getLong(Constants.RECOVERY_GENERATION_KEY, 0L) != generation) {
                 return false
             }
-            preferences.edit()
+            val editor = preferences.edit()
                 .remove(Constants.RECOVERY_SCHEDULED_GENERATION_KEY)
                 .remove(Constants.RECOVERY_SCHEDULED_ATTEMPT_KEY)
                 .remove(Constants.RECOVERY_PROGRESS_GENERATION_KEY)
                 .remove(Constants.RECOVERY_COMPLETED_IDS_KEY)
-                .commit()
+            if (recoverySatisfied) {
+                editor.remove(Constants.RECOVERY_REQUIRED_KEY)
+            }
+            editor.commit()
         }
         if (cleared) {
             WorkManager.getInstance(context.applicationContext)
@@ -211,6 +242,7 @@ internal object NativeGeofenceRecoveryScheduler {
     fun completeWorkerTicket(
         context: Context,
         worker: RecoveryRetryTicket,
+        recoverySatisfied: Boolean = false,
         recordTerminal: () -> Unit
     ): Boolean {
         val cleared = synchronized(lock) {
@@ -229,12 +261,15 @@ internal object NativeGeofenceRecoveryScheduler {
                 return false
             }
             recordTerminal()
-            preferences.edit()
+            val editor = preferences.edit()
                 .remove(Constants.RECOVERY_SCHEDULED_GENERATION_KEY)
                 .remove(Constants.RECOVERY_SCHEDULED_ATTEMPT_KEY)
                 .remove(Constants.RECOVERY_PROGRESS_GENERATION_KEY)
                 .remove(Constants.RECOVERY_COMPLETED_IDS_KEY)
-                .commit()
+            if (recoverySatisfied) {
+                editor.remove(Constants.RECOVERY_REQUIRED_KEY)
+            }
+            editor.commit()
         }
         if (cleared) {
             WorkManager.getInstance(context.applicationContext)
