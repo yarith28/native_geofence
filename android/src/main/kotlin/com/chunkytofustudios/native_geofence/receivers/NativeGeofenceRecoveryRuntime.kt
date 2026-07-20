@@ -6,22 +6,31 @@ import android.location.LocationManager
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import java.util.WeakHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+
+internal class InitializationRepairAdmissionGate {
+    private val admitted = AtomicBoolean(false)
+
+    fun tryAcquire(hasRecoveryEvidence: Boolean): Boolean =
+        hasRecoveryEvidence && admitted.compareAndSet(false, true)
+
+    fun releaseAfterStartFailure() {
+        admitted.set(false)
+    }
+}
 
 /** Process-scoped ownership for recovery resources shared by multiple Flutter engines. */
 internal object NativeGeofenceRecoveryRuntime {
     private val lock = Object()
     private val locationReceivers = WeakHashMap<Context, ReceiverReference>()
-    private val initializedContexts = WeakHashMap<Context, Boolean>()
+    private val initializationRepairAdmissionGate = InitializationRepairAdmissionGate()
     private val locationModeRecoveryAdmissionGate = LocationModeRecoveryAdmissionGate()
 
-    fun shouldRunInitializationRepair(context: Context): Boolean = synchronized(lock) {
-        val applicationContext = context.applicationContext
-        if (initializedContexts.containsKey(applicationContext)) {
-            false
-        } else {
-            initializedContexts[applicationContext] = true
-            true
-        }
+    fun shouldRunInitializationRepair(hasRecoveryEvidence: Boolean): Boolean =
+        initializationRepairAdmissionGate.tryAcquire(hasRecoveryEvidence)
+
+    fun releaseInitializationRepairAfterStartFailure() {
+        initializationRepairAdmissionGate.releaseAfterStartFailure()
     }
 
     fun acquireLocationModeRecoveryAdmission(): LocationModeRecoveryAdmission? {

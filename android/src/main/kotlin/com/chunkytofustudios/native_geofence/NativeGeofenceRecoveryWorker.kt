@@ -46,7 +46,8 @@ class NativeGeofenceRecoveryWorker(
             if (terminalOutcome != null) {
                 NativeGeofenceRecoveryScheduler.completeWorkerTicket(
                     context,
-                    workerTicket
+                    workerTicket,
+                    recoverySatisfied = terminalOutcome.recoverySatisfied,
                 ) {
                     NativeGeofenceDiagnostics.record(
                         context,

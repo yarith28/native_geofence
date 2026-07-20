@@ -12,6 +12,9 @@ import androidx.work.WorkerParameters
 import com.chunkytofustudios.native_geofence.api.NativeGeofenceBackgroundApiImpl
 import com.chunkytofustudios.native_geofence.bridge.NativeGeofenceBridgeDispatcher
 import com.chunkytofustudios.native_geofence.bridge.NativeGeofenceBridgeOutcome
+import com.chunkytofustudios.native_geofence.bridge.NativeGeofenceCallbackRoute
+import com.chunkytofustudios.native_geofence.bridge.callbackWorkerRoute
+import com.chunkytofustudios.native_geofence.bridge.dispatchCallbackWorkerRoute
 import com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWire
 import com.chunkytofustudios.native_geofence.generated.FlutterError
 import com.chunkytofustudios.native_geofence.generated.NativeGeofenceBackgroundApi
@@ -60,6 +63,10 @@ class NativeGeofenceBackgroundWorker(
     private val stopped = AtomicBoolean(false)
     private val destroyRequested = AtomicBoolean(false)
     private val foregroundLock = Object()
+    private val deliveryRoute = callbackWorkerRoute(workerParams.inputData)
+    private val deliverySource = workerParams.inputData
+        .getString(Constants.WORKER_DELIVERY_SOURCE_KEY)
+        ?.takeIf(String::isNotBlank)
 
     @Volatile
     private var flutterEngine: FlutterEngine? = null
@@ -368,7 +375,7 @@ class NativeGeofenceBackgroundWorker(
                     finishFailure(CallbackDeliveryFailure.EVENT_ID_MISSING)
                     return
                 }
-                mainHandler.post { processNativeBridge(params) }
+                mainHandler.post { processDelivery(params) }
             }
         }
     }
@@ -412,17 +419,26 @@ class NativeGeofenceBackgroundWorker(
             params,
             workerParams.id.toString()
         )
-        mainHandler.post { processNativeBridge(deliveryParams) }
+        mainHandler.post { processDelivery(deliveryParams) }
     }
 
-    private fun processNativeBridge(params: GeofenceCallbackParamsWire) {
+    private fun processDelivery(params: GeofenceCallbackParamsWire) {
         if (completed.get() || stopped.get()) return
         deliveryParams = params
         recordDelivery(
             stage = "worker_started",
             outcome = "processing",
-            owner = "native_geofence",
+            owner = if (deliveryRoute.requiresNativeBridge) "native_geofence" else "dart",
+            reasonCode = deliveryRoute.storageValue,
         )
+        dispatchCallbackWorkerRoute(
+            route = deliveryRoute,
+            processNativeBridge = { processNativeBridge(params) },
+            processFinalCallback = { processFinalCallback(params) },
+        )
+    }
+
+    private fun processNativeBridge(params: GeofenceCallbackParamsWire) {
         NativeGeofenceBridgeDispatcher.process(context, params) { outcome ->
             mainHandler.post {
                 if (completed.get() || stopped.get()) return@post
@@ -441,6 +457,18 @@ class NativeGeofenceBackgroundWorker(
                 }
             }
         }
+    }
+
+    private fun processFinalCallback(params: GeofenceCallbackParamsWire) {
+        if (completed.get() || stopped.get()) return
+        callbackParams = params
+        recordDelivery(
+            stage = "dart_runtime",
+            outcome = "startup_requested",
+            owner = "dart",
+            reasonCode = NativeGeofenceCallbackRoute.FINAL_DART_CALLBACK.storageValue,
+        )
+        startFlutterEngine()
     }
 
     private fun startFlutterEngine() {
@@ -679,6 +707,7 @@ class NativeGeofenceBackgroundWorker(
                         .coerceAtLeast(0L)
                 },
                 accuracyMeters = location?.accuracyMeters,
+                processorSource = deliverySource,
                 errorType = errorType,
             )
         }

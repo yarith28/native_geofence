@@ -237,6 +237,10 @@ class NativeGeofenceRecoverySchedulePolicyTest {
             assertFalse(outcome.storageName.contains("latitude"))
             assertFalse(outcome.storageName.contains("longitude"))
         }
+        assertTrue(RecoveryWorkerTerminalOutcome.COMPLETED.recoverySatisfied)
+        RecoveryWorkerTerminalOutcome.entries
+            .filter { it != RecoveryWorkerTerminalOutcome.COMPLETED }
+            .forEach { assertFalse(it.recoverySatisfied) }
     }
 
     private fun shouldSchedule(
