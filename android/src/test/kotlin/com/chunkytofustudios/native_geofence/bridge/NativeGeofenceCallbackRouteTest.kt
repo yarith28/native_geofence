@@ -1,6 +1,10 @@
 package com.chunkytofustudios.native_geofence.bridge
 
+import android.content.ContextWrapper
+import androidx.work.Data
 import com.chunkytofustudios.native_geofence.Constants
+import com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWire
+import com.chunkytofustudios.native_geofence.generated.GeofenceEvent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -32,11 +36,31 @@ class NativeGeofenceCallbackRouteTest {
 
     @Test
     fun `enqueue final callback stores final route and worker bypasses bridge`() {
-        val inputData = callbackWorkerInputData(
-            payloadReference = "payload-1",
-            deliverySpec = enqueueFinalCallbackDeliverySpec("smart_geofence"),
-        )
+        var capturedInputData: Data? = null
+        val outcomes = mutableListOf<NativeGeofenceCallbackEnqueueResult>()
+        val testDispatcher = NativeGeofenceCallbackDeliveryDispatcher {
+            _, _, deliverySpec, completion ->
+            capturedInputData = callbackWorkerInputData(
+                payloadReference = "payload-1",
+                deliverySpec = deliverySpec,
+            )
+            completion(NativeGeofenceCallbackEnqueueResult.ACCEPTED)
+        }
+        NativeGeofenceCallbackDelivery.withDispatcherForTest(testDispatcher) {
+            NativeGeofenceCallbackDelivery.enqueueFinalCallback(
+                context = ContextWrapper(null),
+                params = GeofenceCallbackParamsWire(
+                    geofences = emptyList(),
+                    event = GeofenceEvent.ENTER,
+                    callbackHandle = 1L,
+                ),
+                source = "smart_geofence",
+                completion = outcomes::add,
+            )
+        }
+        val inputData = requireNotNull(capturedInputData)
 
+        assertEquals(listOf(NativeGeofenceCallbackEnqueueResult.ACCEPTED), outcomes)
         assertEquals(
             "payload-1",
             inputData.getString(Constants.WORKER_PAYLOAD_REFERENCE_KEY),
