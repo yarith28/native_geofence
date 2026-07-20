@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.SystemClock
 import androidx.work.BackoffPolicy
 import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
@@ -56,14 +57,12 @@ internal class NativeGeofenceCallbackCompletion(
     }
 }
 
-internal fun interface NativeGeofenceCallbackDeliveryDispatcher {
-    fun enqueue(
-        context: Context,
-        params: GeofenceCallbackParamsWire,
-        deliverySpec: NativeGeofenceCallbackDeliverySpec,
-        completion: (NativeGeofenceCallbackEnqueueResult) -> Unit,
-    )
-}
+internal data class NativeGeofenceCallbackDeliveryDependencies(
+    val execute: ((() -> Unit) -> Unit),
+    val packageFingerprint: (Context) -> String,
+    val payloadStore: (Context) -> GeofenceCallbackPayloadStore,
+    val enqueueWork: (Context, OneTimeWorkRequest) -> CallbackEnqueueOperation,
+)
 
 /**
  * Stable Android delivery boundary for higher-level geofence coordinators.
@@ -73,17 +72,21 @@ internal fun interface NativeGeofenceCallbackDeliveryDispatcher {
  * retrying could duplicate work that WorkManager already accepted.
  */
 object NativeGeofenceCallbackDelivery {
-    private val productionDispatcher: NativeGeofenceCallbackDeliveryDispatcher =
-        NativeGeofenceCallbackDeliveryDispatcher(::enqueueWithSpec)
-    private val dispatcher = AtomicReference(productionDispatcher)
-    private val testDispatcherLock = Object()
+    private val productionDependencies = NativeGeofenceCallbackDeliveryDependencies(
+        execute = NativeGeofenceIo::execute,
+        packageFingerprint = AndroidPackageFingerprint::current,
+        payloadStore = GeofenceCallbackPayloadStore::forContext,
+        enqueueWork = ::enqueueWork,
+    )
+    private val dependencies = AtomicReference(productionDependencies)
+    private val testDependenciesLock = Object()
 
     @JvmStatic
     fun enqueue(
         context: Context,
         params: GeofenceCallbackParamsWire,
         completion: (NativeGeofenceCallbackEnqueueResult) -> Unit,
-    ) = dispatcher.get().enqueue(
+    ) = enqueueWithSpec(
         context = context,
         params = params,
         deliverySpec = nativeBridgeCallbackDeliverySpec(),
@@ -102,24 +105,24 @@ object NativeGeofenceCallbackDelivery {
         params: GeofenceCallbackParamsWire,
         source: String,
         completion: (NativeGeofenceCallbackEnqueueResult) -> Unit,
-    ) = dispatcher.get().enqueue(
+    ) = enqueueWithSpec(
         context = context,
         params = params,
         deliverySpec = enqueueFinalCallbackDeliverySpec(source),
         completion = completion,
     )
 
-    internal fun <T> withDispatcherForTest(
-        testDispatcher: NativeGeofenceCallbackDeliveryDispatcher,
+    internal fun <T> withDependenciesForTest(
+        testDependencies: NativeGeofenceCallbackDeliveryDependencies,
         block: () -> T,
-    ): T = synchronized(testDispatcherLock) {
-        check(dispatcher.compareAndSet(productionDispatcher, testDispatcher)) {
-            "A callback-delivery test dispatcher is already installed."
+    ): T = synchronized(testDependenciesLock) {
+        check(dependencies.compareAndSet(productionDependencies, testDependencies)) {
+            "Callback-delivery test dependencies are already installed."
         }
         try {
             block()
         } finally {
-            dispatcher.set(productionDispatcher)
+            dependencies.set(productionDependencies)
         }
     }
 
@@ -129,6 +132,7 @@ object NativeGeofenceCallbackDelivery {
         deliverySpec: NativeGeofenceCallbackDeliverySpec,
         completion: (NativeGeofenceCallbackEnqueueResult) -> Unit,
     ) {
+        val currentDependencies = dependencies.get()
         val guardedCompletion = NativeGeofenceCallbackCompletion(completion)
         val appContext = context.applicationContext
         val eventId = params.eventId?.takeIf(String::isNotBlank)
@@ -138,12 +142,13 @@ object NativeGeofenceCallbackDelivery {
             traceId = params.traceId?.takeIf(String::isNotBlank) ?: eventId,
         )
         try {
-            NativeGeofenceIo.execute {
+            currentDependencies.execute {
                 try {
                     enqueuePersisted(
                         appContext,
                         identified,
                         deliverySpec,
+                        currentDependencies,
                         guardedCompletion::complete,
                     )
                 } catch (error: Throwable) {
@@ -175,13 +180,14 @@ object NativeGeofenceCallbackDelivery {
         context: Context,
         params: GeofenceCallbackParamsWire,
         deliverySpec: NativeGeofenceCallbackDeliverySpec,
+        dependencies: NativeGeofenceCallbackDeliveryDependencies,
         completion: (NativeGeofenceCallbackEnqueueResult) -> Unit,
     ) {
         val packageFingerprint: String
         val payloadStore: GeofenceCallbackPayloadStore
         try {
-            packageFingerprint = AndroidPackageFingerprint.current(context)
-            payloadStore = GeofenceCallbackPayloadStore.forContext(context)
+            packageFingerprint = dependencies.packageFingerprint(context)
+            payloadStore = dependencies.payloadStore(context)
         } catch (error: Throwable) {
             completion(NativeGeofenceCallbackEnqueueResult.REJECTED)
             recordDelivery(
@@ -238,30 +244,7 @@ object NativeGeofenceCallbackDelivery {
                     .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30L, TimeUnit.SECONDS)
                     .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                     .build()
-                val operation = WorkManager.getInstance(context).enqueueUniqueWork(
-                    Constants.GEOFENCE_CALLBACK_WORK_GROUP,
-                    ExistingWorkPolicy.APPEND_OR_REPLACE,
-                    workRequest,
-                )
-                CallbackEnqueueOperation { observed ->
-                    val future = operation.result
-                    future.addListener(
-                        {
-                            try {
-                                future.get()
-                                observed(Result.success(Unit))
-                            } catch (error: InterruptedException) {
-                                Thread.currentThread().interrupt()
-                                observed(
-                                    Result.failure(CallbackEnqueueUnconfirmedException(error)),
-                                )
-                            } catch (error: Throwable) {
-                                observed(Result.failure(error))
-                            }
-                        },
-                        DIRECT_EXECUTOR,
-                    )
-                }
+                dependencies.enqueueWork(context, workRequest)
             },
         ) { outcome ->
             val result = outcome.toPublicEnqueueResult()
@@ -310,6 +293,36 @@ object NativeGeofenceCallbackDelivery {
 
     private const val TAG = "NativeGeofenceCallbackDelivery"
     private val DIRECT_EXECUTOR = Executor { command -> command.run() }
+
+    private fun enqueueWork(
+        context: Context,
+        workRequest: OneTimeWorkRequest,
+    ): CallbackEnqueueOperation {
+        val operation = WorkManager.getInstance(context).enqueueUniqueWork(
+            Constants.GEOFENCE_CALLBACK_WORK_GROUP,
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            workRequest,
+        )
+        return CallbackEnqueueOperation { observed ->
+            val future = operation.result
+            future.addListener(
+                {
+                    try {
+                        future.get()
+                        observed(Result.success(Unit))
+                    } catch (error: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        observed(
+                            Result.failure(CallbackEnqueueUnconfirmedException(error)),
+                        )
+                    } catch (error: Throwable) {
+                        observed(Result.failure(error))
+                    }
+                },
+                DIRECT_EXECUTOR,
+            )
+        }
+    }
 
     private fun logError(context: Context, message: String, error: Throwable) {
         runCatching { NativeGeofenceLogger.e(context, TAG, message, error) }
