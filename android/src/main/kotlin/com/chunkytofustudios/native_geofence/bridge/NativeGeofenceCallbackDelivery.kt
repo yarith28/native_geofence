@@ -25,6 +25,7 @@ import java.util.UUID
 import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /** Authoritative enqueue outcome for a callback payload handed to native_geofence. */
 enum class NativeGeofenceCallbackEnqueueResult {
@@ -55,6 +56,15 @@ internal class NativeGeofenceCallbackCompletion(
     }
 }
 
+internal fun interface NativeGeofenceCallbackDeliveryDispatcher {
+    fun enqueue(
+        context: Context,
+        params: GeofenceCallbackParamsWire,
+        deliverySpec: NativeGeofenceCallbackDeliverySpec,
+        completion: (NativeGeofenceCallbackEnqueueResult) -> Unit,
+    )
+}
+
 /**
  * Stable Android delivery boundary for higher-level geofence coordinators.
  *
@@ -63,12 +73,17 @@ internal class NativeGeofenceCallbackCompletion(
  * retrying could duplicate work that WorkManager already accepted.
  */
 object NativeGeofenceCallbackDelivery {
+    private val productionDispatcher: NativeGeofenceCallbackDeliveryDispatcher =
+        NativeGeofenceCallbackDeliveryDispatcher(::enqueueWithSpec)
+    private val dispatcher = AtomicReference(productionDispatcher)
+    private val testDispatcherLock = Object()
+
     @JvmStatic
     fun enqueue(
         context: Context,
         params: GeofenceCallbackParamsWire,
         completion: (NativeGeofenceCallbackEnqueueResult) -> Unit,
-    ) = enqueue(
+    ) = dispatcher.get().enqueue(
         context = context,
         params = params,
         deliverySpec = nativeBridgeCallbackDeliverySpec(),
@@ -87,14 +102,28 @@ object NativeGeofenceCallbackDelivery {
         params: GeofenceCallbackParamsWire,
         source: String,
         completion: (NativeGeofenceCallbackEnqueueResult) -> Unit,
-    ) = enqueue(
+    ) = dispatcher.get().enqueue(
         context = context,
         params = params,
         deliverySpec = enqueueFinalCallbackDeliverySpec(source),
         completion = completion,
     )
 
-    private fun enqueue(
+    internal fun <T> withDispatcherForTest(
+        testDispatcher: NativeGeofenceCallbackDeliveryDispatcher,
+        block: () -> T,
+    ): T = synchronized(testDispatcherLock) {
+        check(dispatcher.compareAndSet(productionDispatcher, testDispatcher)) {
+            "A callback-delivery test dispatcher is already installed."
+        }
+        try {
+            block()
+        } finally {
+            dispatcher.set(productionDispatcher)
+        }
+    }
+
+    private fun enqueueWithSpec(
         context: Context,
         params: GeofenceCallbackParamsWire,
         deliverySpec: NativeGeofenceCallbackDeliverySpec,
