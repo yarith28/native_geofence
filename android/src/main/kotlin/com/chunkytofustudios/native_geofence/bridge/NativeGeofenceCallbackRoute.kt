@@ -46,19 +46,25 @@ internal fun callbackWorkerInputData(
     .putString(Constants.WORKER_DELIVERY_SOURCE_KEY, deliverySpec.source)
     .build()
 
-internal fun callbackWorkerRoute(inputData: Data): NativeGeofenceCallbackRoute =
-    NativeGeofenceCallbackRoute.fromStorageValue(
-        inputData.getString(Constants.WORKER_DELIVERY_ROUTE_KEY),
-    )
-
-internal fun dispatchCallbackWorkerRoute(
-    route: NativeGeofenceCallbackRoute,
-    processNativeBridge: () -> Unit,
-    processFinalCallback: () -> Unit,
+internal class NativeGeofenceCallbackWorkerRouter private constructor(
+    val route: NativeGeofenceCallbackRoute,
 ) {
-    if (route.requiresNativeBridge) {
-        processNativeBridge()
-    } else {
-        processFinalCallback()
+    fun dispatch(
+        processNativeBridge: () -> Unit,
+        processFinalCallback: () -> Unit,
+    ) {
+        if (route.requiresNativeBridge) {
+            processNativeBridge()
+        } else {
+            processFinalCallback()
+        }
+    }
+
+    companion object {
+        fun fromInputData(inputData: Data) = NativeGeofenceCallbackWorkerRouter(
+            NativeGeofenceCallbackRoute.fromStorageValue(
+                inputData.getString(Constants.WORKER_DELIVERY_ROUTE_KEY),
+            )
+        )
     }
 }

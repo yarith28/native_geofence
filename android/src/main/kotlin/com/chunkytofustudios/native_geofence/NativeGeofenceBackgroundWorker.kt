@@ -13,8 +13,7 @@ import com.chunkytofustudios.native_geofence.api.NativeGeofenceBackgroundApiImpl
 import com.chunkytofustudios.native_geofence.bridge.NativeGeofenceBridgeDispatcher
 import com.chunkytofustudios.native_geofence.bridge.NativeGeofenceBridgeOutcome
 import com.chunkytofustudios.native_geofence.bridge.NativeGeofenceCallbackRoute
-import com.chunkytofustudios.native_geofence.bridge.callbackWorkerRoute
-import com.chunkytofustudios.native_geofence.bridge.dispatchCallbackWorkerRoute
+import com.chunkytofustudios.native_geofence.bridge.NativeGeofenceCallbackWorkerRouter
 import com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWire
 import com.chunkytofustudios.native_geofence.generated.FlutterError
 import com.chunkytofustudios.native_geofence.generated.NativeGeofenceBackgroundApi
@@ -63,7 +62,10 @@ class NativeGeofenceBackgroundWorker(
     private val stopped = AtomicBoolean(false)
     private val destroyRequested = AtomicBoolean(false)
     private val foregroundLock = Object()
-    private val deliveryRoute = callbackWorkerRoute(workerParams.inputData)
+    private val deliveryRouter = NativeGeofenceCallbackWorkerRouter.fromInputData(
+        workerParams.inputData
+    )
+    private val deliveryRoute = deliveryRouter.route
     private val deliverySource = workerParams.inputData
         .getString(Constants.WORKER_DELIVERY_SOURCE_KEY)
         ?.takeIf(String::isNotBlank)
@@ -431,8 +433,7 @@ class NativeGeofenceBackgroundWorker(
             owner = if (deliveryRoute.requiresNativeBridge) "native_geofence" else "dart",
             reasonCode = deliveryRoute.storageValue,
         )
-        dispatchCallbackWorkerRoute(
-            route = deliveryRoute,
+        deliveryRouter.dispatch(
             processNativeBridge = { processNativeBridge(params) },
             processFinalCallback = { processFinalCallback(params) },
         )

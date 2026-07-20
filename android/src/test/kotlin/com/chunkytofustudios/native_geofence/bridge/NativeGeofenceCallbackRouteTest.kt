@@ -1,10 +1,15 @@
 package com.chunkytofustudios.native_geofence.bridge
 
+import android.content.Context
 import android.content.ContextWrapper
-import androidx.work.Data
+import androidx.work.OneTimeWorkRequest
 import com.chunkytofustudios.native_geofence.Constants
+import com.chunkytofustudios.native_geofence.NativeGeofenceBackgroundWorker
 import com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWire
 import com.chunkytofustudios.native_geofence.generated.GeofenceEvent
+import com.chunkytofustudios.native_geofence.util.CallbackEnqueueOperation
+import com.chunkytofustudios.native_geofence.util.CallbackPayloadBackend
+import com.chunkytofustudios.native_geofence.util.GeofenceCallbackPayloadStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -36,19 +41,27 @@ class NativeGeofenceCallbackRouteTest {
 
     @Test
     fun `enqueue final callback stores final route and worker bypasses bridge`() {
-        var capturedInputData: Data? = null
+        val backend = MemoryPayloadBackend()
+        val payloadStore = GeofenceCallbackPayloadStore(
+            backend = backend,
+            referenceGenerator = { PAYLOAD_REFERENCE },
+        )
+        var capturedWorkRequest: OneTimeWorkRequest? = null
         val outcomes = mutableListOf<NativeGeofenceCallbackEnqueueResult>()
-        val testDispatcher = NativeGeofenceCallbackDeliveryDispatcher {
-            _, _, deliverySpec, completion ->
-            capturedInputData = callbackWorkerInputData(
-                payloadReference = "payload-1",
-                deliverySpec = deliverySpec,
-            )
-            completion(NativeGeofenceCallbackEnqueueResult.ACCEPTED)
-        }
-        NativeGeofenceCallbackDelivery.withDispatcherForTest(testDispatcher) {
+        val testDependencies = NativeGeofenceCallbackDeliveryDependencies(
+            execute = { task -> task() },
+            packageFingerprint = { "package-v1" },
+            payloadStore = { payloadStore },
+            enqueueWork = { _, workRequest ->
+                capturedWorkRequest = workRequest
+                CallbackEnqueueOperation { completion ->
+                    completion(Result.success(Unit))
+                }
+            },
+        )
+        NativeGeofenceCallbackDelivery.withDependenciesForTest(testDependencies) {
             NativeGeofenceCallbackDelivery.enqueueFinalCallback(
-                context = ContextWrapper(null),
+                context = TestContext(),
                 params = GeofenceCallbackParamsWire(
                     geofences = emptyList(),
                     event = GeofenceEvent.ENTER,
@@ -58,11 +71,17 @@ class NativeGeofenceCallbackRouteTest {
                 completion = outcomes::add,
             )
         }
-        val inputData = requireNotNull(capturedInputData)
+        val workRequest = requireNotNull(capturedWorkRequest)
+        val inputData = workRequest.workSpec.input
 
         assertEquals(listOf(NativeGeofenceCallbackEnqueueResult.ACCEPTED), outcomes)
+        assertTrue(backend.values.containsKey(PAYLOAD_REFERENCE))
         assertEquals(
-            "payload-1",
+            NativeGeofenceBackgroundWorker::class.java.name,
+            workRequest.workSpec.workerClassName,
+        )
+        assertEquals(
+            PAYLOAD_REFERENCE,
             inputData.getString(Constants.WORKER_PAYLOAD_REFERENCE_KEY),
         )
         assertEquals(
@@ -76,13 +95,33 @@ class NativeGeofenceCallbackRouteTest {
 
         var nativeBridgeCalls = 0
         var finalCallbackCalls = 0
-        dispatchCallbackWorkerRoute(
-            route = callbackWorkerRoute(inputData),
+        NativeGeofenceCallbackWorkerRouter.fromInputData(inputData).dispatch(
             processNativeBridge = { nativeBridgeCalls++ },
             processFinalCallback = { finalCallbackCalls++ },
         )
 
         assertEquals(0, nativeBridgeCalls)
         assertEquals(1, finalCallbackCalls)
+    }
+
+    private class TestContext : ContextWrapper(null) {
+        override fun getApplicationContext(): Context = this
+    }
+
+    private class MemoryPayloadBackend : CallbackPayloadBackend {
+        val values = linkedMapOf<String, String>()
+
+        override fun write(reference: String, value: String): Boolean {
+            values[reference] = value
+            return true
+        }
+
+        override fun read(reference: String): Result<String?> = Result.success(values[reference])
+
+        override fun delete(reference: String): Boolean = values.remove(reference) != null
+    }
+
+    private companion object {
+        const val PAYLOAD_REFERENCE = "00000000-0000-0000-0000-000000000001"
     }
 }
