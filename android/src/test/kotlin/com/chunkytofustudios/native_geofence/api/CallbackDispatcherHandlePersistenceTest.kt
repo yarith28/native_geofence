@@ -2,6 +2,8 @@ package com.chunkytofustudios.native_geofence.api
 
 import com.chunkytofustudios.native_geofence.generated.FlutterError
 import com.chunkytofustudios.native_geofence.generated.NativeGeofenceErrorCode
+import com.chunkytofustudios.native_geofence.receivers.InitializationRepairAdmissionGate
+import com.chunkytofustudios.native_geofence.util.GeofenceStatusDisposition
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -70,7 +72,7 @@ class CallbackDispatcherHandlePersistenceTest {
 
     @Test
     fun `recovery admission waits for evidence and admits one start`() {
-        val admission = CallbackDispatcherRecoveryAdmission()
+        val admission = InitializationRepairAdmissionGate()
 
         assertFalse(admission.tryAcquire(hasRecoveryEvidence = false))
         assertTrue(admission.tryAcquire(hasRecoveryEvidence = true))
@@ -79,11 +81,72 @@ class CallbackDispatcherHandlePersistenceTest {
 
     @Test
     fun `synchronous start failure reopens recovery admission`() {
-        val admission = CallbackDispatcherRecoveryAdmission()
+        val admission = InitializationRepairAdmissionGate()
 
         assertTrue(admission.tryAcquire(hasRecoveryEvidence = true))
         admission.releaseAfterStartFailure()
 
         assertTrue(admission.tryAcquire(hasRecoveryEvidence = true))
+    }
+
+    @Test
+    fun `healthy active inventory does not need initialization recovery`() {
+        assertFalse(
+            initializationRecoveryNeeded(
+                recoveryRequired = false,
+                recoveryScheduled = false,
+                dispositions = listOf(GeofenceStatusDisposition.ACTIVE),
+            )
+        )
+    }
+
+    @Test
+    fun `durable recovery requirement repairs even active inventory`() {
+        assertTrue(
+            initializationRecoveryNeeded(
+                recoveryRequired = true,
+                recoveryScheduled = false,
+                dispositions = listOf(GeofenceStatusDisposition.ACTIVE),
+            )
+        )
+    }
+
+    @Test
+    fun `non-active inventory needs initialization recovery`() {
+        GeofenceStatusDisposition.entries
+            .filter { it != GeofenceStatusDisposition.ACTIVE }
+            .forEach { disposition ->
+                assertTrue(
+                    initializationRecoveryNeeded(
+                        recoveryRequired = false,
+                        recoveryScheduled = false,
+                        dispositions = listOf(disposition),
+                    ),
+                    "Expected $disposition to require repair.",
+                )
+            }
+    }
+
+    @Test
+    fun `unreadable inventory needs initialization recovery`() {
+        assertTrue(
+            initializationRecoveryNeeded(
+                recoveryRequired = false,
+                recoveryScheduled = false,
+                inventoryInspectionFailed = true,
+                dispositions = emptyList(),
+            )
+        )
+    }
+
+    @Test
+    fun `scheduled recovery suppresses duplicate initialization recovery`() {
+        assertFalse(
+            initializationRecoveryNeeded(
+                recoveryRequired = true,
+                recoveryScheduled = true,
+                dispositions = listOf(GeofenceStatusDisposition.RECOVERABLE),
+            )
+        )
     }
 }

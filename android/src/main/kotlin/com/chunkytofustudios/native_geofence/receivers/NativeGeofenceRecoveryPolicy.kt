@@ -63,9 +63,10 @@ internal object NativeGeofenceRecoveryProgressPolicy {
 
 internal enum class RecoveryWorkerTerminalOutcome(
     val succeeded: Boolean,
-    val storageName: String
+    val storageName: String,
+    val recoverySatisfied: Boolean = false,
 ) {
-    COMPLETED(true, "completed"),
+    COMPLETED(true, "completed", recoverySatisfied = true),
     NON_RETRYABLE_FAILURE(false, "non_retryable_failure"),
     PERMISSION_WAIT(false, "permission_wait"),
     GAVE_UP(false, "gave_up"),
