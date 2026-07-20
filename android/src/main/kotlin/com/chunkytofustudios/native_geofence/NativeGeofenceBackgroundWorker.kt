@@ -53,6 +53,24 @@ import io.flutter.view.FlutterCallbackInformation
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
+internal fun <CallbackInfo> initializeFlutterAndLookupCallback(
+    isLoaderInitialized: () -> Boolean,
+    startLoader: () -> Unit,
+    completeLoader: () -> Unit,
+    lookupCallback: () -> CallbackInfo?,
+    recordStage: (String) -> Unit,
+): CallbackInfo? {
+    recordStage("loader_requested")
+    if (!isLoaderInitialized()) startLoader()
+    completeLoader()
+    recordStage("loader_completed")
+
+    recordStage("callback_lookup_requested")
+    val callbackInfo = lookupCallback()
+    recordStage("callback_lookup_completed")
+    return callbackInfo
+}
+
 class NativeGeofenceBackgroundWorker(
     private val context: Context,
     private val workerParams: WorkerParameters
@@ -494,68 +512,59 @@ class NativeGeofenceBackgroundWorker(
             return
         }
 
-        val callbackInfo = FlutterCallbackInformation.lookupCallbackInformation(callbackHandle)
-        if (callbackInfo == null) {
-            finishFailure(CallbackDeliveryFailure.DISPATCHER_NOT_FOUND)
-            return
-        }
-
         try {
-            if (!flutterLoader.initialized()) {
-                flutterLoader.startInitialization(applicationContext)
+            val callbackInfo = initializeFlutterAndLookupCallback(
+                isLoaderInitialized = flutterLoader::initialized,
+                startLoader = { flutterLoader.startInitialization(applicationContext) },
+                completeLoader = {
+                    flutterLoader.ensureInitializationComplete(applicationContext, null)
+                },
+                lookupCallback = {
+                    FlutterCallbackInformation.lookupCallbackInformation(callbackHandle)
+                },
+                recordStage = { outcome ->
+                    recordDelivery(
+                        stage = "dart_runtime",
+                        outcome = outcome,
+                        owner = "dart",
+                    )
+                },
+            )
+            if (completed.get() || stopped.get()) return
+            if (callbackInfo == null) {
+                finishFailure(CallbackDeliveryFailure.DISPATCHER_NOT_FOUND)
+                return
             }
-            flutterLoader.ensureInitializationCompleteAsync(
-                applicationContext,
-                null,
-                mainHandler
+
+            val engine = FlutterEngine(applicationContext)
+            flutterEngine = engine
+            val backgroundApi = NativeGeofenceBackgroundApiImpl(this)
+            backgroundApiImpl = backgroundApi
+            NativeGeofenceBackgroundApi.setUp(
+                engine.dartExecutor.binaryMessenger,
+                backgroundApi
+            )
+            if (
+                coordinator?.advance(
+                    CallbackDeliveryStage.STARTUP,
+                    CallbackDeliveryStage.API_READY
+                ) != true
             ) {
-                if (completed.get() || stopped.get()) return@ensureInitializationCompleteAsync
-                try {
-                    val engine = FlutterEngine(applicationContext)
-                    flutterEngine = engine
-                    val backgroundApi = NativeGeofenceBackgroundApiImpl(this)
-                    backgroundApiImpl = backgroundApi
-                    NativeGeofenceBackgroundApi.setUp(
-                        engine.dartExecutor.binaryMessenger,
-                        backgroundApi
-                    )
-                    if (
-                        coordinator?.advance(
-                            CallbackDeliveryStage.STARTUP,
-                            CallbackDeliveryStage.API_READY
-                        ) != true
-                    ) {
-                        destroyEngine()
-                        return@ensureInitializationCompleteAsync
-                    }
-                    engine.dartExecutor.executeDartCallback(
-                        DartCallback(
-                            context.assets,
-                            flutterLoader.findAppBundlePath(),
-                            callbackInfo
-                        )
-                    )
-                    recordDelivery(
-                        stage = "dart_runtime",
-                        outcome = "started",
-                        owner = "dart",
-                    )
-                } catch (error: Throwable) {
-                    NativeGeofenceLogger.e(
-                        context,
-                        TAG,
-                        "Failed to start the callback runtime.",
-                        error
-                    )
-                    recordDelivery(
-                        stage = "dart_runtime",
-                        outcome = "startup_failed",
-                        owner = "dart",
-                        errorType = error.javaClass.name,
-                    )
-                    finishFailure(CallbackDeliveryFailure.INFRASTRUCTURE)
-                }
+                destroyEngine()
+                return
             }
+            engine.dartExecutor.executeDartCallback(
+                DartCallback(
+                    context.assets,
+                    flutterLoader.findAppBundlePath(),
+                    callbackInfo
+                )
+            )
+            recordDelivery(
+                stage = "dart_runtime",
+                outcome = "started",
+                owner = "dart",
+            )
         } catch (error: Throwable) {
             NativeGeofenceLogger.e(context, TAG, "Flutter startup failed.", error)
             recordDelivery(
