@@ -32,6 +32,7 @@ import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceRecoveryFai
 import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceRecoveryPolicy
 import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceRecoveryOperationBudget
 import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceRecoveryProgressPolicy
+import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceRecoveryRuntime
 import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceRecoveryScheduler
 import com.chunkytofustudios.native_geofence.receivers.RecoveryOperationAdmission
 import com.chunkytofustudios.native_geofence.receivers.RecoveryScheduleOutcome
@@ -61,6 +62,7 @@ import com.chunkytofustudios.native_geofence.util.GeofenceMutationQueues
 import com.chunkytofustudios.native_geofence.util.GeofenceMutationRunner
 import com.chunkytofustudios.native_geofence.util.GeofencePersistenceSnapshot
 import com.chunkytofustudios.native_geofence.util.GeofenceRegistrationStore
+import com.chunkytofustudios.native_geofence.util.GeofenceStatusDisposition
 import com.chunkytofustudios.native_geofence.util.GeofenceWires
 import com.chunkytofustudios.native_geofence.util.PersistedValue
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
@@ -102,8 +104,6 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
             error,
         )
     }
-    private val dispatcherRecoveryAdmission = CallbackDispatcherRecoveryAdmission()
-
     override fun initialize(callbackDispatcherHandle: Long) {
         val packageFingerprint = AndroidPackageFingerprint.current(context)
         initializeCallbackDispatcher(
@@ -124,18 +124,10 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
     }
 
     private fun retryRecoveryAfterDispatcherInitialization() {
-        val hasRecoveryEvidence = try {
-            NativeGeofencePersistence.getAllRawGeofenceIds(context).isNotEmpty()
-        } catch (error: Throwable) {
-            NativeGeofenceLogger.w(
-                context,
-                TAG,
-                "Could not inspect geofence recovery evidence after dispatcher initialization.",
-                error,
+        if (!NativeGeofenceRecoveryRuntime.shouldRunInitializationRepair(
+                hasInitializationRecoveryEvidence()
             )
-            return
-        }
-        if (!dispatcherRecoveryAdmission.tryAcquire(hasRecoveryEvidence)) return
+        ) return
 
         try {
             startAutomaticRecovery("callback_dispatcher_initialization") { result ->
@@ -149,7 +141,7 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                 }
             }
         } catch (error: Throwable) {
-            dispatcherRecoveryAdmission.releaseAfterStartFailure()
+            NativeGeofenceRecoveryRuntime.releaseInitializationRepairAfterStartFailure()
             NativeGeofenceLogger.w(
                 context,
                 TAG,
@@ -157,6 +149,29 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                 error,
             )
         }
+    }
+
+    internal fun hasInitializationRecoveryEvidence(): Boolean {
+        val recoveryState = NativeGeofenceRecoveryScheduler.initializationState(context)
+        var inventoryInspectionFailed = false
+        val dispositions = try {
+            NativeGeofencePersistence.inspectStatusInventory(context).map { it.disposition }
+        } catch (error: Throwable) {
+            inventoryInspectionFailed = true
+            NativeGeofenceLogger.w(
+                context,
+                TAG,
+                "Could not inspect geofence initialization-recovery evidence.",
+                error,
+            )
+            emptyList()
+        }
+        return initializationRecoveryNeeded(
+            recoveryRequired = recoveryState.required,
+            recoveryScheduled = recoveryState.scheduled,
+            inventoryInspectionFailed = inventoryInspectionFailed,
+            dispositions = dispositions,
+        )
     }
 
     override fun createGeofence(
@@ -305,6 +320,18 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
             }
         }
 
+        if (!NativeGeofenceRecoveryScheduler.markRecoveryRequired(context)) {
+            finish(
+                Result.failure(
+                    FlutterError(
+                        NativeGeofenceErrorCode.PLUGIN_INTERNAL.raw.toString(),
+                        "Failed to persist Android geofence recovery ownership."
+                    )
+                )
+            )
+            return
+        }
+
         val generation = try {
             NativeGeofenceRecoveryScheduler.beginGeneration(context)
         } catch (error: Throwable) {
@@ -321,7 +348,11 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
         }
 
         if (NativeGeofencePersistence.getAllRawGeofenceIds(context).isEmpty()) {
-            NativeGeofenceRecoveryScheduler.completeGeneration(context, generation)
+            NativeGeofenceRecoveryScheduler.completeGeneration(
+                context,
+                generation,
+                recoverySatisfied = true,
+            )
             finish(Result.success(Unit))
             return
         }
@@ -434,7 +465,11 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                 return@recoverForGeneration
             }
             if (result.isSuccess) {
-                NativeGeofenceRecoveryScheduler.completeGeneration(context, generation)
+                NativeGeofenceRecoveryScheduler.completeGeneration(
+                    context,
+                    generation,
+                    recoverySatisfied = true,
+                )
             } else {
                 val error = result.exceptionOrNull()
                 if (!automatic || error == null || !NativeGeofenceRecoveryPolicy.isRetryable(error)) {
@@ -1707,13 +1742,12 @@ internal fun initializeCallbackDispatcher(
     afterPersisted()
 }
 
-internal class CallbackDispatcherRecoveryAdmission {
-    private val admitted = AtomicBoolean(false)
-
-    fun tryAcquire(hasRecoveryEvidence: Boolean): Boolean =
-        hasRecoveryEvidence && admitted.compareAndSet(false, true)
-
-    fun releaseAfterStartFailure() {
-        admitted.set(false)
-    }
-}
+internal fun initializationRecoveryNeeded(
+    recoveryRequired: Boolean,
+    recoveryScheduled: Boolean,
+    inventoryInspectionFailed: Boolean = false,
+    dispositions: Collection<GeofenceStatusDisposition>,
+): Boolean = !recoveryScheduled && (
+    recoveryRequired || inventoryInspectionFailed ||
+        dispositions.any { it != GeofenceStatusDisposition.ACTIVE }
+)
