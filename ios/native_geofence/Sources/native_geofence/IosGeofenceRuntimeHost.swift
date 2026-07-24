@@ -348,25 +348,35 @@ final class IosGeofenceRuntimeHost {
             headlessFlutterEngine = engine
             headlessBackgroundApi = backgroundApi
         }
-        // Install both host surfaces before Dart begins executing. The API is
-        // the same object registered with the main messenger.
-        NativeGeofenceApiSetup.setUp(
-            binaryMessenger: engine.binaryMessenger,
-            api: nativeApi
+        let started = IosHeadlessEngineBootstrap.start(
+            runEngine: {
+                engine.run(
+                    withEntrypoint: callbackDispatcherInfo.callbackName,
+                    libraryURI: callbackDispatcherInfo.callbackLibraryPath
+                )
+            },
+            registerPlugins: {
+                registerPlugins(engine)
+            },
+            installHostApis: {
+                // Flutter rejects binary-messenger handlers until the engine
+                // is running. Install both host surfaces after callback-safe
+                // plugins have registered with the running engine.
+                NativeGeofenceApiSetup.setUp(
+                    binaryMessenger: engine.binaryMessenger,
+                    api: nativeApi
+                )
+                NativeGeofenceBackgroundApiSetup.setUp(
+                    binaryMessenger: engine.binaryMessenger,
+                    api: backgroundApi
+                )
+            }
         )
-        NativeGeofenceBackgroundApiSetup.setUp(
-            binaryMessenger: engine.binaryMessenger,
-            api: backgroundApi
-        )
-        guard engine.run(
-            withEntrypoint: callbackDispatcherInfo.callbackName,
-            libraryURI: callbackDispatcherInfo.callbackLibraryPath
-        ) else {
+        guard started else {
             log.error("Failed to start the headless Flutter engine.")
             backgroundApi.forceCleanup(reason: "Failed to start the headless Flutter engine.")
             return nil
         }
-        registerPlugins(engine)
         log.debug("Headless Flutter callback session started.")
         return backgroundApi
     }

@@ -35,7 +35,16 @@ final class IosGeofenceMutationAuthority {
 
     func attachEventDelivery(_ delivery: @escaping EventDelivery) -> DeliveryAttachment {
         let attachment = eventDelivery.attach(delivery)
-        locationManagerDelegate.drainPendingEvents()
+        // Plugin attachment occurs inside GeneratedPluginRegistrant. Drain on
+        // the next main-loop turn so a pending callback cannot recursively
+        // bootstrap a headless engine while the main engine is still
+        // registering plugins.
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  eventDelivery.isCurrent(attachment)
+            else { return }
+            locationManagerDelegate.drainPendingEvents()
+        }
         return attachment
     }
 

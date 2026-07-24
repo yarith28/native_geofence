@@ -29,6 +29,24 @@ final class IosCallbackDeliveryRouterTests: XCTestCase {
         XCTAssertNil(subject.withCurrent { $0("unavailable") })
     }
 
+    func testOnlyCurrentAttachmentCanAuthorizeDeferredWork() {
+        let subject = IosReattachableDelivery<(String) -> Void>()
+        let oldAttachment = subject.attach { _ in }
+
+        XCTAssertTrue(subject.isCurrent(oldAttachment))
+
+        let newAttachment = subject.attach { _ in }
+
+        XCTAssertFalse(subject.isCurrent(oldAttachment))
+        XCTAssertTrue(subject.isCurrent(newAttachment))
+
+        subject.detach(oldAttachment)
+        XCTAssertTrue(subject.isCurrent(newAttachment))
+
+        subject.detach(newAttachment)
+        XCTAssertFalse(subject.isCurrent(newAttachment))
+    }
+
     func testMainRouteOwnsDeliveryAndPreservesFifo() {
         var delivered: [String] = []
         var accepted: [String] = []

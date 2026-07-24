@@ -26,6 +26,12 @@ final class IosReattachableDelivery<Delivery> {
         }
     }
 
+    func isCurrent(_ attachment: Attachment) -> Bool {
+        withLock {
+            current?.attachment == attachment
+        }
+    }
+
     func withCurrent<Result>(_ body: (Delivery) -> Result) -> Result? {
         let delivery = withLock { current?.delivery }
         return delivery.map(body)
