@@ -11,9 +11,10 @@ import java.util.Locale
 /**
  * Single logging bridge for native_geofence.
  *
- * Messages always go to logcat. When file logging is enabled, the same messages
- * are appended to a bounded app-private file so the host app can fetch/export
- * them after background receivers or workers run without Dart.
+ * Messages always go to logcat. When file logging is enabled, info, warning,
+ * and error messages are appended to a bounded app-private file so the host app
+ * can fetch/export them after background receivers or workers run without
+ * Dart. Debug trace is included only when verbose file logging is enabled.
  */
 object NativeGeofenceLogger {
     private val timestampFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US)
@@ -25,22 +26,30 @@ object NativeGeofenceLogger {
     @Volatile
     private var fileLoggingEnabled: Boolean? = null
 
+    @Volatile
+    private var fileLoggingVerbose: Boolean? = null
+
     fun initialize(context: Context) {
         val ctx = context.applicationContext
         appContext = ctx
         if (fileLoggingEnabled == null) {
             fileLoggingEnabled = isEnabled(ctx)
         }
+        if (fileLoggingVerbose == null) {
+            fileLoggingVerbose = isVerbose(ctx)
+        }
     }
 
-    fun configure(context: Context, enabled: Boolean, maxBytes: Int) {
+    fun configure(context: Context, enabled: Boolean, verbose: Boolean, maxBytes: Int) {
         initialize(context)
         NativeGeofencePreferences.get(context)
             .edit()
             .putBoolean(Constants.LOG_FILE_ENABLED_KEY, enabled)
+            .putBoolean(Constants.LOG_FILE_VERBOSE_KEY, verbose)
             .putInt(Constants.LOG_FILE_MAX_BYTES_KEY, normalizeMaxBytes(maxBytes))
             .apply()
         fileLoggingEnabled = enabled
+        fileLoggingVerbose = verbose
     }
 
     fun d(tag: String, message: String) {
@@ -118,6 +127,7 @@ object NativeGeofenceLogger {
     ) {
         val ctx = context?.applicationContext ?: appContext ?: return
         if (fileLoggingEnabled == false) return
+        if (!shouldWriteToFile(level, isVerbose(ctx))) return
         // Capture the observation timestamp on the caller thread. File I/O can
         // be delayed behind other diagnostic work and must not rewrite history.
         val line = formatLine(level, tag, message, throwable)
@@ -127,6 +137,7 @@ object NativeGeofenceLogger {
                 return@execute
             }
             fileLoggingEnabled = true
+            if (!shouldWriteToFile(level, isVerbose(ctx))) return@execute
             synchronized(fileLock) {
                 val file = logFile(ctx)
                 file.parentFile?.mkdirs()
@@ -164,6 +175,16 @@ object NativeGeofenceLogger {
     private fun isEnabled(context: Context): Boolean =
         prefs(context).getBoolean(Constants.LOG_FILE_ENABLED_KEY, false)
 
+    private fun isVerbose(context: Context): Boolean {
+        fileLoggingVerbose?.let { return it }
+        val verbose = prefs(context).getBoolean(
+            Constants.LOG_FILE_VERBOSE_KEY,
+            Constants.DEFAULT_LOG_FILE_VERBOSE,
+        )
+        fileLoggingVerbose = verbose
+        return verbose
+    }
+
     private fun maxBytes(context: Context): Int =
         normalizeMaxBytes(
             prefs(context).getInt(
@@ -174,6 +195,9 @@ object NativeGeofenceLogger {
 
     private fun normalizeMaxBytes(maxBytes: Int): Int =
         maxBytes.coerceIn(Constants.MIN_LOG_FILE_MAX_BYTES, Constants.MAX_LOG_FILE_MAX_BYTES)
+
+    private fun shouldWriteToFile(level: String, verbose: Boolean): Boolean =
+        level != "debug" || verbose
 
     private fun prefs(context: Context) = NativeGeofencePreferences.get(context)
 

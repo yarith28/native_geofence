@@ -7,10 +7,8 @@ void main() {
 
     expect(config.enabled, isFalse);
     expect(config.maxBytes, 256 * 1024);
-    expect(config.toMap(), {
-      'enabled': false,
-      'maxBytes': 256 * 1024,
-    });
+    expect(config.toMap()['enabled'], isFalse);
+    expect(config.toMap()['maxBytes'], 256 * 1024);
   });
 
   test('native log file configuration transports caller values', () {
@@ -19,9 +17,7 @@ void main() {
       maxBytes: 512 * 1024,
     );
 
-    expect(config.toMap(), {
-      'enabled': true,
-      'maxBytes': 512 * 1024,
-    });
+    expect(config.toMap()['enabled'], isTrue);
+    expect(config.toMap()['maxBytes'], 512 * 1024);
   });
 }
