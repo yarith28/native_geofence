@@ -1,7 +1,13 @@
 ## 1.4.0
 
+* Routes iOS enter and exit callbacks by the committed Core Location region
+  identifier while keeping unsolicited initial-state callbacks isolated, and
+  persists a bounded pre-gate delivery trace for post-suspension diagnostics.
 * Adds a native log-file verbose switch so production file logging can retain
   info, warning, and error records without high-volume debug trace.
+* Prevents duplicate Android callback delivery between direct and recovery
+  routes and initializes Flutter before callback lookup during cold background
+  startup.
 * Starts the iOS headless Flutter engine before installing Pigeon message handlers and defers initial journal replay until main-plugin registration unwinds, preventing a launch-time assertion when replaying a journaled geofence callback
 * Aligns the declared Dart and Flutter SDK floors with runtime and example dependencies and tests the minimum and current Flutter channels in CI
 * Removes iOS executable file-metadata fingerprinting so the privacy manifest no longer omits a required-reason file-timestamp API
