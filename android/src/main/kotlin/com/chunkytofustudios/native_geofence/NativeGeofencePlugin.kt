@@ -62,6 +62,8 @@ class NativeGeofencePlugin : FlutterPlugin {
                         NativeGeofenceLogger.configure(
                             appContext,
                             call.argument<Boolean>("enabled") ?: false,
+                            call.argument<Boolean>("verbose")
+                                ?: Constants.DEFAULT_LOG_FILE_VERBOSE,
                             maxBytes,
                         )
                         result.success(null)

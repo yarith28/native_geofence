@@ -642,8 +642,9 @@ class NativeGeofenceManager {
   /// Configure the app-private Android log file.
   ///
   /// File logging is disabled by default. When enabled, native_geofence writes
-  /// a bounded text log that can be fetched with [readLogFile]. This is a no-op
-  /// on iOS and web.
+  /// a bounded text log that can be fetched with [readLogFile]. Debug trace is
+  /// controlled by [NativeGeofenceLogFileConfig.verbose]. This is a no-op on
+  /// iOS and web.
   Future<void> configureLogFile({
     NativeGeofenceLogFileConfig config = const NativeGeofenceLogFileConfig(),
   }) async {

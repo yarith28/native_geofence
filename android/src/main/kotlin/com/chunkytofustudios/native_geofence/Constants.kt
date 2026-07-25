@@ -61,7 +61,9 @@ class Constants {
         const val LOG_FILE_CHANNEL_NAME = "native_geofence/log_file"
         const val LOG_FILE_NAME = "native_geofence.log"
         const val LOG_FILE_ENABLED_KEY = "$PACKAGE_NAME.log_file_enabled"
+        const val LOG_FILE_VERBOSE_KEY = "$PACKAGE_NAME.log_file_verbose"
         const val LOG_FILE_MAX_BYTES_KEY = "$PACKAGE_NAME.log_file_max_bytes"
+        const val DEFAULT_LOG_FILE_VERBOSE = true
         const val DEFAULT_LOG_FILE_MAX_BYTES = 256 * 1024
         const val MIN_LOG_FILE_MAX_BYTES = 16 * 1024
         const val MAX_LOG_FILE_MAX_BYTES = 50 * 1024 * 1024
