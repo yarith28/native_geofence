@@ -51,4 +51,8 @@ public class NativeGeofencePlugin: NSObject, FlutterPlugin {
         NativeGeofencePlugin.instance = nil
         NativeGeofencePlugin.log.debug("NativeGeofencePlugin detached.")
     }
+
+    public func applicationDidBecomeActive(_ application: UIApplication) {
+        runtimeHost?.resumePendingCallbackDelivery()
+    }
 }

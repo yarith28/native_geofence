@@ -731,6 +731,36 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
             regions: regionSnapshots,
             persistence: NativeGeofencePersistence.synchronizationSnapshot()
         )
+        let boundaryDeferralIds = Set(desiredIds)
+        var boundaryCandidatesByIdentifier:
+            [String: [PendingBoundaryRegistrationCandidate]] = [:]
+        for value in desired {
+            var candidates: [PendingBoundaryRegistrationCandidate] = []
+            if let previous = regionSnapshots.first(where: {
+                $0.region.identifier == value.wire.id
+            }) {
+                candidates.append(
+                    PendingBoundaryRegistrationCandidate(
+                        region: previous.region,
+                        callbackHandle: previous.callbackHandle,
+                        callbackContext: previous.callbackContext
+                    )
+                )
+            }
+            candidates.append(
+                PendingBoundaryRegistrationCandidate(
+                    region: value.region,
+                    callbackHandle: value.wire.callbackHandle,
+                    callbackContext: value.wire.callbackContext
+                )
+            )
+            boundaryCandidatesByIdentifier[value.wire.id] = candidates
+            locationManagerDelegate
+                .beginSynchronizationBoundaryEventDeferral(
+                    identifier: value.wire.id,
+                    candidates: candidates
+                )
+        }
         var platformTouchedIds = Set<String>()
         var authorityTouchedIds = Set<String>()
 
@@ -741,7 +771,25 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
             )
             authorityTouchedIds.formUnion(removalIds)
             for id in removalIds {
-                performRemoveGeofenceById(id: id, recordDiagnostics: false)
+                guard performRemoveGeofenceById(
+                    id: id,
+                    recordDiagnostics: false
+                ) else {
+                    rollbackSynchronization(
+                        snapshot: snapshot,
+                        platformTouchedIds: platformTouchedIds,
+                        authorityTouchedIds: authorityTouchedIds,
+                        boundaryDeferralIds: boundaryDeferralIds,
+                        boundaryCandidatesByIdentifier:
+                            boundaryCandidatesByIdentifier,
+                        originalError: nativeGeofenceError(
+                            .pluginInternal,
+                            message: "Failed to durably cancel deferred iOS callbacks for geofence ID=\(id)."
+                        ),
+                        completion: completion
+                    )
+                    return
+                }
             }
         }
 
@@ -752,6 +800,9 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
                 snapshot: snapshot,
                 platformTouchedIds: platformTouchedIds,
                 authorityTouchedIds: authorityTouchedIds,
+                boundaryDeferralIds: boundaryDeferralIds,
+                boundaryCandidatesByIdentifier:
+                    boundaryCandidatesByIdentifier,
                 originalError: error,
                 completion: completion
             )
@@ -778,7 +829,12 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
                     )
                     return
                 }
-                completion(.success(()))
+                locationManagerDelegate
+                    .finishSynchronizationBoundaryEventDeferral(
+                        identifiers: boundaryDeferralIds
+                    ) {
+                        completion(.success(()))
+                    }
                 return
             }
 
@@ -812,7 +868,7 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
                 authorityTouchedIds.insert(value.wire.id)
             }
             locationManagerDelegate.clearSynchronizationRemovalTombstone(
-                id: value.wire.id
+                matching: value.region
             )
             let registrationCompletion: (Result<Void, any Error>) -> Void = { result in
                 switch result {
@@ -837,6 +893,9 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
         snapshot: IosSynchronizationTransactionSnapshot,
         platformTouchedIds: Set<String>,
         authorityTouchedIds: Set<String>,
+        boundaryDeferralIds: Set<String>,
+        boundaryCandidatesByIdentifier:
+            [String: [PendingBoundaryRegistrationCandidate]],
         originalError: Error,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
@@ -848,9 +907,6 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
         for region in currentTouchedRegions {
             locationManagerDelegate.recordRemoval(of: region)
             locationManagerDelegate.locationManager.stopMonitoring(for: region)
-        }
-        for id in platformTouchedIds {
-            locationManagerDelegate.clearSynchronizationRemovalTombstone(id: id)
         }
         if !NativeGeofencePersistence.restoreSynchronizationSnapshot(
             snapshot.persistence
@@ -870,25 +926,62 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
                     "failed to restore persisted metadata after platform restoration"
                 )
             }
-            let authorityRegions = rollbackFailures.isEmpty
-                ? snapshot.regions.map(\.region)
-                : ownedMonitoredRegions()
+            let authorityRegions: [CLCircularRegion]
+            if rollbackFailures.isEmpty {
+                authorityRegions = snapshot.regions.map(\.region)
+            } else {
+                let plan = PendingBoundarySynchronizationRollbackPlanner
+                    .makePlan(
+                        monitoredRegions: ownedMonitoredRegions(),
+                        authorityTouchedIdentifiers: authorityTouchedIds,
+                        candidatesByIdentifier:
+                            boundaryCandidatesByIdentifier,
+                        getCallbackHandle:
+                            NativeGeofencePersistence
+                                .getRegionCallbackHandle,
+                        getCallbackContext:
+                            NativeGeofencePersistence
+                                .getRegionCallbackContext
+                    )
+                for authority in plan.authorities {
+                    locationManagerDelegate
+                        .applySynchronizationBoundaryAuthority(authority)
+                }
+                for identifier in plan.incoherentIdentifiers {
+                    NativeGeofencePersistence.removeRegionCallbackHandle(
+                        id: identifier
+                    )
+                    NativeGeofencePersistence.setRegionCallbackContext(
+                        id: identifier,
+                        context: nil
+                    )
+                    rollbackFailures.append(
+                        "geofence ID=\(identifier): no coherent monitored registration winner remained"
+                    )
+                }
+                authorityRegions = plan.authorities.map(\.region)
+            }
             locationManagerDelegate.restoreSynchronizationAuthority(
                 regions: authorityRegions,
                 transactionOwnedIds: authorityTouchedIds
             )
-            guard !rollbackFailures.isEmpty else {
-                completion(.failure(originalError))
-                return
-            }
-            completion(
-                .failure(
-                    nativeGeofenceError(
-                        .pluginInternal,
-                        message: "Synchronization failed: \(originalError.localizedDescription) Rollback failed: \(rollbackFailures.joined(separator: "; "))."
+            locationManagerDelegate
+                .finishSynchronizationBoundaryEventDeferral(
+                    identifiers: boundaryDeferralIds
+                ) {
+                    guard !rollbackFailures.isEmpty else {
+                        completion(.failure(originalError))
+                        return
+                    }
+                    completion(
+                        .failure(
+                            nativeGeofenceError(
+                                .pluginInternal,
+                                message: "Synchronization failed: \(originalError.localizedDescription) Rollback failed: \(rollbackFailures.joined(separator: "; "))."
+                            )
+                        )
                     )
-                )
-            )
+                }
         }
 
         func restoreNext(_ index: Int) {
@@ -898,7 +991,8 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
             }
             let value = regionsToRestore[index]
             locationManagerDelegate.clearSynchronizationRemovalTombstone(
-                id: value.region.identifier
+                matching: value.region,
+                protectRetainedRegionsThroughConfirmationAttempts: true
             )
             locationManagerDelegate.startMonitoringForSynchronization(
                 region: value.region,
@@ -1015,8 +1109,21 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
                 finish()
                 return
             }
-            performRemoveGeofenceById(id: id, recordDiagnostics: true)
-            completion(.success(()))
+            if performRemoveGeofenceById(
+                id: id,
+                recordDiagnostics: true
+            ) {
+                completion(.success(()))
+            } else {
+                completion(
+                    .failure(
+                        nativeGeofenceError(
+                            .pluginInternal,
+                            message: "Failed to durably cancel deferred iOS callbacks for geofence ID=\(id); the geofence was left registered."
+                        )
+                    )
+                )
+            }
             finish()
         }
     }
@@ -1024,11 +1131,16 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
     private func performRemoveGeofenceById(
         id: String,
         recordDiagnostics: Bool
-    ) {
+    ) -> Bool {
         createPreflightRegistry.cancel(id: id)
         // Snapshot ownership before cancellation removes callback metadata.
         let regions = ownedMonitoredRegions().filter { $0.identifier == id }
-        locationManagerDelegate.cancelMonitoringStart(id: id)
+        guard locationManagerDelegate.cancelMonitoringStart(id: id) else {
+            log.error(
+                "Aborted removal for geofence ID=\(id) because deferred callback cancellation could not be persisted."
+            )
+            return false
+        }
         for region in regions {
             locationManagerDelegate.recordRemoval(of: region)
             locationManagerDelegate.locationManager.stopMonitoring(for: region)
@@ -1044,6 +1156,7 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
             )
         }
         log.debug("Removed \(regions.count) geofence(s) with ID=\(id).")
+        return true
     }
     
     func removeAllGeofences(completion: @escaping (Result<Void, any Error>) -> Void) {
@@ -1060,18 +1173,33 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
                 finish()
                 return
             }
-            performRemoveAllGeofences()
-            completion(.success(()))
+            if performRemoveAllGeofences() {
+                completion(.success(()))
+            } else {
+                completion(
+                    .failure(
+                        nativeGeofenceError(
+                            .pluginInternal,
+                            message: "Failed to durably cancel deferred iOS callbacks; geofences were left registered."
+                        )
+                    )
+                )
+            }
             finish()
         }
     }
 
-    private func performRemoveAllGeofences() {
+    private func performRemoveAllGeofences() -> Bool {
         createPreflightRegistry.cancelAll()
         // CLLocationManager.monitoredRegions is app-wide. Snapshot only regions
         // backed by plugin callback metadata before clearing that metadata.
         let regions = ownedMonitoredRegions()
-        locationManagerDelegate.cancelAllMonitoringStarts()
+        guard locationManagerDelegate.cancelAllMonitoringStarts() else {
+            log.error(
+                "Aborted remove-all because deferred callback cancellation could not be persisted."
+            )
+            return false
+        }
         for region in regions {
             locationManagerDelegate.recordRemoval(of: region)
             locationManagerDelegate.locationManager.stopMonitoring(for: region)
@@ -1085,6 +1213,7 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
             geofenceCount: regions.count
         )
         log.debug("Removed \(regions.count) geofence(s).")
+        return true
     }
 
     private func ownedMonitoredRegions() -> [CLCircularRegion] {

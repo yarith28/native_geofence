@@ -24,6 +24,7 @@ class GeofenceCallbackRoutingTest {
         assertTrue(routed.callbackGroups.all { it.eventAtMillis == 123_456L })
         assertTrue(routed.orphanIds.isEmpty())
         assertTrue(routed.staleIds.isEmpty())
+        assertTrue(routed.staleCallbackGroups.isEmpty())
     }
 
     @Test
@@ -117,6 +118,7 @@ class GeofenceCallbackRoutingTest {
         assertTrue(routed.callbackGroups.isEmpty())
         assertEquals(listOf("missing", "zero"), routed.orphanIds)
         assertTrue(routed.staleIds.isEmpty())
+        assertTrue(routed.staleCallbackGroups.isEmpty())
     }
 
     @Test
@@ -174,6 +176,7 @@ class GeofenceCallbackRoutingTest {
         assertEquals(listOf("current"), ids(routed.callbackGroups.single()))
         assertEquals(listOf("missing", "zero"), routed.orphanIds)
         assertEquals(listOf("old"), routed.staleIds)
+        assertEquals(listOf("old"), ids(routed.staleCallbackGroups.single()))
         assertEquals(listOf("old", "current"), freshnessChecks)
     }
 

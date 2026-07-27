@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import com.chunkytofustudios.native_geofence.api.NativeGeofenceApiImpl
+import com.chunkytofustudios.native_geofence.bridge.CallbackPayloadEnqueueRecovery
 import com.chunkytofustudios.native_geofence.generated.NativeGeofenceApi
 import com.chunkytofustudios.native_geofence.receivers.NativeGeofenceRecoveryRuntime
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
@@ -25,6 +26,7 @@ class NativeGeofencePlugin : FlutterPlugin {
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         context = binding.applicationContext
         NativeGeofenceLogger.initialize(binding.applicationContext)
+        CallbackPayloadEnqueueRecovery.recover(binding.applicationContext)
         val api = NativeGeofenceApiImpl(binding.applicationContext)
         NativeGeofenceApi.setUp(
             binding.binaryMessenger,

@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:native_geofence/native_geofence.dart';
+import 'package:native_geofence/src/api/native_geofence_trigger_impl.dart';
 import 'package:native_geofence/src/generated/platform_bindings.g.dart';
 import 'package:native_geofence/src/model/model_mapper.dart';
 import 'package:native_geofence/src/native_geofence_background_manager.dart';
@@ -139,6 +140,24 @@ void main() {
       ),
     );
     expect(events, <String>['dispatcher', 'trigger', 'manager', 'ready']);
+  });
+
+  test('terminal callback lookup errors carry the native-owned marker', () {
+    const marker =
+        'com.chunkytofustudios.native_geofence.callback_lookup_terminal.v1';
+
+    for (final code in <NativeGeofenceErrorCode>[
+      NativeGeofenceErrorCode.callbackNotFound,
+      NativeGeofenceErrorCode.callbackInvalid,
+    ]) {
+      final error = NativeGeofenceTriggerImpl.callbackLookupFailure(
+        code: code,
+        message: 'callback lookup failed',
+      );
+
+      expect(error.code, code.index.toString());
+      expect(error.details, marker);
+    }
   });
 }
 

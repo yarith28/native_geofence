@@ -72,11 +72,16 @@ void main() {
       ),
     ];
 
-    final first =
-        await NativeGeofenceManager.instance.inspectSynchronization(desired);
+    final first = await NativeGeofenceManager.instance.inspectSynchronization(
+      desired,
+      removeUnlisted: true,
+    );
     committedFingerprint = first.desiredRegistrationFingerprint;
     final current =
-        await NativeGeofenceManager.instance.inspectSynchronization(desired);
+        await NativeGeofenceManager.instance.inspectSynchronization(
+      desired,
+      removeUnlisted: true,
+    );
 
     expect(
         first.reasons, contains(NativeGeofenceSynchronizationReason.firstRun));
@@ -91,7 +96,7 @@ void main() {
     expect(synchronizationCalls, 0);
   });
 
-  test('partial inspection ignores the unrelated authoritative fingerprint',
+  test('inspection defaults to partial scope and preserves unlisted IDs',
       () async {
     final callbackHandle =
         PluginUtilities.getCallbackHandle(synchronizationCallback)!
@@ -116,8 +121,8 @@ void main() {
       ),
     ];
 
-    final inspection = await NativeGeofenceManager.instance
-        .inspectSynchronization(desired, removeUnlisted: false);
+    final inspection =
+        await NativeGeofenceManager.instance.inspectSynchronization(desired);
 
     expect(inspection.scope, NativeGeofenceSynchronizationScope.partial);
     expect(inspection.matchesDesired, isTrue);
@@ -219,12 +224,15 @@ void main() {
       ];
     });
 
-    final report = await NativeGeofenceManager.instance.ensureSynchronized([
-      GeofenceRegistration(
-        geofence: _geofence(),
-        callback: synchronizationCallback,
-      ),
-    ]);
+    final report = await NativeGeofenceManager.instance.ensureSynchronized(
+      [
+        GeofenceRegistration(
+          geofence: _geofence(),
+          callback: synchronizationCallback,
+        ),
+      ],
+      removeUnlisted: true,
+    );
 
     expect(stateCalls, 0);
     expect(report.didSynchronize, isTrue);
@@ -258,12 +266,15 @@ void main() {
       ];
     });
 
-    final report = await NativeGeofenceManager.instance.ensureSynchronized([
-      GeofenceRegistration(
-        geofence: _geofence(),
-        callback: synchronizationCallback,
-      ),
-    ]);
+    final report = await NativeGeofenceManager.instance.ensureSynchronized(
+      [
+        GeofenceRegistration(
+          geofence: _geofence(),
+          callback: synchronizationCallback,
+        ),
+      ],
+      removeUnlisted: true,
+    );
 
     expect(stateCalls, 0);
     expect(report.didSynchronize, isFalse);
@@ -273,9 +284,11 @@ void main() {
     expect(report.registrationFingerprint, 'already-current');
   });
 
-  test('ensure reports whether the requested scope was partial', () async {
+  test('ensure defaults to partial scope in the native request', () async {
+    bool? receivedRemoveUnlisted;
     messenger.setMockDecodedMessageHandler<Object?>(synchronizeChannel,
-        (_) async {
+        (message) async {
+      receivedRemoveUnlisted = (message! as List<Object?>)[1]! as bool;
       return <Object?>[
         _result(
           didSynchronize: false,
@@ -292,9 +305,9 @@ void main() {
           callback: synchronizationCallback,
         ),
       ],
-      removeUnlisted: false,
     );
 
+    expect(receivedRemoveUnlisted, isFalse);
     expect(report.scope, NativeGeofenceSynchronizationScope.partial);
     expect(report.registrationFingerprint, 'partial-office-state');
   });
@@ -319,11 +332,16 @@ void main() {
       ),
     ];
 
-    final first =
-        await NativeGeofenceManager.instance.inspectSynchronization(desired);
+    final first = await NativeGeofenceManager.instance.inspectSynchronization(
+      desired,
+      removeUnlisted: true,
+    );
     committedFingerprint = first.desiredRegistrationFingerprint;
     final current =
-        await NativeGeofenceManager.instance.inspectSynchronization(desired);
+        await NativeGeofenceManager.instance.inspectSynchronization(
+      desired,
+      removeUnlisted: true,
+    );
 
     expect(current.missingIds, isEmpty);
     expect(current.inactiveIds, ['office']);

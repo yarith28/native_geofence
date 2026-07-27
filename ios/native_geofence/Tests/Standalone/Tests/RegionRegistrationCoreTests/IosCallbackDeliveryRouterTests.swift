@@ -50,7 +50,7 @@ final class IosCallbackDeliveryRouterTests: XCTestCase {
     func testMainRouteOwnsDeliveryAndPreservesFifo() {
         var delivered: [String] = []
         var accepted: [String] = []
-        var completions: [(Bool) -> Void] = []
+        var completions: [(IosGeofenceCallbackDeliveryOutcome) -> Void] = []
         let router = IosCallbackDeliveryRouter<String>(
             selectRoute: { .main },
             deliver: { route, value, completion in
@@ -66,7 +66,7 @@ final class IosCallbackDeliveryRouterTests: XCTestCase {
 
         XCTAssertEqual(delivered, ["first"])
         XCTAssertEqual(accepted, ["first"])
-        completions[0](true)
+        completions[0](.succeeded)
         XCTAssertEqual(delivered, ["first", "second"])
         XCTAssertEqual(accepted, ["first", "second"])
     }
@@ -97,7 +97,7 @@ final class IosCallbackDeliveryRouterTests: XCTestCase {
             deliver: { _, value, completion in
                 delivered.append(value)
                 if value == "second" {
-                    completion(true)
+                    completion(.succeeded)
                     return true
                 }
                 return false
@@ -122,7 +122,7 @@ final class IosCallbackDeliveryRouterTests: XCTestCase {
 
     func testLateCompletionCannotAdvanceNewerDelivery() {
         var delivered: [String] = []
-        var completions: [(Bool) -> Void] = []
+        var completions: [(IosGeofenceCallbackDeliveryOutcome) -> Void] = []
         let router = IosCallbackDeliveryRouter<String>(
             selectRoute: { .headless },
             deliver: { _, value, completion in
@@ -135,17 +135,17 @@ final class IosCallbackDeliveryRouterTests: XCTestCase {
         router.enqueue("first") {}
         router.enqueue("second") {}
         router.enqueue("third") {}
-        completions[0](false)
+        completions[0](.retryableFailure)
         XCTAssertEqual(delivered, ["first", "second"])
-        completions[0](true)
+        completions[0](.succeeded)
         XCTAssertEqual(delivered, ["first", "second"])
-        completions[1](true)
+        completions[1](.succeeded)
         XCTAssertEqual(delivered, ["first", "second", "third"])
     }
 
-    func testJournalCompletionReceivesFinalDartOutcomeExactlyOnce() {
-        var routeCompletion: ((Bool) -> Void)?
-        var outcomes: [Bool] = []
+    func testJournalCompletionPreservesTerminalOutcomeExactlyOnce() {
+        var routeCompletion: ((IosGeofenceCallbackDeliveryOutcome) -> Void)?
+        var outcomes: [IosGeofenceCallbackDeliveryOutcome] = []
         let router = IosCallbackDeliveryRouter<String>(
             selectRoute: { .main },
             deliver: { _, _, completion in
@@ -155,10 +155,10 @@ final class IosCallbackDeliveryRouterTests: XCTestCase {
         )
 
         router.enqueue("event", completion: { outcomes.append($0) })
-        routeCompletion?(false)
-        routeCompletion?(true)
+        routeCompletion?(.terminalFailure(.callbackInvalid))
+        routeCompletion?(.succeeded)
 
-        XCTAssertEqual(outcomes, [false])
+        XCTAssertEqual(outcomes, [.terminalFailure(.callbackInvalid)])
     }
 
     func testCloseFailsActiveAndQueuedJournalDeliveries() {
@@ -168,16 +168,28 @@ final class IosCallbackDeliveryRouterTests: XCTestCase {
             deliver: { _, _, _ in true }
         )
 
-        router.enqueue("active", completion: { outcomes.append("active:\($0)") })
-        router.enqueue("queued", completion: { outcomes.append("queued:\($0)") })
+        router.enqueue(
+            "active",
+            completion: { outcomes.append("active:\(String(describing: $0))") }
+        )
+        router.enqueue(
+            "queued",
+            completion: { outcomes.append("queued:\(String(describing: $0))") }
+        )
         router.close()
 
-        XCTAssertEqual(Set(outcomes), Set(["active:false", "queued:false"]))
+        XCTAssertEqual(
+            Set(outcomes),
+            Set([
+                "active:retryableFailure",
+                "queued:retryableFailure",
+            ])
+        )
     }
 
     func testSynchronousCompletionPublishesAcceptanceBeforeAdvancingFifo() {
         var events: [String] = []
-        var blockerCompletion: ((Bool) -> Void)?
+        var blockerCompletion: ((IosGeofenceCallbackDeliveryOutcome) -> Void)?
         let router = IosCallbackDeliveryRouter<String>(
             selectRoute: { .headless },
             deliver: { _, value, completion in
@@ -185,7 +197,7 @@ final class IosCallbackDeliveryRouterTests: XCTestCase {
                 if value == "blocker" {
                     blockerCompletion = completion
                 } else {
-                    completion(true)
+                    completion(.succeeded)
                 }
                 return true
             }
@@ -194,7 +206,7 @@ final class IosCallbackDeliveryRouterTests: XCTestCase {
         router.enqueue("blocker") { events.append("accepted:blocker") }
         router.enqueue("first") { events.append("accepted:first") }
         router.enqueue("second") { events.append("accepted:second") }
-        blockerCompletion?(true)
+        blockerCompletion?(.succeeded)
 
         XCTAssertEqual(
             events,
@@ -213,7 +225,7 @@ final class IosCallbackDeliveryRouterTests: XCTestCase {
         var delivered: [String] = []
         var accepted: [String] = []
         var rejected: [String] = []
-        var completions: [(Bool) -> Void] = []
+        var completions: [(IosGeofenceCallbackDeliveryOutcome) -> Void] = []
         let router = IosCallbackDeliveryRouter<String>(
             selectRoute: { .headless },
             deliver: { _, value, completion in
@@ -234,8 +246,8 @@ final class IosCallbackDeliveryRouterTests: XCTestCase {
             onRejected: { rejected.append("queued") }
         )
         router.close()
-        completions[0](false)
-        completions[0](true)
+        completions[0](.retryableFailure)
+        completions[0](.succeeded)
 
         XCTAssertEqual(delivered, ["active"])
         XCTAssertEqual(accepted, ["active"])
@@ -249,7 +261,7 @@ final class IosCallbackDeliveryRouterTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let deduplicator = IosGeofenceEventDeduplicator(userDefaults: defaults)
         var delivered: [String] = []
-        var completions: [(Bool) -> Void] = []
+        var completions: [(IosGeofenceCallbackDeliveryOutcome) -> Void] = []
         let router = IosCallbackDeliveryRouter<String>(
             selectRoute: { .headless },
             deliver: { _, value, completion in
@@ -298,9 +310,9 @@ final class IosCallbackDeliveryRouterTests: XCTestCase {
         )
         XCTAssertEqual(delivered, ["blocker"])
 
-        completions[0](true)
+        completions[0](.succeeded)
         XCTAssertEqual(delivered, ["blocker", "geofence"])
-        completions[1](true)
+        completions[1](.succeeded)
 
         XCTAssertEqual(delivered, ["blocker", "geofence"])
         XCTAssertEqual(suppressedAges, [1])
@@ -321,7 +333,7 @@ final class IosCallbackDeliveryRouterTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let deduplicator = IosGeofenceEventDeduplicator(userDefaults: defaults)
         var delivered: [String] = []
-        var completions: [(Bool) -> Void] = []
+        var completions: [(IosGeofenceCallbackDeliveryOutcome) -> Void] = []
         let router = IosCallbackDeliveryRouter<String>(
             selectRoute: { .headless },
             deliver: { _, value, completion in
@@ -364,7 +376,7 @@ final class IosCallbackDeliveryRouterTests: XCTestCase {
             onRejected: { retry.cancel() }
         )
 
-        completions[0](true)
+        completions[0](.succeeded)
 
         XCTAssertEqual(delivered, ["blocker", "first", "retry"])
         XCTAssertEqual(

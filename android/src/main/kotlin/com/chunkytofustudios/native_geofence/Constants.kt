@@ -27,6 +27,8 @@ class Constants {
         const val CALLBACK_REFRESH_REQUIRED_KEY = "$PACKAGE_NAME.callback_refresh_required"
         const val CALLBACK_REFRESH_REQUIRED_IDS_KEY =
             "$PACKAGE_NAME.callback_refresh_required_ids"
+        const val DEFERRED_CALLBACK_QUEUE_KEY =
+            "$PACKAGE_NAME.deferred_callback_queue"
 
         const val ACTION_PROMOTE_FOREGROUND = "$PACKAGE_NAME.action.PROMOTE_FOREGROUND"
         const val FOREGROUND_PROMOTION_TOKEN_KEY = "$PACKAGE_NAME.foreground_promotion_token"
@@ -35,10 +37,14 @@ class Constants {
         const val WORKER_PAYLOAD_REFERENCE_KEY = "$PACKAGE_NAME.worker_payload_reference"
         const val WORKER_DELIVERY_ROUTE_KEY = "$PACKAGE_NAME.worker_delivery_route"
         const val WORKER_DELIVERY_SOURCE_KEY = "$PACKAGE_NAME.worker_delivery_source"
+        const val WORKER_CALLBACK_REFRESH_TRANSFER_KEY =
+            "$PACKAGE_NAME.worker_callback_refresh_transfer"
         const val LEGACY_WORKER_PAYLOAD_FILE_KEY = "$PACKAGE_NAME.worker_payload_file"
         const val CALLBACK_PAYLOAD_DIRECTORY = "native_geofence_callback_payloads"
         const val LEGACY_CALLBACK_PAYLOAD_DIRECTORY = "geofence_callback_payloads"
         const val GEOFENCE_CALLBACK_WORK_GROUP = "geofence_callback_work_group"
+        const val CALLBACK_REFRESH_TRANSFER_WORK_PREFIX =
+            "$PACKAGE_NAME.callback_refresh_transfer/"
         const val NATIVE_EVENT_PROCESSOR_METADATA_KEY =
             "$PACKAGE_NAME.native_event_processor"
         const val LEGACY_NATIVE_EVENT_PROCESSOR_METADATA_KEY =

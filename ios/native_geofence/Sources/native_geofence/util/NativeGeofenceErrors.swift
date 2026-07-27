@@ -5,6 +5,29 @@ func nativeGeofenceError(
     PigeonError(code: "\(code.rawValue)", message: message, details: nil)
 }
 
+func iosGeofenceCallbackDeliveryOutcome(
+    _ result: Result<Void, PigeonError>
+) -> IosGeofenceCallbackDeliveryOutcome {
+    switch result {
+    case .success:
+        return .succeeded
+    case .failure(let error):
+        let terminalFailure =
+            IosGeofenceCallbackDeliveryOutcome.TerminalFailure.classify(
+                errorCode: error.code,
+                details: error.details as? String,
+                callbackNotFoundCode:
+                    String(NativeGeofenceErrorCode.callbackNotFound.rawValue),
+                callbackInvalidCode:
+                    String(NativeGeofenceErrorCode.callbackInvalid.rawValue)
+            )
+        if let terminalFailure {
+            return .terminalFailure(terminalFailure)
+        }
+        return .retryableFailure
+    }
+}
+
 func nativeGeofenceError(_ failure: RegionRegistrationFailure) -> PigeonError {
     let code: NativeGeofenceErrorCode = switch failure {
     case .missingLocationPermission:

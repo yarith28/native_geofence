@@ -115,8 +115,10 @@ class CreateGeofenceState extends State<CreateGeofence> {
               SizedBox(height: 22),
               ElevatedButton(
                 onPressed: () async {
-                  final inspection = await NativeGeofenceManager.instance
-                      .inspectSynchronization([registration]);
+                  final inspection =
+                      await NativeGeofenceManager.instance.inspectSynchronization(
+                    [registration],
+                  );
                   if (!mounted) return;
                   setState(() {
                     synchronizationState = inspection.matchesDesired
@@ -136,8 +138,10 @@ class CreateGeofenceState extends State<CreateGeofence> {
                     );
                     return;
                   }
-                  final report = await NativeGeofenceManager.instance
-                      .ensureSynchronized([registration]);
+                  final report =
+                      await NativeGeofenceManager.instance.ensureSynchronized(
+                    [registration],
+                  );
                   if (!mounted) return;
                   setState(() {
                     synchronizationState = report.didSynchronize

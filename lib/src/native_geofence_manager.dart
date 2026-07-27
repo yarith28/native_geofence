@@ -474,16 +474,16 @@ class NativeGeofenceManager {
   /// no-op only while state remains unchanged; [ensureSynchronized] revalidates
   /// under the shared native mutation authority.
   ///
-  /// With the default [removeUnlisted] value, IDs omitted from [registrations]
-  /// are reported as drift. Set it to false when the desired list intentionally
-  /// manages only a subset of plugin-owned registrations. Partial inspection
-  /// compares the supplied IDs directly and does not compare its subset
-  /// fingerprint with the last authoritative fingerprint.
+  /// By default, IDs omitted from [registrations] are outside the requested
+  /// scope. Set [removeUnlisted] to true only when [registrations] is the
+  /// complete canonical list; omitted plugin-owned IDs are then reported as
+  /// drift. Partial inspection compares the supplied IDs directly and does not
+  /// compare its subset fingerprint with the last authoritative fingerprint.
   ///
   /// Throws [NativeGeofenceException].
   Future<NativeGeofenceSynchronizationInspection> inspectSynchronization(
     List<GeofenceRegistration> registrations, {
-    bool removeUnlisted = true,
+    bool removeUnlisted = false,
   }) {
     final desired = _prepareRegistrations(registrations);
     return _serializeSynchronization(() async {
@@ -499,9 +499,11 @@ class NativeGeofenceManager {
   /// [registrations].
   ///
   /// The application list supplies live callback functions and optional
-  /// contexts. With the default [removeUnlisted] value it is authoritative:
-  /// plugin-owned IDs omitted from the list are removed. Set it to false to
-  /// preserve registrations outside the supplied subset.
+  /// contexts. By default, plugin-owned IDs omitted from the list are preserved.
+  /// Set [removeUnlisted] to true only after the complete canonical list is
+  /// available; every omitted plugin-owned ID is then removed. In particular,
+  /// an empty list with [removeUnlisted] true removes every plugin-owned
+  /// registration.
   ///
   /// Unchanged registrations stay armed. Callback/context-only changes refresh
   /// durable metadata without an unnecessary platform stop/start.
@@ -529,7 +531,7 @@ class NativeGeofenceManager {
   /// Throws [NativeGeofenceException].
   Future<NativeGeofenceSynchronizationReport> ensureSynchronized(
     List<GeofenceRegistration> registrations, {
-    bool removeUnlisted = true,
+    bool removeUnlisted = false,
   }) {
     final desired = _prepareRegistrations(registrations);
     return _serializeSynchronization(() async {

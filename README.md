@@ -363,11 +363,17 @@ final desired = <GeofenceRegistration>[
 ];
 
 final inspection =
-    await NativeGeofenceManager.instance.inspectSynchronization(desired);
+    await NativeGeofenceManager.instance.inspectSynchronization(
+  desired,
+  removeUnlisted: true,
+);
 debugPrint('matches=${inspection.matchesDesired}, reasons=${inspection.reasons}');
 
 final report =
-    await NativeGeofenceManager.instance.ensureSynchronized(desired);
+    await NativeGeofenceManager.instance.ensureSynchronized(
+  desired,
+  removeUnlisted: true,
+);
 debugPrint('changed=${report.didSynchronize}, reasons=${report.reasons}');
 ```
 
@@ -378,18 +384,21 @@ re-inspects inside the shared native mutation boundary and can return a differen
 decision if native state changes first.
 
 `ensureSynchronized()` resolves callback handles from the live functions in the
-desired list. By default, `removeUnlisted: true` makes that list authoritative
-and removes plugin-owned IDs it omits; pass `removeUnlisted: false` to manage a
-subset. An authoritative pass compares and refreshes the global registration
-fingerprint. A partial pass fingerprints exactly its supplied list, compares
-those registrations directly, and does not treat a different or absent global
-fingerprint as stale. Callback-refresh evidence is attributed by registration
-ID, so a partial pass clears only its supplied scope and preserves evidence for
-other registrations. Unchanged registrations stay armed, and
-callback/context-only changes update metadata without an unnecessary platform
-restart. Registration changes run as a native transaction; a partial failure
-restores the prior registrations, finite deadlines, callback metadata, iOS
-duplicate baseline, and fingerprint. Rollback failures are reported explicitly.
+desired list. By default, `removeUnlisted: false` treats the list as a partial
+scope and preserves plugin-owned IDs it omits. Pass `removeUnlisted: true` only
+after the complete canonical list is available; it makes the list authoritative
+and removes every omitted plugin-owned ID. An empty authoritative list removes
+all plugin-owned registrations. An authoritative pass compares and refreshes
+the global registration fingerprint. A partial pass fingerprints exactly its
+supplied list, compares those registrations directly, and does not treat a
+different or absent global fingerprint as stale. Callback-refresh evidence is
+attributed by registration ID, so a partial pass clears only its supplied scope
+and preserves evidence for other registrations. Unchanged registrations stay
+armed, and callback/context-only changes update metadata without an unnecessary
+platform restart. Registration changes run as a native transaction; a partial
+failure restores the prior registrations, finite deadlines, callback metadata,
+iOS duplicate baseline, and fingerprint. Rollback failures are reported
+explicitly.
 
 Every `ensureSynchronized()` call is one native-owned inspect-and-mutate
 transaction, serialized with create, remove, and other

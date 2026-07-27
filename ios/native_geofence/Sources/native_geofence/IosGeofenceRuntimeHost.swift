@@ -10,7 +10,7 @@ final class IosGeofenceRuntimeHost {
     private struct MainDelivery {
         let token: UUID
         let backgroundLeaseToken: UUID
-        let completion: (Bool) -> Void
+        let completion: (IosGeofenceCallbackDeliveryOutcome) -> Void
         let watchdog: DispatchWorkItem
     }
 
@@ -94,7 +94,7 @@ final class IosGeofenceRuntimeHost {
         deliveryAttachment = mutationAuthority.attachEventDelivery {
             [weak self] params, completion in
             guard let self else {
-                completion(false)
+                completion(.retryableFailure)
                 return
             }
             self.deliveryRouter.enqueue(
@@ -131,6 +131,11 @@ final class IosGeofenceRuntimeHost {
         log.debug("Main-engine trigger API ready=\(ready).")
     }
 
+    func resumePendingCallbackDelivery() {
+        mutationAuthority.locationManagerDelegate
+            .resumePendingCallbackDeliveryAfterExternalWake()
+    }
+
     func cleanupHeadlessRuntime() {
         let sessionId = withStateLock { headlessSessionId }
         if let sessionId {
@@ -149,7 +154,7 @@ final class IosGeofenceRuntimeHost {
 
     private func deliverOnMainEngine(
         _ params: GeofenceCallbackParamsWire,
-        completion: @escaping (Bool) -> Void
+        completion: @escaping (IosGeofenceCallbackDeliveryOutcome) -> Void
     ) -> Bool {
         guard shouldUseMainEngine else { return false }
         let token = UUID()
@@ -157,7 +162,7 @@ final class IosGeofenceRuntimeHost {
             onExpired: { [weak self] in
                 self?.finishMainDelivery(
                     token: token,
-                    succeeded: false,
+                    outcome: .retryableFailure,
                     timedOut: false,
                     backgroundTaskExpired: true
                 )
@@ -174,7 +179,7 @@ final class IosGeofenceRuntimeHost {
         let watchdog = DispatchWorkItem { [weak self] in
             self?.finishMainDelivery(
                 token: token,
-                succeeded: false,
+                outcome: .retryableFailure,
                 timedOut: true,
                 backgroundTaskExpired: false
             )
@@ -199,15 +204,9 @@ final class IosGeofenceRuntimeHost {
             execute: watchdog
         )
         mainTriggerApi.geofenceTriggered(params: params) { [weak self] result in
-            let succeeded: Bool
-            if case .success = result {
-                succeeded = true
-            } else {
-                succeeded = false
-            }
             self?.finishMainDelivery(
                 token: token,
-                succeeded: succeeded,
+                outcome: iosGeofenceCallbackDeliveryOutcome(result),
                 timedOut: false,
                 backgroundTaskExpired: false
             )
@@ -223,7 +222,7 @@ final class IosGeofenceRuntimeHost {
 
     private func finishMainDelivery(
         token: UUID,
-        succeeded: Bool,
+        outcome: IosGeofenceCallbackDeliveryOutcome,
         timedOut: Bool,
         backgroundTaskExpired: Bool
     ) {
@@ -240,16 +239,19 @@ final class IosGeofenceRuntimeHost {
         callbackBackgroundLeases.finish(delivery.backgroundLeaseToken)
         NativeGeofenceDiagnostics.record(
             .worker,
-            succeeded: succeeded,
+            succeeded: outcome.didSucceed,
             outcome: backgroundTaskExpired
                 ? "main_background_task_expired"
                 : (
                     timedOut
                         ? "main_callback_timeout"
-                        : (succeeded ? "main_callback_completed" : "main_callback_failed")
+                        : Self.diagnosticOutcome(
+                            prefix: "main_callback",
+                            outcome: outcome
+                        )
                 )
         )
-        delivery.completion(succeeded)
+        delivery.completion(outcome)
     }
 
     private func cancelActiveMainDelivery() {
@@ -257,7 +259,7 @@ final class IosGeofenceRuntimeHost {
         if let token {
             finishMainDelivery(
                 token: token,
-                succeeded: false,
+                outcome: .retryableFailure,
                 timedOut: false,
                 backgroundTaskExpired: false
             )
@@ -266,7 +268,7 @@ final class IosGeofenceRuntimeHost {
 
     private func deliverOnHeadlessEngine(
         _ params: GeofenceCallbackParamsWire,
-        completion: @escaping (Bool) -> Void
+        completion: @escaping (IosGeofenceCallbackDeliveryOutcome) -> Void
     ) -> Bool {
         guard withStateLock({ !detached }) else { return false }
         if !Thread.isMainThread {
@@ -432,6 +434,20 @@ final class IosGeofenceRuntimeHost {
         NativeGeofenceApiSetup.setUp(binaryMessenger: engine.binaryMessenger, api: nil)
         engine.destroyContext()
         log.debug("Headless Flutter callback session cleaned up.")
+    }
+
+    private static func diagnosticOutcome(
+        prefix: String,
+        outcome: IosGeofenceCallbackDeliveryOutcome
+    ) -> String {
+        switch outcome {
+        case .succeeded:
+            return "\(prefix)_completed"
+        case .retryableFailure:
+            return "\(prefix)_retryable_failure"
+        case .terminalFailure(let reason):
+            return "\(prefix)_terminal_\(reason.rawValue)"
+        }
     }
 
     private func withStateLock<T>(_ body: () -> T) -> T {

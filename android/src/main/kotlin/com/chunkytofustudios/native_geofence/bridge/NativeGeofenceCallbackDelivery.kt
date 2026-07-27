@@ -93,6 +93,18 @@ object NativeGeofenceCallbackDelivery {
         completion = completion,
     )
 
+    internal fun enqueue(
+        context: Context,
+        params: GeofenceCallbackParamsWire,
+        deliverySpec: NativeGeofenceCallbackDeliverySpec,
+        completion: (NativeGeofenceCallbackEnqueueResult) -> Unit,
+    ) = enqueueWithSpec(
+        context = context,
+        params = params,
+        deliverySpec = deliverySpec,
+        completion = completion,
+    )
+
     /**
      * Enqueues an event already finalized by a higher-level geofence processor.
      *
@@ -203,7 +215,13 @@ object NativeGeofenceCallbackDelivery {
 
         var persistenceError: Throwable? = null
         val reference = try {
-            payloadStore.store(params, packageFingerprint)
+            payloadStore.store(
+                params = params,
+                packageFingerprint = packageFingerprint,
+                deliveryRoute = deliverySpec.route.storageValue,
+                deliverySource = deliverySpec.source,
+                recoverAmbiguousEnqueue = true,
+            )
         } catch (error: Throwable) {
             persistenceError = error
             logError(context, "Failed to persist a callback payload.", error)
@@ -239,17 +257,16 @@ object NativeGeofenceCallbackDelivery {
         CallbackWorkEnqueueCoordinator(payloadStore::delete).enqueue(
             payloadReference = reference,
             start = {
-                val workRequest = OneTimeWorkRequestBuilder<NativeGeofenceBackgroundWorker>()
-                    .setInputData(callbackWorkerInputData(reference, deliverySpec))
-                    .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30L, TimeUnit.SECONDS)
-                    .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-                    .build()
+                val workRequest = callbackWorkRequest(reference, deliverySpec)
                 dependencies.enqueueWork(context, workRequest)
             },
         ) { outcome ->
             val result = outcome.toPublicEnqueueResult()
             completion(result)
             runCatching { recordOutcome(context, params, result) }
+            if (result == NativeGeofenceCallbackEnqueueResult.UNCONFIRMED) {
+                CallbackPayloadEnqueueRecovery.recover(context)
+            }
         }
     }
 
@@ -358,3 +375,17 @@ object NativeGeofenceCallbackDelivery {
         }
     }
 }
+
+internal fun callbackWorkRequest(
+    payloadReference: String,
+    deliverySpec: NativeGeofenceCallbackDeliverySpec,
+): OneTimeWorkRequest =
+    OneTimeWorkRequestBuilder<NativeGeofenceBackgroundWorker>()
+        // The payload reference is already a validated UUID. Reusing it here
+        // lets startup recovery distinguish an accepted request from a payload
+        // whose WorkManager enqueue never committed, without duplicating work.
+        .setId(UUID.fromString(payloadReference))
+        .setInputData(callbackWorkerInputData(payloadReference, deliverySpec))
+        .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30L, TimeUnit.SECONDS)
+        .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+        .build()

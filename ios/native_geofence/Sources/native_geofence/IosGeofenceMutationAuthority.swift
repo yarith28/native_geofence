@@ -7,7 +7,7 @@ import Foundation
 final class IosGeofenceMutationAuthority {
     typealias EventDelivery = (
         GeofenceCallbackParamsWire,
-        @escaping (Bool) -> Void
+        @escaping (IosGeofenceCallbackDeliveryOutcome) -> Void
     ) -> Void
     typealias DeliveryAttachment = IosReattachableDelivery<EventDelivery>.Attachment
 
@@ -22,7 +22,7 @@ final class IosGeofenceMutationAuthority {
                       delivery(params, completion)
                   }) != nil
             else {
-                completion(false)
+                completion(.retryableFailure)
                 return
             }
         }

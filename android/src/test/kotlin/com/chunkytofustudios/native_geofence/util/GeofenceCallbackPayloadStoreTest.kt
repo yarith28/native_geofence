@@ -41,6 +41,55 @@ class GeofenceCallbackPayloadStoreTest {
     }
 
     @Test
+    fun `ambiguous enqueue recovery metadata survives process death`() {
+        val backend = MemoryCallbackPayloadBackend()
+        val reference = "00000000-0000-0000-0000-000000000010"
+        val firstProcess = GeofenceCallbackPayloadStore(
+            backend = backend,
+            nowMillis = { 123L },
+            referenceGenerator = { reference },
+        )
+
+        assertEquals(
+            reference,
+            firstProcess.store(
+                params = params(eventId = "delivery-recovery"),
+                packageFingerprint = "package-v1",
+                deliveryRoute = "final_dart_callback",
+                deliverySource = "smart_geofence",
+                recoverAmbiguousEnqueue = true,
+            ),
+        )
+
+        val recovered = GeofenceCallbackPayloadStore(backend)
+            .recoverablePayloads()
+            .getOrThrow()
+            .single()
+        assertEquals(reference, recovered.reference)
+        assertEquals(reference, recovered.envelope.workRequestId)
+        assertEquals("final_dart_callback", recovered.envelope.deliveryRoute)
+        assertEquals("smart_geofence", recovered.envelope.deliverySource)
+        assertEquals("delivery-recovery", recovered.envelope.toWire().eventId)
+    }
+
+    @Test
+    fun `legacy payload without stable work ownership is not blindly recovered`() {
+        val backend = MemoryCallbackPayloadBackend()
+        val reference = "00000000-0000-0000-0000-000000000011"
+        val store = GeofenceCallbackPayloadStore(
+            backend = backend,
+            referenceGenerator = { reference },
+        )
+        assertEquals(
+            reference,
+            store.store(params(eventId = "legacy-current-envelope"), "package"),
+        )
+
+        assertTrue(store.recoverablePayloads().getOrThrow().isEmpty())
+        assertIs<CallbackPayloadReadResult.Found>(store.read(reference))
+    }
+
+    @Test
     fun `success or terminal cleanup removes the durable payload`() {
         val backend = MemoryCallbackPayloadBackend()
         val reference = "00000000-0000-0000-0000-000000000002"
@@ -259,4 +308,7 @@ private class MemoryCallbackPayloadBackend : CallbackPayloadBackend {
         values.remove(reference)
         return true
     }
+
+    override fun listReferences(): Result<List<String>> =
+        Result.success(values.keys.toList())
 }

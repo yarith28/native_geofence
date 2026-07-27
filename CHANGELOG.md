@@ -51,7 +51,18 @@
 * Keeps iOS Core Location mutation authority process-stable across Flutter engine detach and reattach while replacing only the event-delivery route
 * Keeps configured Android fence centers separate from device-fix accuracy/mock metadata and makes callback summaries and the example privacy-conscious by default
 * Keeps the previous Android callback route authoritative until a same-ID replacement commits, validates Android timing settings before serialization, and preserves typed remove-all errors for synchronous Play services failures
-* Re-stops late iOS monitoring confirmations after registration or restoration timeouts so Core Location cannot retain an unowned region
+* Retries iOS registration and restoration confirmations twice before failing,
+  accepts matching late confirmations during that bounded window, keeps
+  same-region failures timeout-gated once attempts become ambiguous, retains
+  bounded post-commit authority against delayed failures, re-stops callbacks
+  through the complete retry and restoration horizon, and keeps rollback
+  removal barriers scoped to exact region semantics so Core Location cannot
+  retain an unowned region or displace the restored winner
+* Reconciles Android callback payloads whose WorkManager enqueue ownership was
+  ambiguous by using stable request identities on plugin, package, reboot, and
+  geofence wakes instead of age-pruning unconfirmed work, and re-drains the iOS
+  callback journal on foreground and Core Location wakes so suspension cannot
+  leave retryable events dependent only on an in-process timer
 
 ## 1.3.1
 

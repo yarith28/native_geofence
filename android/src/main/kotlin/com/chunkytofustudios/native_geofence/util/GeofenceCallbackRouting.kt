@@ -8,7 +8,8 @@ import com.chunkytofustudios.native_geofence.generated.LocationWire
 internal data class GeofenceCallbackRoutingResult(
     val callbackGroups: List<GeofenceCallbackParamsWire>,
     val orphanIds: List<String>,
-    val staleIds: List<String> = emptyList()
+    val staleIds: List<String> = emptyList(),
+    val staleCallbackGroups: List<GeofenceCallbackParamsWire> = emptyList(),
 )
 
 internal data class GeofenceCallbackRegistration(
@@ -25,11 +26,12 @@ internal object GeofenceCallbackRouting {
         triggeredIds: List<String>,
         event: GeofenceEvent,
         location: LocationWire?,
-        eventAtMillis: Long,
+        eventAtMillis: Long?,
         isCallbackFresh: (String) -> Boolean = { true },
         lookup: (String) -> GeofenceCallbackRegistration?
     ): GeofenceCallbackRoutingResult {
         val grouped = linkedMapOf<Long, MutableList<GeofenceCallbackRegistration>>()
+        val staleGrouped = linkedMapOf<Long, MutableList<GeofenceCallbackRegistration>>()
         val orphanIds = mutableListOf<String>()
         val staleIds = mutableListOf<String>()
         triggeredIds.distinct().forEach { id ->
@@ -45,34 +47,55 @@ internal object GeofenceCallbackRouting {
             }
             if (!isCallbackFresh(id)) {
                 staleIds.add(id)
+                staleGrouped.getOrPut(configured.callbackHandle) { mutableListOf() }
+                    .add(registration)
                 return@forEach
             }
             grouped.getOrPut(configured.callbackHandle) { mutableListOf() }.add(registration)
         }
 
         return GeofenceCallbackRoutingResult(
-            callbackGroups = grouped.map { (callbackHandle, geofences) ->
-                val callbackContexts = geofences.mapNotNull { registration ->
-                    val geofence = registration.configuredGeofence
-                    geofence.callbackContext?.let { geofence.id to it }
-                }.toMap()
-                GeofenceCallbackParamsWire(
-                    geofences = geofences.map { registration ->
-                        ActiveGeofenceWires.fromGeofenceWire(
-                            registration.configuredGeofence,
-                            registration.expirationDeadlineMillis,
-                        )
-                    },
-                    event = event,
-                    location = location,
-                    eventAtMillis = eventAtMillis,
-                    callbackHandle = callbackHandle,
-                    eventId = null,
-                    callbackContextsByGeofenceId = callbackContexts.ifEmpty { null }
-                )
-            },
+            callbackGroups = callbackGroups(
+                grouped,
+                event,
+                location,
+                eventAtMillis,
+            ),
             orphanIds = orphanIds,
-            staleIds = staleIds
+            staleIds = staleIds,
+            staleCallbackGroups = callbackGroups(
+                staleGrouped,
+                event,
+                location,
+                eventAtMillis,
+            ),
         )
     }
+
+    private fun callbackGroups(
+        grouped: Map<Long, List<GeofenceCallbackRegistration>>,
+        event: GeofenceEvent,
+        location: LocationWire?,
+        eventAtMillis: Long?,
+    ): List<GeofenceCallbackParamsWire> =
+        grouped.map { (callbackHandle, geofences) ->
+            val callbackContexts = geofences.mapNotNull { registration ->
+                val geofence = registration.configuredGeofence
+                geofence.callbackContext?.let { geofence.id to it }
+            }.toMap()
+            GeofenceCallbackParamsWire(
+                geofences = geofences.map { registration ->
+                    ActiveGeofenceWires.fromGeofenceWire(
+                        registration.configuredGeofence,
+                        registration.expirationDeadlineMillis,
+                    )
+                },
+                event = event,
+                location = location,
+                eventAtMillis = eventAtMillis,
+                callbackHandle = callbackHandle,
+                eventId = null,
+                callbackContextsByGeofenceId = callbackContexts.ifEmpty { null }
+            )
+        }
 }

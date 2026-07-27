@@ -1,6 +1,8 @@
 class Constants {
     static let PACKAGE_NAME = "com.chunkytofustudios.native_geofence"
     private static let STORAGE_KEY_PREFIX = "\(PACKAGE_NAME)."
+    static let CALLBACK_LOOKUP_TERMINAL_ERROR_MARKER =
+        "\(PACKAGE_NAME).callback_lookup_terminal.v1"
     
     static let HEADLESS_FLUTTER_ENGINE_NAME = "NativeGeofenceIsolate"
     
@@ -14,6 +16,8 @@ class Constants {
         "\(STORAGE_KEY_PREFIX)geofence_last_event_dict"
     static let GEOFENCE_CALLBACK_JOURNAL_KEY =
         "\(STORAGE_KEY_PREFIX)geofence_callback_journal_v1"
+    static let GEOFENCE_PENDING_BOUNDARY_EVENTS_KEY =
+        "\(STORAGE_KEY_PREFIX)geofence_pending_boundary_events_v1"
     static let SYNCHRONIZATION_REGISTRATION_FINGERPRINT_KEY =
         "\(STORAGE_KEY_PREFIX)geofence_synchronization_registration_fingerprint"
     static let SYNCHRONIZED_PACKAGE_FINGERPRINT_KEY =

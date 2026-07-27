@@ -7,7 +7,6 @@ import com.chunkytofustudios.native_geofence.model.GeofenceCallbackParamsStorage
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -17,16 +16,25 @@ internal interface CallbackPayloadBackend {
     fun write(reference: String, value: String): Boolean
     fun read(reference: String): Result<String?>
     fun delete(reference: String): Boolean
+    fun listReferences(): Result<List<String>>
 }
 
 @Serializable
 internal data class GeofenceCallbackPayloadEnvelope(
     val payload: GeofenceCallbackParamsStorage,
     val packageFingerprint: String,
-    val enqueuedAtMillis: Long
+    val enqueuedAtMillis: Long,
+    val deliveryRoute: String? = null,
+    val deliverySource: String? = null,
+    val workRequestId: String? = null,
 ) {
     fun toWire(): GeofenceCallbackParamsWire = payload.toWire()
 }
+
+internal data class RecoverableCallbackPayload(
+    val reference: String,
+    val envelope: GeofenceCallbackPayloadEnvelope,
+)
 
 internal sealed interface CallbackPayloadReadResult {
     data class Found(val envelope: GeofenceCallbackPayloadEnvelope) :
@@ -139,7 +147,13 @@ internal class GeofenceCallbackPayloadStore(
     private val nowMillis: () -> Long = System::currentTimeMillis,
     private val referenceGenerator: () -> String = { UUID.randomUUID().toString() }
 ) {
-    fun store(params: GeofenceCallbackParamsWire, packageFingerprint: String): String? {
+    fun store(
+        params: GeofenceCallbackParamsWire,
+        packageFingerprint: String,
+        deliveryRoute: String? = null,
+        deliverySource: String? = null,
+        recoverAmbiguousEnqueue: Boolean = false,
+    ): String? {
         if (params.eventId.isNullOrBlank()) {
             return null
         }
@@ -152,7 +166,10 @@ internal class GeofenceCallbackPayloadStore(
                 GeofenceCallbackPayloadEnvelope(
                     payload = GeofenceCallbackParamsStorage.fromWire(params),
                     packageFingerprint = packageFingerprint,
-                    enqueuedAtMillis = nowMillis()
+                    enqueuedAtMillis = nowMillis(),
+                    deliveryRoute = deliveryRoute,
+                    deliverySource = deliverySource,
+                    workRequestId = if (recoverAmbiguousEnqueue) reference else null,
                 )
             )
         } catch (_: Exception) {
@@ -182,6 +199,26 @@ internal class GeofenceCallbackPayloadStore(
 
     fun delete(reference: String): Boolean =
         isValidReference(reference) && backend.delete(reference)
+
+    fun recoverablePayloads(): Result<List<RecoverableCallbackPayload>> =
+        backend.listReferences().mapCatching { references ->
+            references.sorted().mapNotNull { reference ->
+                if (!isValidReference(reference)) {
+                    return@mapNotNull null
+                }
+                val found = read(reference) as? CallbackPayloadReadResult.Found
+                    ?: return@mapNotNull null
+                val workRequestId = found.envelope.workRequestId
+                    ?: return@mapNotNull null
+                if (
+                    workRequestId != reference ||
+                    found.envelope.deliveryRoute == null
+                ) {
+                    return@mapNotNull null
+                }
+                RecoverableCallbackPayload(reference, found.envelope)
+            }
+        }
 
     companion object {
         fun forContext(context: Context): GeofenceCallbackPayloadStore =
@@ -250,12 +287,10 @@ private fun decodeLegacyPayload(encoded: String): LegacyCallbackPayloadReadResul
 
 private class FileCallbackPayloadBackend(
     private val directory: File,
-    private val nowMillis: () -> Long = System::currentTimeMillis
 ) : CallbackPayloadBackend {
     override fun write(reference: String, value: String): Boolean = try {
         check(GeofenceCallbackPayloadStore.isValidReference(reference))
         directory.mkdirs()
-        pruneAbandonedPayloads()
         val target = file(reference)
         if (target.exists()) {
             false
@@ -290,18 +325,19 @@ private class FileCallbackPayloadBackend(
         false
     }
 
-    private fun file(reference: String) = File(directory, "$reference.json")
-
-    private fun pruneAbandonedPayloads() {
-        val cutoff = nowMillis() - MAX_PAYLOAD_AGE_MILLIS
-        directory.listFiles()?.forEach { file ->
-            if (file.lastModified() < cutoff) {
-                file.delete()
-            }
-        }
+    override fun listReferences(): Result<List<String>> = runCatching {
+        directory.listFiles()
+            .orEmpty()
+            .asSequence()
+            .filter { it.isFile && it.extension == PAYLOAD_EXTENSION }
+            .map { it.nameWithoutExtension }
+            .filter(GeofenceCallbackPayloadStore::isValidReference)
+            .toList()
     }
 
+    private fun file(reference: String) = File(directory, "$reference.json")
+
     private companion object {
-        val MAX_PAYLOAD_AGE_MILLIS = TimeUnit.DAYS.toMillis(7)
+        const val PAYLOAD_EXTENSION = "json"
     }
 }

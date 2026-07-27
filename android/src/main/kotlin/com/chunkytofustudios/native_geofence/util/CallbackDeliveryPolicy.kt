@@ -36,6 +36,26 @@ internal object CallbackDeliveryPolicy {
     fun success(): CallbackDeliveryDecision =
         CallbackDeliveryDecision(CallbackWorkerResult.SUCCESS, cleanupPayload = true)
 
+    /** The callback is durably owned by the callback-refresh queue. */
+    fun deferredForCallbackRefresh(): CallbackDeliveryDecision =
+        CallbackDeliveryDecision(CallbackWorkerResult.SUCCESS, cleanupPayload = true)
+
+    /**
+     * The callback-refresh queue rejected ownership. Keep the original payload
+     * and retry without a terminal attempt cap so queue pressure cannot convert
+     * an app-update callback into a drop.
+     */
+    fun callbackRefreshDeferralFailure(): CallbackDeliveryDecision =
+        CallbackDeliveryDecision(CallbackWorkerResult.RETRY, cleanupPayload = false)
+
+    /** A separate transfer worker now owns retrying the durable payload. */
+    fun transferredForCallbackRefreshRetry(
+        cleanupOriginalPayload: Boolean = false,
+    ): CallbackDeliveryDecision = CallbackDeliveryDecision(
+        CallbackWorkerResult.SUCCESS,
+        cleanupPayload = cleanupOriginalPayload,
+    )
+
     fun failure(
         failure: CallbackDeliveryFailure,
         runAttemptCount: Int
@@ -63,8 +83,10 @@ internal object CallbackDeliveryPolicy {
     }
 
     fun requiresCallbackRefresh(failure: CallbackDeliveryFailure): Boolean =
-        failure == CallbackDeliveryFailure.DART_CALLBACK_NOT_FOUND ||
-            failure == CallbackDeliveryFailure.DART_CALLBACK_INVALID
+        failure in CALLBACK_REFRESH_FAILURES
+
+    fun shouldDeferForCallbackRefresh(failure: CallbackDeliveryFailure): Boolean =
+        failure in CALLBACK_REFRESH_FAILURES
 
     private val RETRYABLE_FAILURES = setOf(
         CallbackDeliveryFailure.INFRASTRUCTURE,
@@ -72,5 +94,14 @@ internal object CallbackDeliveryPolicy {
         CallbackDeliveryFailure.STARTUP_TIMEOUT,
         CallbackDeliveryFailure.API_READY_TIMEOUT,
         CallbackDeliveryFailure.CALLBACK_TIMEOUT
+    )
+
+    private val CALLBACK_REFRESH_FAILURES = setOf(
+        CallbackDeliveryFailure.PACKAGE_STALE,
+        CallbackDeliveryFailure.DISPATCHER_MISSING,
+        CallbackDeliveryFailure.DISPATCHER_STALE,
+        CallbackDeliveryFailure.DISPATCHER_NOT_FOUND,
+        CallbackDeliveryFailure.DART_CALLBACK_NOT_FOUND,
+        CallbackDeliveryFailure.DART_CALLBACK_INVALID,
     )
 }

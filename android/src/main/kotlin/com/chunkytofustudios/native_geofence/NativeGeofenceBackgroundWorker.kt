@@ -10,8 +10,12 @@ import androidx.work.ForegroundInfo
 import androidx.work.ListenableWorker
 import androidx.work.WorkerParameters
 import com.chunkytofustudios.native_geofence.api.NativeGeofenceBackgroundApiImpl
+import com.chunkytofustudios.native_geofence.bridge.DeferredGeofenceCallbackDelivery
+import com.chunkytofustudios.native_geofence.bridge.DeferredGeofenceCallbackTransferScheduleOutcome
+import com.chunkytofustudios.native_geofence.bridge.DeferredGeofenceCallbackTransferScheduler
 import com.chunkytofustudios.native_geofence.bridge.NativeGeofenceBridgeDispatcher
 import com.chunkytofustudios.native_geofence.bridge.NativeGeofenceBridgeOutcome
+import com.chunkytofustudios.native_geofence.bridge.NativeGeofenceCallbackDeliverySpec
 import com.chunkytofustudios.native_geofence.bridge.NativeGeofenceCallbackRoute
 import com.chunkytofustudios.native_geofence.bridge.NativeGeofenceCallbackWorkerRouter
 import com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWire
@@ -79,6 +83,7 @@ class NativeGeofenceBackgroundWorker(
     private val completed = AtomicBoolean(false)
     private val stopped = AtomicBoolean(false)
     private val destroyRequested = AtomicBoolean(false)
+    private val callbackDeferralStarted = AtomicBoolean(false)
     private val foregroundLock = Object()
     private val deliveryRouter = NativeGeofenceCallbackWorkerRouter.fromInputData(
         workerParams.inputData
@@ -87,6 +92,10 @@ class NativeGeofenceBackgroundWorker(
     private val deliverySource = workerParams.inputData
         .getString(Constants.WORKER_DELIVERY_SOURCE_KEY)
         ?.takeIf(String::isNotBlank)
+    private val isCallbackRefreshTransfer = workerParams.inputData.getBoolean(
+        Constants.WORKER_CALLBACK_REFRESH_TRANSFER_KEY,
+        false,
+    )
 
     @Volatile
     private var flutterEngine: FlutterEngine? = null
@@ -105,6 +114,9 @@ class NativeGeofenceBackgroundWorker(
 
     @Volatile
     private var payloadLease: CallbackPayloadLease? = null
+
+    @Volatile
+    private var payloadReference: String? = null
 
     @Volatile
     private var completer: CallbackToFutureAdapter.Completer<Result>? = null
@@ -377,6 +389,7 @@ class NativeGeofenceBackgroundWorker(
 
     private fun loadCurrentPayload(reference: String) {
         val store = GeofenceCallbackPayloadStore.forContext(context)
+        payloadReference = reference
         payloadLease = CallbackPayloadLease { store.delete(reference) }
         when (val loaded = store.read(reference)) {
             CallbackPayloadReadResult.Missing ->
@@ -385,14 +398,24 @@ class NativeGeofenceBackgroundWorker(
                 finishFailure(CallbackDeliveryFailure.PAYLOAD_CORRUPT)
             is CallbackPayloadReadResult.Found -> {
                 payloadEnqueuedAtMillis = loaded.envelope.enqueuedAtMillis
-                val currentFingerprint = AndroidPackageFingerprint.current(context)
-                if (loaded.envelope.packageFingerprint != currentFingerprint) {
-                    finishFailure(CallbackDeliveryFailure.PACKAGE_STALE)
-                    return
-                }
                 val params = loaded.envelope.toWire()
                 if (params.eventId.isNullOrBlank()) {
                     finishFailure(CallbackDeliveryFailure.EVENT_ID_MISSING)
+                    return
+                }
+                if (isCallbackRefreshTransfer) {
+                    deferForCallbackRefresh(
+                        params,
+                        CallbackDeliveryFailure.PACKAGE_STALE,
+                    )
+                    return
+                }
+                val currentFingerprint = AndroidPackageFingerprint.current(context)
+                if (loaded.envelope.packageFingerprint != currentFingerprint) {
+                    deferForCallbackRefresh(
+                        params,
+                        CallbackDeliveryFailure.PACKAGE_STALE,
+                    )
                     return
                 }
                 mainHandler.post { processDelivery(params) }
@@ -578,6 +601,169 @@ class NativeGeofenceBackgroundWorker(
     }
 
     private fun finishFailure(failure: CallbackDeliveryFailure) {
+        val params = callbackParams ?: deliveryParams
+        if (
+            params != null &&
+            CallbackDeliveryPolicy.shouldDeferForCallbackRefresh(failure)
+        ) {
+            deferForCallbackRefresh(params, failure)
+            return
+        }
+        finishFailureWithoutDeferral(failure)
+    }
+
+    private fun deferForCallbackRefresh(
+        params: GeofenceCallbackParamsWire,
+        failure: CallbackDeliveryFailure,
+    ) {
+        if (!callbackDeferralStarted.compareAndSet(false, true)) return
+        callbackParams = params
+        workerDiagnosticFailure = failure
+        coordinator?.cancel()
+        try {
+            DeferredGeofenceCallbackDelivery.defer(
+                context = context,
+                params = params,
+                deliverySpec = NativeGeofenceCallbackDeliverySpec(
+                    route = deliveryRoute,
+                    source = deliverySource,
+                ),
+            ) { accepted ->
+                mainHandler.post {
+                    if (completed.get() || stopped.get()) return@post
+                    if (accepted) {
+                        NativeGeofenceLogger.w(
+                            context,
+                            TAG,
+                            "Moved callback outcome=$failure to the callback-refresh queue.",
+                        )
+                        finish(CallbackDeliveryPolicy.deferredForCallbackRefresh())
+                    } else {
+                        finishCallbackDeferralFailure()
+                    }
+                }
+            }
+        } catch (error: Throwable) {
+            NativeGeofenceLogger.e(
+                context,
+                TAG,
+                "Failed to dispatch callback-refresh deferral.",
+                error,
+            )
+            finishCallbackDeferralFailure()
+        }
+    }
+
+    private fun finishCallbackDeferralFailure() {
+        workerDiagnosticFailure = CallbackDeliveryFailure.INFRASTRUCTURE
+        if (isCallbackRefreshTransfer) {
+            NativeGeofenceLogger.w(
+                context,
+                TAG,
+                "Callback-refresh transfer retained its payload for an isolated retry.",
+            )
+            finish(CallbackDeliveryPolicy.callbackRefreshDeferralFailure())
+            return
+        }
+        val reference = payloadReference
+        if (reference == null) {
+            persistLegacyCallbackForTransfer()
+            return
+        }
+        scheduleCallbackRefreshTransfer(
+            reference = reference,
+            cleanupOriginalPayload = false,
+            migratedPayload = false,
+        )
+    }
+
+    private fun persistLegacyCallbackForTransfer() {
+        val params = callbackParams
+        if (params == null) {
+            finish(CallbackDeliveryPolicy.callbackRefreshDeferralFailure())
+            return
+        }
+        NativeGeofenceLogger.w(
+            context,
+            TAG,
+            "Migrating a legacy callback payload to isolated callback-refresh transfer.",
+        )
+        NativeGeofenceIo.execute {
+            val reference = runCatching {
+                GeofenceCallbackPayloadStore.forContext(context).store(
+                    params,
+                    AndroidPackageFingerprint.current(context),
+                )
+            }.getOrNull()
+            mainHandler.post {
+                if (completed.get() || stopped.get()) return@post
+                if (reference == null) {
+                    finish(CallbackDeliveryPolicy.callbackRefreshDeferralFailure())
+                    return@post
+                }
+                scheduleCallbackRefreshTransfer(
+                    reference = reference,
+                    cleanupOriginalPayload = true,
+                    migratedPayload = true,
+                )
+            }
+        }
+    }
+
+    private fun scheduleCallbackRefreshTransfer(
+        reference: String,
+        cleanupOriginalPayload: Boolean,
+        migratedPayload: Boolean,
+    ) {
+        NativeGeofenceLogger.w(
+            context,
+            TAG,
+            "Scheduling isolated callback-refresh transfer for a durable payload.",
+        )
+        try {
+            DeferredGeofenceCallbackTransferScheduler.schedule(
+                context = context,
+                payloadReference = reference,
+                deliverySpec = NativeGeofenceCallbackDeliverySpec(
+                    route = deliveryRoute,
+                    source = deliverySource,
+                ),
+            ) { outcome ->
+                mainHandler.post {
+                    if (completed.get() || stopped.get()) return@post
+                    when (outcome) {
+                        DeferredGeofenceCallbackTransferScheduleOutcome.ACCEPTED ->
+                            finish(
+                                CallbackDeliveryPolicy.transferredForCallbackRefreshRetry(
+                                    cleanupOriginalPayload,
+                                )
+                            )
+                        DeferredGeofenceCallbackTransferScheduleOutcome.REJECTED -> {
+                            if (migratedPayload) {
+                                NativeGeofenceIo.execute {
+                                    GeofenceCallbackPayloadStore.forContext(context)
+                                        .delete(reference)
+                                }
+                            }
+                            finish(CallbackDeliveryPolicy.callbackRefreshDeferralFailure())
+                        }
+                        DeferredGeofenceCallbackTransferScheduleOutcome.UNCONFIRMED ->
+                            finish(CallbackDeliveryPolicy.callbackRefreshDeferralFailure())
+                    }
+                }
+            }
+        } catch (error: Throwable) {
+            NativeGeofenceLogger.e(
+                context,
+                TAG,
+                "Failed to dispatch isolated callback-refresh transfer.",
+                error,
+            )
+            finish(CallbackDeliveryPolicy.callbackRefreshDeferralFailure())
+        }
+    }
+
+    private fun finishFailureWithoutDeferral(failure: CallbackDeliveryFailure) {
         workerDiagnosticFailure = failure
         if (
             CallbackDeliveryPolicy.requiresCallbackRefresh(failure) &&

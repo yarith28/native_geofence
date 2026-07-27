@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.chunkytofustudios.native_geofence.api.NativeGeofenceApiImpl
+import com.chunkytofustudios.native_geofence.bridge.CallbackPayloadEnqueueRecovery
 import com.chunkytofustudios.native_geofence.util.NativeGeofenceLogger
 
 class NativeGeofenceRebootBroadcastReceiver : BroadcastReceiver() {
@@ -12,6 +13,7 @@ class NativeGeofenceRebootBroadcastReceiver : BroadcastReceiver() {
         if (action !in SUPPORTED_ACTIONS) {
             return
         }
+        CallbackPayloadEnqueueRecovery.recover(context.applicationContext)
         val lease = RecoveryBroadcastLease(goAsync())
         try {
             NativeGeofenceApiImpl(context.applicationContext).startAutomaticRecovery(

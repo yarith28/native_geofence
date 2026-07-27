@@ -7,6 +7,45 @@ enum IosGeofenceTransition: String, Codable {
     case dwell
 }
 
+/// Native delivery disposition for a journal-owned callback attempt.
+///
+/// Runtime availability, teardown, timeout, and ordinary Dart errors are
+/// retryable. Only the two callback lookup failures emitted by the Dart bridge
+/// prove that the persisted callback can no longer be invoked.
+enum IosGeofenceCallbackDeliveryOutcome: Equatable {
+    enum TerminalFailure: String, Equatable {
+        case callbackNotFound = "callback_not_found"
+        case callbackInvalid = "callback_invalid"
+
+        static func classify(
+            errorCode: String,
+            details: String?,
+            callbackNotFoundCode: String,
+            callbackInvalidCode: String
+        ) -> TerminalFailure? {
+            guard details == Constants.CALLBACK_LOOKUP_TERMINAL_ERROR_MARKER else {
+                return nil
+            }
+            switch errorCode {
+            case callbackNotFoundCode:
+                return .callbackNotFound
+            case callbackInvalidCode:
+                return .callbackInvalid
+            default:
+                return nil
+            }
+        }
+    }
+
+    case succeeded
+    case retryableFailure
+    case terminalFailure(TerminalFailure)
+
+    var didSucceed: Bool {
+        self == .succeeded
+    }
+}
+
 /// Codable, versioned payload retained before any Flutter runtime is touched.
 /// The event ID remains stable across retries so Dart can enforce idempotency.
 struct IosGeofenceCallbackJournalEnvelope: Codable, Equatable {
@@ -40,7 +79,9 @@ final class IosGeofenceCallbackJournal {
 
     enum CompletionResult: Equatable {
         case acknowledged
-        case failedWithoutRetry
+        case retryScheduled(nextAttemptAtMillis: Int64)
+        case retryExhausted
+        case terminallyDiscarded(IosGeofenceCallbackDeliveryOutcome.TerminalFailure)
         case missing
         case storageFailure
     }
@@ -50,6 +91,35 @@ final class IosGeofenceCallbackJournal {
         let terminallyDiscardedEventIds: [String]
         let nextDueAtMillis: Int64?
         let storageReadable: Bool
+    }
+
+    private struct DeduplicationCursor: Codable, Equatable {
+        let geofence: IosGeofenceCallbackJournalEnvelope.GeofenceSnapshot
+        let transition: IosGeofenceTransition
+        let eventAtMillis: Int64
+        let callbackHandle: Int64
+        let callbackContext: Int64?
+
+        init(_ envelope: IosGeofenceCallbackJournalEnvelope) {
+            geofence = envelope.geofence
+            transition = envelope.transition
+            eventAtMillis = envelope.eventAtMillis
+            callbackHandle = envelope.callbackHandle
+            callbackContext = envelope.callbackContext
+        }
+
+        func belongsToSameRegistration(
+            as envelope: IosGeofenceCallbackJournalEnvelope
+        ) -> Bool {
+            geofence == envelope.geofence
+                && callbackHandle == envelope.callbackHandle
+                && callbackContext == envelope.callbackContext
+        }
+    }
+
+    private struct PersistedState: Codable, Equatable {
+        var envelopes: [IosGeofenceCallbackJournalEnvelope]
+        var deduplicationCursorsByIdentifier: [String: DeduplicationCursor]
     }
 
     private let lock = NSLock()
@@ -116,29 +186,35 @@ final class IosGeofenceCallbackJournal {
 
     func enqueue(_ envelope: IosGeofenceCallbackJournalEnvelope) -> EnqueueResult {
         withLock {
-            guard var envelopes = loadLocked() else { return .storageFailure }
-            if envelopes.contains(where: { $0.eventId == envelope.eventId }) {
-                return .duplicate
-            }
-            if envelopes.contains(where: { pending in
-                guard pending.geofence.id == envelope.geofence.id,
-                      pending.transition == envelope.transition,
-                      envelope.eventAtMillis >= pending.eventAtMillis
-                else { return false }
-                let (age, overflow) = envelope.eventAtMillis
-                    .subtractingReportingOverflow(pending.eventAtMillis)
-                return !overflow && age < pendingDuplicateWindowMillis
+            guard var state = loadLocked() else { return .storageFailure }
+            if state.envelopes.contains(where: {
+                $0.eventId == envelope.eventId
             }) {
                 return .duplicate
             }
-            envelopes.append(envelope)
-            return storeLocked(envelopes) ? .stored : .storageFailure
+            if let cursor = state.deduplicationCursorsByIdentifier[
+                envelope.geofence.id
+            ],
+               cursor.belongsToSameRegistration(as: envelope),
+               cursor.transition == envelope.transition,
+               envelope.eventAtMillis >= cursor.eventAtMillis
+            {
+                let (age, overflow) = envelope.eventAtMillis
+                    .subtractingReportingOverflow(cursor.eventAtMillis)
+                if !overflow && age < pendingDuplicateWindowMillis {
+                    return .duplicate
+                }
+            }
+            state.envelopes.append(envelope)
+            state.deduplicationCursorsByIdentifier[envelope.geofence.id] =
+                DeduplicationCursor(envelope)
+            return storeLocked(state) ? .stored : .storageFailure
         }
     }
 
     func drainBatch(nowMillis: Int64) -> DrainBatch {
         withLock {
-            guard let envelopes = loadLocked() else {
+            guard var state = loadLocked() else {
                 return DrainBatch(
                     due: [],
                     terminallyDiscardedEventIds: [],
@@ -146,13 +222,24 @@ final class IosGeofenceCallbackJournal {
                     storageReadable: false
                 )
             }
-            let terminal = envelopes.filter {
+            let terminal = state.envelopes.filter {
                 $0.expiresAtMillis <= nowMillis || $0.attemptCount >= maximumAttempts
             }
-            let retained = envelopes.filter {
+            let retained = state.envelopes.filter {
                 $0.expiresAtMillis > nowMillis && $0.attemptCount < maximumAttempts
             }
-            if !terminal.isEmpty && !storeLocked(retained) {
+            state.envelopes = retained
+            let previousCursorCount =
+                state.deduplicationCursorsByIdentifier.count
+            pruneDeduplicationCursorsLocked(
+                in: &state,
+                nowMillis: nowMillis
+            )
+            if (!terminal.isEmpty
+                || state.deduplicationCursorsByIdentifier.count
+                    != previousCursorCount)
+                && !storeLocked(state)
+            {
                 return DrainBatch(
                     due: [],
                     terminallyDiscardedEventIds: [],
@@ -161,14 +248,9 @@ final class IosGeofenceCallbackJournal {
                 )
             }
             return DrainBatch(
-                due: retained
-                    .filter { $0.nextAttemptAtMillis <= nowMillis }
-                    .sorted {
-                        if $0.eventAtMillis == $1.eventAtMillis {
-                            return $0.eventId < $1.eventId
-                        }
-                        return $0.eventAtMillis < $1.eventAtMillis
-                    },
+                due: retained.filter {
+                    $0.nextAttemptAtMillis <= nowMillis
+                },
                 terminallyDiscardedEventIds: terminal.map(\.eventId).sorted(),
                 nextDueAtMillis: retained
                     .map(\.nextAttemptAtMillis)
@@ -184,63 +266,176 @@ final class IosGeofenceCallbackJournal {
         nowMillis: Int64
     ) -> IosGeofenceCallbackJournalEnvelope? {
         withLock {
-            guard var envelopes = loadLocked(),
-                  let index = envelopes.firstIndex(where: { $0.eventId == eventId }),
-                  envelopes[index].expiresAtMillis > nowMillis,
-                  envelopes[index].attemptCount < maximumAttempts
+            guard var state = loadLocked(),
+                  let index = state.envelopes.firstIndex(where: {
+                      $0.eventId == eventId
+                  }),
+                  state.envelopes[index].expiresAtMillis > nowMillis,
+                  state.envelopes[index].attemptCount < maximumAttempts
             else { return nil }
-            envelopes[index].attemptCount += 1
-            envelopes[index].nextAttemptAtMillis = safeAdd(
+            state.envelopes[index].attemptCount += 1
+            state.envelopes[index].nextAttemptAtMillis = safeAdd(
                 nowMillis,
-                retryDelayMillis(attemptCount: envelopes[index].attemptCount)
+                retryDelayMillis(
+                    attemptCount: state.envelopes[index].attemptCount
+                )
             )
-            guard storeLocked(envelopes) else { return nil }
-            return envelopes[index]
+            guard storeLocked(state) else { return nil }
+            return state.envelopes[index]
         }
     }
 
     func complete(
         eventId: String,
-        succeeded: Bool,
-        nowMillis _: Int64
+        outcome: IosGeofenceCallbackDeliveryOutcome,
+        nowMillis: Int64
     ) -> CompletionResult {
         withLock {
-            guard var envelopes = loadLocked() else { return .storageFailure }
-            guard let index = envelopes.firstIndex(where: { $0.eventId == eventId }) else {
+            guard var state = loadLocked() else { return .storageFailure }
+            guard let index = state.envelopes.firstIndex(where: {
+                $0.eventId == eventId
+            }) else {
                 return .missing
             }
-            if succeeded {
-                envelopes.remove(at: index)
-                return storeLocked(envelopes) ? .acknowledged : .storageFailure
+            switch outcome {
+            case .succeeded:
+                state.envelopes.remove(at: index)
+                pruneDeduplicationCursorsLocked(
+                    in: &state,
+                    nowMillis: nowMillis
+                )
+                return storeLocked(state) ? .acknowledged : .storageFailure
+            case .terminalFailure(let reason):
+                state.envelopes.remove(at: index)
+                pruneDeduplicationCursorsLocked(
+                    in: &state,
+                    nowMillis: nowMillis
+                )
+                return storeLocked(state)
+                    ? .terminallyDiscarded(reason)
+                    : .storageFailure
+            case .retryableFailure:
+                guard state.envelopes[index].expiresAtMillis > nowMillis,
+                      state.envelopes[index].attemptCount < maximumAttempts
+                else {
+                    state.envelopes.remove(at: index)
+                    pruneDeduplicationCursorsLocked(
+                        in: &state,
+                        nowMillis: nowMillis
+                    )
+                    return storeLocked(state)
+                        ? .retryExhausted
+                        : .storageFailure
+                }
+                state.envelopes[index].nextAttemptAtMillis = safeAdd(
+                    nowMillis,
+                    retryDelayMillis(
+                        attemptCount: state.envelopes[index].attemptCount
+                    )
+                )
+                let nextAttemptAtMillis =
+                    state.envelopes[index].nextAttemptAtMillis
+                return storeLocked(state)
+                    ? .retryScheduled(nextAttemptAtMillis: nextAttemptAtMillis)
+                    : .storageFailure
             }
-            // A returned Dart failure completed the delivery contract. Retain
-            // entries only when an attempt is interrupted before completion.
-            envelopes.remove(at: index)
-            return storeLocked(envelopes) ? .failedWithoutRetry : .storageFailure
         }
     }
 
     func pendingCount() -> Int? {
-        withLock { loadLocked()?.count }
+        withLock { loadLocked()?.envelopes.count }
+    }
+
+    @discardableResult
+    func resetDeduplication(identifier: String) -> Bool {
+        withLock {
+            guard var state = loadLocked() else { return false }
+            guard state.deduplicationCursorsByIdentifier.removeValue(
+                forKey: identifier
+            ) != nil else {
+                return true
+            }
+            return storeLocked(state)
+        }
+    }
+
+    @discardableResult
+    func resetAllDeduplication() -> Bool {
+        withLock {
+            guard var state = loadLocked() else { return false }
+            guard !state.deduplicationCursorsByIdentifier.isEmpty else {
+                return true
+            }
+            state.deduplicationCursorsByIdentifier.removeAll()
+            return storeLocked(state)
+        }
     }
 
     private func retryDelayMillis(attemptCount: Int) -> Int64 {
         retryDelaysMillis[min(max(0, attemptCount - 1), retryDelaysMillis.count - 1)]
     }
 
-    private func loadLocked() -> [IosGeofenceCallbackJournalEnvelope]? {
-        guard let data = userDefaults.data(forKey: storageKey) else { return [] }
-        return try? decoder.decode([IosGeofenceCallbackJournalEnvelope].self, from: data)
+    private func loadLocked() -> PersistedState? {
+        guard let data = userDefaults.data(forKey: storageKey) else {
+            return PersistedState(
+                envelopes: [],
+                deduplicationCursorsByIdentifier: [:]
+            )
+        }
+        if let state = try? decoder.decode(PersistedState.self, from: data) {
+            return state
+        }
+        guard let legacyEnvelopes = try? decoder.decode(
+            [IosGeofenceCallbackJournalEnvelope].self,
+            from: data
+        ) else {
+            return nil
+        }
+        return PersistedState(
+            envelopes: legacyEnvelopes,
+            deduplicationCursorsByIdentifier:
+                deduplicationCursors(for: legacyEnvelopes)
+        )
     }
 
-    private func storeLocked(_ envelopes: [IosGeofenceCallbackJournalEnvelope]) -> Bool {
-        if envelopes.isEmpty {
+    private func storeLocked(_ state: PersistedState) -> Bool {
+        if state.envelopes.isEmpty
+            && state.deduplicationCursorsByIdentifier.isEmpty
+        {
             userDefaults.removeObject(forKey: storageKey)
             return userDefaults.data(forKey: storageKey) == nil
         }
-        guard let data = try? encoder.encode(envelopes) else { return false }
+        guard let data = try? encoder.encode(state) else { return false }
         userDefaults.set(data, forKey: storageKey)
         return userDefaults.data(forKey: storageKey) == data
+    }
+
+    private func deduplicationCursors(
+        for envelopes: [IosGeofenceCallbackJournalEnvelope]
+    ) -> [String: DeduplicationCursor] {
+        var cursors: [String: DeduplicationCursor] = [:]
+        for envelope in envelopes {
+            cursors[envelope.geofence.id] = DeduplicationCursor(envelope)
+        }
+        return cursors
+    }
+
+    private func pruneDeduplicationCursorsLocked(
+        in state: inout PersistedState,
+        nowMillis: Int64
+    ) {
+        let pendingIdentifiers = Set(state.envelopes.map(\.geofence.id))
+        state.deduplicationCursorsByIdentifier = state
+            .deduplicationCursorsByIdentifier.filter { identifier, cursor in
+                if pendingIdentifiers.contains(identifier) {
+                    return true
+                }
+                let expiresAt = safeAdd(
+                    cursor.eventAtMillis,
+                    pendingDuplicateWindowMillis
+                )
+                return expiresAt > nowMillis
+            }
     }
 
     private func safeAdd(_ left: Int64, _ right: Int64) -> Int64 {

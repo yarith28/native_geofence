@@ -162,21 +162,27 @@ final class IosCallbackBackgroundLeaseRegistry<Identifier> {
 private final class IosCallbackDeliveryCompletionGate {
     private let lock = NSLock()
     private var accepted: Bool?
-    private var completionResult: Bool?
+    private var completionResult: IosGeofenceCallbackDeliveryOutcome?
 
-    func receiveCompletion(_ succeeded: Bool, _ action: (Bool) -> Void) {
-        let result = withLock { () -> Bool? in
+    func receiveCompletion(
+        _ outcome: IosGeofenceCallbackDeliveryOutcome,
+        _ action: (IosGeofenceCallbackDeliveryOutcome) -> Void
+    ) {
+        let result = withLock { () -> IosGeofenceCallbackDeliveryOutcome? in
             guard completionResult == nil else { return nil }
-            completionResult = succeeded
-            return accepted == true ? succeeded : nil
+            completionResult = outcome
+            return accepted == true ? outcome : nil
         }
         if let result {
             action(result)
         }
     }
 
-    func resolve(accepted: Bool, _ action: (Bool) -> Void) {
-        let result = withLock { () -> Bool? in
+    func resolve(
+        accepted: Bool,
+        _ action: (IosGeofenceCallbackDeliveryOutcome) -> Void
+    ) {
+        let result = withLock { () -> IosGeofenceCallbackDeliveryOutcome? in
             guard self.accepted == nil else { return nil }
             self.accepted = accepted
             return accepted ? completionResult : nil
@@ -196,13 +202,13 @@ private final class IosCallbackDeliveryCompletionGate {
 private final class IosCallbackDeliveryFinalizer {
     private let lock = NSLock()
     private var resolved = false
-    private let completion: (Bool) -> Void
+    private let completion: (IosGeofenceCallbackDeliveryOutcome) -> Void
 
-    init(completion: @escaping (Bool) -> Void) {
+    init(completion: @escaping (IosGeofenceCallbackDeliveryOutcome) -> Void) {
         self.completion = completion
     }
 
-    func resolve(_ succeeded: Bool) {
+    func resolve(_ outcome: IosGeofenceCallbackDeliveryOutcome) {
         lock.lock()
         guard !resolved else {
             lock.unlock()
@@ -210,7 +216,7 @@ private final class IosCallbackDeliveryFinalizer {
         }
         resolved = true
         lock.unlock()
-        completion(succeeded)
+        completion(outcome)
     }
 }
 
@@ -224,7 +230,7 @@ final class IosCallbackDeliveryRouter<Element> {
     typealias Delivery = (
         _ route: Route,
         _ element: Element,
-        _ completion: @escaping (Bool) -> Void
+        _ completion: @escaping (IosGeofenceCallbackDeliveryOutcome) -> Void
     ) -> Bool
 
     private struct Pending {
@@ -275,11 +281,11 @@ final class IosCallbackDeliveryRouter<Element> {
         )
     }
 
-    /// Enqueues a journal-owned event and reports its final Dart outcome. A
-    /// route rejection, engine teardown, timeout, or Dart error reports false.
+    /// Enqueues a journal-owned event and reports its final outcome. A route
+    /// rejection, engine teardown, timeout, or ordinary Dart error is retryable.
     func enqueue(
         _ element: Element,
-        completion: @escaping (Bool) -> Void
+        completion: @escaping (IosGeofenceCallbackDeliveryOutcome) -> Void
     ) {
         enqueue(
             element,
@@ -295,7 +301,7 @@ final class IosCallbackDeliveryRouter<Element> {
         shouldAttempt: @escaping () -> Bool,
         onAccepted: @escaping () -> Void,
         onRejected: @escaping () -> Void,
-        onCompletion: @escaping (Bool) -> Void = { _ in }
+        onCompletion: @escaping (IosGeofenceCallbackDeliveryOutcome) -> Void = { _ in }
     ) {
         let queued = withLock {
             guard !closed else { return false }
@@ -335,10 +341,10 @@ final class IosCallbackDeliveryRouter<Element> {
             activePending = nil
             return (rejected, active)
         }
-        rejected.active?.finalizer.resolve(false)
+        rejected.active?.finalizer.resolve(.retryableFailure)
         for pending in rejected.queued {
             pending.onRejected()
-            pending.finalizer.resolve(false)
+            pending.finalizer.resolve(.retryableFailure)
         }
     }
 
@@ -358,7 +364,7 @@ final class IosCallbackDeliveryRouter<Element> {
         }
         guard pending.shouldAttempt() else {
             pending.onRejected()
-            pending.finalizer.resolve(false)
+            pending.finalizer.resolve(.retryableFailure)
             complete(token: token)
             return
         }
@@ -379,7 +385,7 @@ final class IosCallbackDeliveryRouter<Element> {
 
         if !accepted {
             pending.onRejected()
-            pending.finalizer.resolve(false)
+            pending.finalizer.resolve(.retryableFailure)
             complete(token: token)
         }
     }
@@ -391,13 +397,13 @@ final class IosCallbackDeliveryRouter<Element> {
     ) -> Bool {
         guard isActive(token: token) else { return false }
         let completionGate = IosCallbackDeliveryCompletionGate()
-        let complete: (Bool) -> Void = { [weak self] succeeded in
+        let complete: (IosGeofenceCallbackDeliveryOutcome) -> Void = { [weak self] outcome in
             guard let self, self.isActive(token: token) else { return }
-            pending.finalizer.resolve(succeeded)
+            pending.finalizer.resolve(outcome)
             self.complete(token: token)
         }
-        let accepted = deliver(route, pending.element) { succeeded in
-            completionGate.receiveCompletion(succeeded, complete)
+        let accepted = deliver(route, pending.element) { outcome in
+            completionGate.receiveCompletion(outcome, complete)
         }
         let publishAcceptance = accepted && isActive(token: token)
         if publishAcceptance {

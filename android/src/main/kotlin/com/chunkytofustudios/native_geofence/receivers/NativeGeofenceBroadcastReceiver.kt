@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.SystemClock
 import com.chunkytofustudios.native_geofence.api.NativeGeofenceApiImpl
+import com.chunkytofustudios.native_geofence.bridge.CallbackPayloadEnqueueRecovery
+import com.chunkytofustudios.native_geofence.bridge.DeferredGeofenceCallbackDelivery
 import com.chunkytofustudios.native_geofence.bridge.NativeGeofenceCallbackDelivery
 import com.chunkytofustudios.native_geofence.bridge.NativeGeofenceCallbackEnqueueResult
 import com.chunkytofustudios.native_geofence.generated.GeofenceCallbackParamsWire
@@ -28,6 +30,7 @@ import com.google.android.gms.location.GeofencingEvent
 import com.google.android.gms.location.GeofenceStatusCodes
 import com.google.android.gms.location.LocationServices
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 
 internal sealed interface GeofenceBroadcastOutcome {
     data class Callbacks(val routing: GeofenceCallbackRoutingResult) : GeofenceBroadcastOutcome
@@ -48,6 +51,12 @@ internal typealias NativeCallbackDeliveryEnqueue = (
     Context,
     GeofenceCallbackParamsWire,
     (NativeGeofenceCallbackEnqueueResult) -> Unit,
+) -> Unit
+
+internal typealias NativeCallbackDeliveryDefer = (
+    Context,
+    GeofenceCallbackParamsWire,
+    (Boolean) -> Unit,
 ) -> Unit
 
 /** Keeps the broadcast lease tied to completion of the public delivery boundary. */
@@ -126,17 +135,105 @@ internal class GeofenceBroadcastCallbackEnqueuer(
     }
 }
 
+/** Persists stale callback groups before releasing the broadcast lease. */
+internal class GeofenceBroadcastCallbackDeferrer(
+    private val defer: NativeCallbackDeliveryDefer =
+        DeferredGeofenceCallbackDelivery::defer,
+    private val fallbackEnqueue: NativeCallbackDeliveryEnqueue =
+        NativeGeofenceCallbackDelivery::enqueue,
+    private val eventId: () -> String = { UUID.randomUUID().toString() },
+) {
+    fun defer(
+        context: Context,
+        groups: List<GeofenceCallbackParamsWire>,
+        barrier: BroadcastCompletionBarrier,
+    ) {
+        if (groups.isEmpty()) return
+        val tickets = groups.map { barrier.ticket() }
+        groups.forEachIndexed { index, params ->
+            val traceId = eventId()
+            val identified = params.copy(eventId = traceId, traceId = traceId)
+            val deferralResolved = AtomicBoolean(false)
+            fun finishDeferral(accepted: Boolean) {
+                if (!deferralResolved.compareAndSet(false, true)) return
+                if (accepted) {
+                    tickets[index]()
+                } else {
+                    enqueueFallback(context, identified, tickets[index])
+                }
+            }
+            try {
+                defer(
+                    context,
+                    identified,
+                ) {
+                    finishDeferral(it)
+                }
+            } catch (error: Throwable) {
+                runCatching {
+                    NativeGeofenceLogger.e(
+                        context,
+                        TAG,
+                        "Failed to dispatch stale callback deferral.",
+                        error,
+                    )
+                }
+                finishDeferral(false)
+            }
+        }
+    }
+
+    private fun enqueueFallback(
+        context: Context,
+        params: GeofenceCallbackParamsWire,
+        completion: () -> Unit,
+    ) {
+        try {
+            fallbackEnqueue(context, params) { outcome ->
+                if (outcome == NativeGeofenceCallbackEnqueueResult.REJECTED) {
+                    runCatching {
+                        NativeGeofenceLogger.e(
+                            context,
+                            TAG,
+                            "Both stale callback deferral and durable fallback were rejected.",
+                        )
+                    }
+                }
+                completion()
+            }
+        } catch (error: Throwable) {
+            runCatching {
+                NativeGeofenceLogger.e(
+                    context,
+                    TAG,
+                    "Failed to dispatch stale callback fallback.",
+                    error,
+                )
+            }
+            completion()
+        }
+    }
+
+    private companion object {
+        const val TAG = "GeofenceBroadcastCallbackDeferrer"
+    }
+}
+
 class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
     private val callbackEnqueuer = GeofenceBroadcastCallbackEnqueuer()
+    private val callbackDeferrer = GeofenceBroadcastCallbackDeferrer()
 
     override fun onReceive(context: Context, intent: Intent) {
         val appContext = context.applicationContext
         NativeGeofenceLogger.d(appContext, TAG, "Geofence broadcast received.")
+        CallbackPayloadEnqueueRecovery.recover(appContext)
 
         val routing = when (val outcome = getGeofenceBroadcastOutcome(appContext, intent)) {
             is GeofenceBroadcastOutcome.Callbacks -> {
                 val routing = outcome.routing
-                val callbackCount = routing.callbackGroups.sumOf { it.geofences.size }
+                val callbackCount = (
+                    routing.callbackGroups + routing.staleCallbackGroups
+                    ).sumOf { it.geofences.size }
                 val diagnosticOutcome = when {
                     routing.callbackGroups.isNotEmpty() -> "resolved"
                     routing.orphanIds.isNotEmpty() -> "orphaned"
@@ -146,7 +243,8 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
                 NativeGeofenceDiagnostics.record(
                     appContext,
                     NativeGeofenceDiagnosticStage.BROADCAST,
-                    succeeded = routing.callbackGroups.isNotEmpty(),
+                    succeeded = routing.callbackGroups.isNotEmpty() ||
+                        routing.staleCallbackGroups.isNotEmpty(),
                     outcome = diagnosticOutcome,
                     geofenceCount = callbackCount
                 )
@@ -177,11 +275,13 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
             NativeGeofenceLogger.w(
                 appContext,
                 TAG,
-                "Ignored ${routing.staleIds.size} callback registration(s) from an older package."
+                "Deferring ${routing.staleIds.size} callback registration(s) from an older package."
             )
         }
 
-        val taskCount = routing.callbackGroups.size + routing.orphanIds.size
+        val taskCount = routing.callbackGroups.size +
+            routing.staleCallbackGroups.size +
+            routing.orphanIds.size
         if (taskCount == 0) {
             NativeGeofenceLogger.w(
                 appContext,
@@ -194,6 +294,7 @@ class NativeGeofenceBroadcastReceiver : BroadcastReceiver() {
         val lease = RecoveryBroadcastLease(goAsync())
         val barrier = BroadcastCompletionBarrier(taskCount, lease::finish)
         enqueueCallbackGroups(appContext, routing.callbackGroups, barrier)
+        callbackDeferrer.defer(appContext, routing.staleCallbackGroups, barrier)
         cleanupOrphans(appContext, routing.orphanIds, barrier)
     }
 

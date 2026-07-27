@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.core.content.ContextCompat
 import com.chunkytofustudios.native_geofence.Constants
+import com.chunkytofustudios.native_geofence.bridge.DeferredGeofenceCallbackDelivery
 import com.chunkytofustudios.native_geofence.generated.ActiveGeofenceWire
 import com.chunkytofustudios.native_geofence.generated.FlutterError
 import com.chunkytofustudios.native_geofence.generated.GeofenceWire
@@ -118,7 +119,9 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                     )
                     .commit()
             },
-            afterPersisted = ::retryRecoveryAfterDispatcherInitialization,
+            afterPersisted = {
+                retryRecoveryAfterDispatcherInitialization()
+            },
         )
         NativeGeofenceLogger.d(context, TAG, "Initialized NativeGeofenceApi.")
     }
@@ -1064,6 +1067,11 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
             registrationFingerprint = decision.desiredRegistrationFingerprint,
         )
         if (!decision.requiresSynchronization) {
+            DeferredGeofenceCallbackDelivery.replay(
+                context = context,
+                synchronizedIds = desired.map { it.id }.toSet(),
+                registrationStateAuthoritative = removeUnlisted,
+            )
             callback(Result.success(resultWire))
             return
         }
@@ -1140,6 +1148,11 @@ class NativeGeofenceApiImpl(private val context: Context) : NativeGeofenceApi {
                 return
             }
             if (terminalStarted.compareAndSet(false, true)) {
+                DeferredGeofenceCallbackDelivery.replay(
+                    context = context,
+                    synchronizedIds = desired.map { it.id }.toSet(),
+                    registrationStateAuthoritative = removeUnlisted,
+                )
                 callback(Result.success(resultWire))
             }
         }

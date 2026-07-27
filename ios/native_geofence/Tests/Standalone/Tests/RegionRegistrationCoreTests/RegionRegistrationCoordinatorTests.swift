@@ -65,6 +65,52 @@ private final class CompletionRecorder {
 }
 
 final class RegionRegistrationCoordinatorTests: XCTestCase {
+    func testPendingBoundaryCandidatesPreserveBothPossibleWinners() {
+        let previous = region(id: "office", radius: 50)
+        let requested = region(id: "office", radius: 100)
+        let monitor = FakeMonitor([previous])
+        let handles = HandleStore(["office": 1])
+        let contexts = ContextStore(["office": 11])
+        let subject = makeSubject(monitor, handles, contexts)
+
+        _ = subject.start(
+            region: requested,
+            callbackHandle: 2,
+            callbackContext: 22,
+            initialTrigger: false,
+            completion: { _ in }
+        )
+
+        let candidates = subject.pendingBoundaryResolutionCandidates(
+            id: "office"
+        )
+        XCTAssertEqual(candidates.map(\.callbackHandle), [1, 2])
+        XCTAssertEqual(candidates.map(\.callbackContext), [11, 22])
+        XCTAssertTrue(
+            RegionMonitoringSemantics.matches(candidates[0].region, previous)
+        )
+        XCTAssertTrue(
+            RegionMonitoringSemantics.matches(candidates[1].region, requested)
+        )
+
+        _ = subject.didFailMonitoring(
+            for: requested,
+            error: NSError(domain: "test", code: 1)
+        )
+
+        let restoration = subject.pendingBoundaryResolutionCandidates(
+            id: "office"
+        )
+        XCTAssertEqual(restoration.map(\.callbackHandle), [1, 2])
+        XCTAssertEqual(restoration.map(\.callbackContext), [11, 22])
+        XCTAssertTrue(
+            RegionMonitoringSemantics.matches(restoration[0].region, previous)
+        )
+        XCTAssertTrue(
+            RegionMonitoringSemantics.matches(restoration[1].region, requested)
+        )
+    }
+
     func testChangedMetadataPublishesOnlyAfterMonitoringConfirmation() {
         let previous = region(id: "office", radius: 50)
         let requested = region(id: "office", radius: 100)
@@ -250,6 +296,7 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
             monitor,
             handles,
             timeoutSeconds: 3,
+            maximumConfirmationAttempts: 1,
             scheduleTimeout: { delay, workItem in
                 scheduledDelay = delay
                 timeout = workItem
@@ -272,6 +319,37 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
         XCTAssertNil(subject.didStartMonitoring(for: requested))
         XCTAssertEqual(completion.count, 1)
         XCTAssertEqual(monitor.stopped.map(\.identifier), ["office", "office"])
+    }
+
+    func testLateConfirmationDuringRetryCommitsRegistration() {
+        let monitor = FakeMonitor()
+        let handles = HandleStore()
+        var timeouts: [DispatchWorkItem] = []
+        let subject = makeSubject(
+            monitor,
+            handles,
+            scheduleTimeout: { _, workItem in timeouts.append(workItem) }
+        )
+        let completion = CompletionRecorder()
+        let requested = region(id: "office")
+        _ = subject.start(
+            region: requested,
+            callbackHandle: 2,
+            initialTrigger: true,
+            completion: completion.record
+        )
+
+        timeouts[0].perform()
+        XCTAssertEqual(completion.count, 0)
+        XCTAssertEqual(monitor.started.count, 2)
+
+        let committed = subject.didStartMonitoring(for: requested)
+
+        XCTAssertTrue(committed?.region === requested)
+        XCTAssertEqual(committed?.initialTrigger, true)
+        XCTAssertEqual(completion.successes, 1)
+        XCTAssertEqual(handles.values["office"], 2)
+        XCTAssertFalse(subject.hasPendingMutation(id: "office"))
     }
 
     func testFailedReplacementCompletesOnlyAfterExactPriorRegionIsRestored() {
@@ -594,6 +672,7 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
         let subject = makeSubject(
             monitor,
             handles,
+            maximumConfirmationAttempts: 1,
             scheduleTimeout: { _, workItem in timeouts.append(workItem) },
             invalidateCommittedRegion: gate.remove
         )
@@ -646,6 +725,7 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
         let subject = makeSubject(
             monitor,
             handles,
+            maximumConfirmationAttempts: 1,
             scheduleTimeout: { _, workItem in timeouts.append(workItem) }
         )
         let completion = CompletionRecorder()
@@ -957,7 +1037,7 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
         )
         XCTAssertEqual(blocked.failures.count, 1)
 
-        subject.clearRemovalTombstone(id: "office")
+        subject.clearRemovalTombstone(matching: active)
         let restored = CompletionRecorder()
         let committed = subject.start(
             region: region(id: "office"),
@@ -979,7 +1059,7 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
         let subject = makeSubject(monitor, handles)
         let restored = CompletionRecorder()
         subject.recordRemoval(of: active)
-        subject.clearRemovalTombstone(id: "office")
+        subject.clearRemovalTombstone(matching: active)
 
         let committed = subject.startForSynchronization(
             region: region(id: "office"),
@@ -1307,6 +1387,7 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
         _ handles: HandleStore,
         _ contexts: ContextStore = ContextStore(),
         timeoutSeconds: TimeInterval = 10,
+        maximumConfirmationAttempts: Int = 3,
         scheduleTimeout: @escaping RegionRegistrationCoordinator.TimeoutScheduler = { _, _ in },
         restoreCommittedRegion: @escaping RegionRegistrationCoordinator.CommittedRegionRestorer = { _ in },
         invalidateCommittedRegion: @escaping RegionRegistrationCoordinator.CommittedRegionInvalidator = { _ in },
@@ -1316,8 +1397,10 @@ final class RegionRegistrationCoordinatorTests: XCTestCase {
         RegionRegistrationCoordinator(
             monitor: monitor,
             timeoutSeconds: timeoutSeconds,
+            maximumConfirmationAttempts: maximumConfirmationAttempts,
             scheduleTimeout: scheduleTimeout,
             getCallbackHandle: { handles.values[$0] },
+            getCallbackContext: { contexts.values[$0] },
             setCallbackHandle: handles.set,
             removeCallbackHandle: handles.remove,
             setCallbackContext: contexts.set,

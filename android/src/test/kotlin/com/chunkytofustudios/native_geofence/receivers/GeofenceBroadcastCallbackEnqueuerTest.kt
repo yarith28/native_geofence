@@ -62,3 +62,68 @@ class GeofenceBroadcastCallbackEnqueuerTest {
         callbackHandle = 1L,
     )
 }
+
+class GeofenceBroadcastCallbackDeferrerTest {
+    @Test
+    fun `stale callback persistence owns the broadcast ticket until completion`() {
+        val deferred = mutableListOf<GeofenceCallbackParamsWire>()
+        val completions = mutableListOf<(Boolean) -> Unit>()
+        var barrierCompletions = 0
+        val subject = GeofenceBroadcastCallbackDeferrer(
+            defer = { _, params, completion ->
+                deferred += params
+                completions += completion
+            },
+            eventId = { "stale-event" },
+        )
+
+        subject.defer(
+            ContextWrapper(null),
+            listOf(params()),
+            BroadcastCompletionBarrier(1) { barrierCompletions++ },
+        )
+
+        assertEquals(listOf("stale-event"), deferred.map { it.eventId })
+        assertEquals(listOf("stale-event"), deferred.map { it.traceId })
+        assertEquals(0, barrierCompletions)
+        completions.single()(true)
+        completions.single()(false)
+        assertEquals(1, barrierCompletions)
+    }
+
+    @Test
+    fun `rejected deferral transfers the event to durable fallback before release`() {
+        val deferredCompletions = mutableListOf<(Boolean) -> Unit>()
+        val fallbackParams = mutableListOf<GeofenceCallbackParamsWire>()
+        val fallbackCompletions =
+            mutableListOf<(NativeGeofenceCallbackEnqueueResult) -> Unit>()
+        var barrierCompletions = 0
+        val subject = GeofenceBroadcastCallbackDeferrer(
+            defer = { _, _, completion -> deferredCompletions += completion },
+            fallbackEnqueue = { _, params, completion ->
+                fallbackParams += params
+                fallbackCompletions += completion
+            },
+            eventId = { "stale-event" },
+        )
+
+        subject.defer(
+            ContextWrapper(null),
+            listOf(params()),
+            BroadcastCompletionBarrier(1) { barrierCompletions++ },
+        )
+        deferredCompletions.single()(false)
+
+        assertEquals(0, barrierCompletions)
+        assertEquals(listOf("stale-event"), fallbackParams.map { it.eventId })
+        fallbackCompletions.single()(NativeGeofenceCallbackEnqueueResult.UNCONFIRMED)
+        assertEquals(1, barrierCompletions)
+    }
+
+    private fun params() = GeofenceCallbackParamsWire(
+        geofences = emptyList(),
+        event = GeofenceEvent.ENTER,
+        location = null,
+        callbackHandle = 1L,
+    )
+}

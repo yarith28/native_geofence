@@ -66,7 +66,7 @@ class CallbackDeliveryPolicyTest {
     }
 
     @Test
-    fun `invalid and missing callbacks are terminal while generic Dart errors retry`() {
+    fun `invalid callbacks require refresh while generic Dart errors retry`() {
         val callbackNotFound = FlutterError(
             NativeGeofenceErrorCode.CALLBACK_NOT_FOUND.raw.toString(),
             "missing"
@@ -98,7 +98,7 @@ class CallbackDeliveryPolicyTest {
                 CallbackDeliveryFailure.DART_CALLBACK_INVALID
             )
         )
-        assertFalse(
+        assertTrue(
             CallbackDeliveryPolicy.requiresCallbackRefresh(
                 CallbackDeliveryFailure.DISPATCHER_NOT_FOUND
             )
@@ -106,6 +106,55 @@ class CallbackDeliveryPolicyTest {
         assertFalse(
             CallbackDeliveryPolicy.requiresCallbackRefresh(
                 CallbackDeliveryFailure.INFRASTRUCTURE
+            )
+        )
+    }
+
+    @Test
+    fun `package and callback metadata failures move to the durable refresh queue`() {
+        val failures = listOf(
+            CallbackDeliveryFailure.PACKAGE_STALE,
+            CallbackDeliveryFailure.DISPATCHER_MISSING,
+            CallbackDeliveryFailure.DISPATCHER_STALE,
+            CallbackDeliveryFailure.DISPATCHER_NOT_FOUND,
+            CallbackDeliveryFailure.DART_CALLBACK_NOT_FOUND,
+            CallbackDeliveryFailure.DART_CALLBACK_INVALID,
+        )
+
+        assertTrue(failures.all(CallbackDeliveryPolicy::shouldDeferForCallbackRefresh))
+        assertEquals(
+            CallbackDeliveryDecision(
+                CallbackWorkerResult.SUCCESS,
+                cleanupPayload = true,
+            ),
+            CallbackDeliveryPolicy.deferredForCallbackRefresh(),
+        )
+        assertEquals(
+            CallbackDeliveryDecision(
+                CallbackWorkerResult.RETRY,
+                cleanupPayload = false,
+            ),
+            CallbackDeliveryPolicy.callbackRefreshDeferralFailure(),
+        )
+        assertEquals(
+            CallbackDeliveryDecision(
+                CallbackWorkerResult.SUCCESS,
+                cleanupPayload = false,
+            ),
+            CallbackDeliveryPolicy.transferredForCallbackRefreshRetry(),
+        )
+        assertEquals(
+            CallbackDeliveryDecision(
+                CallbackWorkerResult.SUCCESS,
+                cleanupPayload = true,
+            ),
+            CallbackDeliveryPolicy.transferredForCallbackRefreshRetry(
+                cleanupOriginalPayload = true,
+            ),
+        )
+        assertFalse(
+            CallbackDeliveryPolicy.shouldDeferForCallbackRefresh(
+                CallbackDeliveryFailure.DART_DELIVERY,
             )
         )
     }

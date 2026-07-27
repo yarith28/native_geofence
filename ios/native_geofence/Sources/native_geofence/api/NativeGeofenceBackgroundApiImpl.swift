@@ -10,7 +10,8 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
     private let binaryMessenger: FlutterBinaryMessenger
     private let stateLock = NSLock()
     private var cleanup: (() -> Void)?
-    private var deliveryCompletions: [String: (Bool) -> Void] = [:]
+    private var deliveryCompletions:
+        [String: (IosGeofenceCallbackDeliveryOutcome) -> Void] = [:]
     private var closed = false
 
     private lazy var session = SerialCallbackSession<GeofenceCallbackParamsWire>(
@@ -41,7 +42,8 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
     @discardableResult
     func geofenceTriggered(
         params: GeofenceCallbackParamsWire,
-        completion deliveryCompletion: @escaping (Bool) -> Void
+        completion deliveryCompletion:
+            @escaping (IosGeofenceCallbackDeliveryOutcome) -> Void
     ) -> Bool {
         guard let eventId = params.eventId else {
             log.error("Background callback had no delivery-attempt ID; rejecting event.")
@@ -85,9 +87,8 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
                     )
                     return
                 }
-                let succeeded: Bool
-                if case .success = result {
-                    succeeded = true
+                let outcome = iosGeofenceCallbackDeliveryOutcome(result)
+                if outcome.didSucceed {
                     NativeGeofenceDiagnostics.record(
                         .worker,
                         succeeded: true,
@@ -98,11 +99,10 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
                         "Dart callback for geofence IDs=[\(Self.geofenceIds(params))] completed."
                     )
                 } else {
-                    succeeded = false
                     NativeGeofenceDiagnostics.record(
                         .worker,
                         succeeded: false,
-                        outcome: "dart_delivery_failed",
+                        outcome: Self.diagnosticOutcome(outcome),
                         geofenceCount: params.geofences.count
                     )
                     self.log.error(
@@ -110,7 +110,7 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
                     )
                 }
                 if let eventId = params.eventId {
-                    self.takeDeliveryCompletion(eventId: eventId)?(succeeded)
+                    self.takeDeliveryCompletion(eventId: eventId)?(outcome)
                 }
             }
         }
@@ -142,7 +142,10 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
     private func close(
         reason: SerialCallbackSession<GeofenceCallbackParamsWire>.CloseReason
     ) {
-        let closeActions: (() -> (cleanup: (() -> Void)?, completions: [(Bool) -> Void]))? = withStateLock {
+        let closeActions: (() -> (
+            cleanup: (() -> Void)?,
+            completions: [(IosGeofenceCallbackDeliveryOutcome) -> Void]
+        ))? = withStateLock {
             guard !closed else { return nil }
             closed = true
             defer { cleanup = nil }
@@ -185,12 +188,27 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
         if let cleanupToRun = actions.cleanup {
             runCleanupOnMain(cleanupToRun)
         }
-        actions.completions.forEach { $0(false) }
+        actions.completions.forEach { $0(.retryableFailure) }
     }
 
-    private func takeDeliveryCompletion(eventId: String) -> ((Bool) -> Void)? {
+    private func takeDeliveryCompletion(
+        eventId: String
+    ) -> ((IosGeofenceCallbackDeliveryOutcome) -> Void)? {
         withStateLock {
             deliveryCompletions.removeValue(forKey: eventId)
+        }
+    }
+
+    private static func diagnosticOutcome(
+        _ outcome: IosGeofenceCallbackDeliveryOutcome
+    ) -> String {
+        switch outcome {
+        case .succeeded:
+            return "completed"
+        case .retryableFailure:
+            return "dart_delivery_retryable_failure"
+        case .terminalFailure(let reason):
+            return "dart_delivery_terminal_\(reason.rawValue)"
         }
     }
 

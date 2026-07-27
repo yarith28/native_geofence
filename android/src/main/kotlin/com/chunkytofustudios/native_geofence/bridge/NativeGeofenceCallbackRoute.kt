@@ -40,10 +40,15 @@ internal fun enqueueFinalCallbackDeliverySpec(
 internal fun callbackWorkerInputData(
     payloadReference: String,
     deliverySpec: NativeGeofenceCallbackDeliverySpec,
+    callbackRefreshTransfer: Boolean = false,
 ): Data = Data.Builder()
     .putString(Constants.WORKER_PAYLOAD_REFERENCE_KEY, payloadReference)
     .putString(Constants.WORKER_DELIVERY_ROUTE_KEY, deliverySpec.route.storageValue)
     .putString(Constants.WORKER_DELIVERY_SOURCE_KEY, deliverySpec.source)
+    .putBoolean(
+        Constants.WORKER_CALLBACK_REFRESH_TRANSFER_KEY,
+        callbackRefreshTransfer,
+    )
     .build()
 
 internal class NativeGeofenceCallbackWorkerRouter private constructor(

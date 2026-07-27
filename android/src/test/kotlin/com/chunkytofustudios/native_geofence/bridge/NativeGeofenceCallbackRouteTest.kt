@@ -10,9 +10,11 @@ import com.chunkytofustudios.native_geofence.generated.GeofenceEvent
 import com.chunkytofustudios.native_geofence.util.CallbackEnqueueOperation
 import com.chunkytofustudios.native_geofence.util.CallbackPayloadBackend
 import com.chunkytofustudios.native_geofence.util.GeofenceCallbackPayloadStore
+import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class NativeGeofenceCallbackRouteTest {
@@ -37,6 +39,28 @@ class NativeGeofenceCallbackRouteTest {
 
         assertEquals(NativeGeofenceCallbackRoute.FINAL_DART_CALLBACK, route)
         assertFalse(route.requiresNativeBridge)
+    }
+
+    @Test
+    fun `callback refresh transfer preserves route source and transfer mode`() {
+        val inputData = callbackWorkerInputData(
+            payloadReference = PAYLOAD_REFERENCE,
+            deliverySpec = NativeGeofenceCallbackDeliverySpec(
+                route = NativeGeofenceCallbackRoute.FINAL_DART_CALLBACK,
+                source = "smart_geofence",
+            ),
+            callbackRefreshTransfer = true,
+        )
+
+        assertEquals(
+            NativeGeofenceCallbackRoute.FINAL_DART_CALLBACK.storageValue,
+            inputData.getString(Constants.WORKER_DELIVERY_ROUTE_KEY),
+        )
+        assertEquals(
+            "smart_geofence",
+            inputData.getString(Constants.WORKER_DELIVERY_SOURCE_KEY),
+        )
+        assertTrue(inputData.getBoolean(Constants.WORKER_CALLBACK_REFRESH_TRANSFER_KEY, false))
     }
 
     @Test
@@ -76,6 +100,7 @@ class NativeGeofenceCallbackRouteTest {
 
         assertEquals(listOf(NativeGeofenceCallbackEnqueueResult.ACCEPTED), outcomes)
         assertTrue(backend.values.containsKey(PAYLOAD_REFERENCE))
+        assertEquals(UUID.fromString(PAYLOAD_REFERENCE), workRequest.id)
         assertEquals(
             NativeGeofenceBackgroundWorker::class.java.name,
             workRequest.workSpec.workerClassName,
@@ -92,6 +117,16 @@ class NativeGeofenceCallbackRouteTest {
             "smart_geofence",
             inputData.getString(Constants.WORKER_DELIVERY_SOURCE_KEY),
         )
+        val recoverySpec = CallbackPayloadRecoveryPlanner.makeSpec(
+            payloadStore.recoverablePayloads().getOrThrow().single(),
+        )
+        assertNotNull(recoverySpec)
+        assertEquals(UUID.fromString(PAYLOAD_REFERENCE), recoverySpec.workRequestId)
+        assertEquals(
+            NativeGeofenceCallbackRoute.FINAL_DART_CALLBACK,
+            recoverySpec.deliverySpec.route,
+        )
+        assertEquals("smart_geofence", recoverySpec.deliverySpec.source)
 
         var nativeBridgeCalls = 0
         var finalCallbackCalls = 0
@@ -119,6 +154,9 @@ class NativeGeofenceCallbackRouteTest {
         override fun read(reference: String): Result<String?> = Result.success(values[reference])
 
         override fun delete(reference: String): Boolean = values.remove(reference) != null
+
+        override fun listReferences(): Result<List<String>> =
+            Result.success(values.keys.toList())
     }
 
     private companion object {
