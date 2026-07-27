@@ -145,6 +145,7 @@ final class RegionRegistrationCoordinator {
     typealias CommittedRegionRestorer = (CLCircularRegion) -> Void
     typealias CommittedRegionInvalidator = (String) -> Void
     typealias MatchingCommittedRegionInvalidator = (CLRegion) -> Bool
+    typealias DiagnosticRecorder = (String) -> Void
 
     private let monitor: any RegionMonitoring
     private let timeoutSeconds: TimeInterval
@@ -158,6 +159,7 @@ final class RegionRegistrationCoordinator {
     private let restoreCommittedRegion: CommittedRegionRestorer
     private let invalidateCommittedRegion: CommittedRegionInvalidator
     private let invalidateMatchingCommittedRegion: MatchingCommittedRegionInvalidator
+    private let recordDiagnostic: DiagnosticRecorder
     private var pendingRegistrations: [String: PendingRegionRegistration] = [:]
     private var pendingRestorations: [String: PendingRegionRestoration] = [:]
     private var cancelledRegistrations: [String: CancelledRegionRegistration] = [:]
@@ -178,7 +180,8 @@ final class RegionRegistrationCoordinator {
         setCallbackContext: @escaping (String, Int64?) -> Void = { _, _ in },
         restoreCommittedRegion: @escaping CommittedRegionRestorer = { _ in },
         invalidateCommittedRegion: @escaping CommittedRegionInvalidator = { _ in },
-        invalidateMatchingCommittedRegion: @escaping MatchingCommittedRegionInvalidator = { _ in false }
+        invalidateMatchingCommittedRegion: @escaping MatchingCommittedRegionInvalidator = { _ in false },
+        recordDiagnostic: @escaping DiagnosticRecorder = { _ in }
     ) {
         self.monitor = monitor
         self.timeoutSeconds = timeoutSeconds
@@ -192,6 +195,7 @@ final class RegionRegistrationCoordinator {
         self.restoreCommittedRegion = restoreCommittedRegion
         self.invalidateCommittedRegion = invalidateCommittedRegion
         self.invalidateMatchingCommittedRegion = invalidateMatchingCommittedRegion
+        self.recordDiagnostic = recordDiagnostic
     }
 
     /// Starts monitoring and returns a committed registration immediately when
@@ -378,6 +382,9 @@ final class RegionRegistrationCoordinator {
             )
             setCallbackHandle(id, pending.requestedCallbackHandle)
             setCallbackContext(id, pending.requestedCallbackContext)
+            recordDiagnostic(
+                "Confirmed monitoring for geofence ID=\(id) on attempt \(pending.confirmationAttempt)/\(maximumConfirmationAttempts)."
+            )
             pending.completion(.success(()))
             return CommittedRegionRegistration(
                 region: pending.requestedRegion,
@@ -400,6 +407,9 @@ final class RegionRegistrationCoordinator {
             if let restoredRegion = restoration.region as? CLCircularRegion {
                 restoreCommittedRegion(restoredRegion)
             }
+            recordDiagnostic(
+                "Confirmed restoration for geofence ID=\(id) on attempt \(restoration.confirmationAttempt)/\(maximumConfirmationAttempts)."
+            )
             restoration.completion(.failure(restoration.originalFailure))
             return nil
         }
@@ -693,6 +703,9 @@ final class RegionRegistrationCoordinator {
         guard pendingRegistrations[id] === pending else { return }
         pending.confirmationAttempt += 1
         let attempt = pending.confirmationAttempt
+        recordDiagnostic(
+            "Started monitoring confirmation attempt \(attempt)/\(maximumConfirmationAttempts) for geofence ID=\(id)."
+        )
         let timeoutWorkItem = DispatchWorkItem {
             [weak self, weak pending] in
             guard let self,
@@ -703,6 +716,9 @@ final class RegionRegistrationCoordinator {
                 return
             }
             guard attempt >= maximumConfirmationAttempts else {
+                recordDiagnostic(
+                    "Monitoring confirmation attempt \(attempt)/\(maximumConfirmationAttempts) timed out for geofence ID=\(id); retrying."
+                )
                 monitor.stopMonitoring(for: pending.requestedRegion)
                 beginRegistrationConfirmationAttempt(
                     id: id,
@@ -710,6 +726,9 @@ final class RegionRegistrationCoordinator {
                 )
                 return
             }
+            recordDiagnostic(
+                "Monitoring confirmation exhausted \(maximumConfirmationAttempts) attempts for geofence ID=\(id)."
+            )
             finishRegistrationWithFailure(
                 id: id,
                 matching: pending.requestedRegion,
@@ -747,6 +766,9 @@ final class RegionRegistrationCoordinator {
             completion: completion
         )
         pendingRestorations[id] = restoration
+        recordDiagnostic(
+            "Restoring the previous registration for geofence ID=\(id) after replacement failure."
+        )
         beginRestorationConfirmationAttempt(
             id: id,
             restoration: restoration
@@ -760,6 +782,9 @@ final class RegionRegistrationCoordinator {
         guard pendingRestorations[id] === restoration else { return }
         restoration.confirmationAttempt += 1
         let attempt = restoration.confirmationAttempt
+        recordDiagnostic(
+            "Started restoration confirmation attempt \(attempt)/\(maximumConfirmationAttempts) for geofence ID=\(id)."
+        )
         let timeoutWorkItem = DispatchWorkItem {
             [weak self, weak restoration] in
             guard let self,
@@ -770,6 +795,9 @@ final class RegionRegistrationCoordinator {
                 return
             }
             guard attempt >= maximumConfirmationAttempts else {
+                recordDiagnostic(
+                    "Restoration confirmation attempt \(attempt)/\(maximumConfirmationAttempts) timed out for geofence ID=\(id); retrying."
+                )
                 monitor.stopMonitoring(for: restoration.region)
                 beginRestorationConfirmationAttempt(
                     id: id,
@@ -777,6 +805,9 @@ final class RegionRegistrationCoordinator {
                 )
                 return
             }
+            recordDiagnostic(
+                "Restoration confirmation exhausted \(maximumConfirmationAttempts) attempts for geofence ID=\(id)."
+            )
             finishRestorationWithFailure(
                 id: id,
                 matching: restoration.region,

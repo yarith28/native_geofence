@@ -3,8 +3,9 @@
 * Routes iOS enter and exit callbacks by the committed Core Location region
   identifier while keeping unsolicited initial-state callbacks isolated, and
   persists a bounded pre-gate delivery trace for post-suspension diagnostics.
-* Adds a native log-file verbose switch so production file logging can retain
-  info, warning, and error records without high-volume debug trace.
+* Adds bounded app-private native file logging on iOS and a cross-platform
+  verbose switch; reliability diagnostics, info, warning, and error records
+  remain available without high-volume debug trace.
 * Prevents duplicate Android callback delivery between direct and recovery
   routes and initializes Flutter before callback lookup during cold background
   startup.

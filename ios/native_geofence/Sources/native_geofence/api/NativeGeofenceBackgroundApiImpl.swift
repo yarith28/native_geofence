@@ -7,6 +7,9 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
         subsystem: Constants.PACKAGE_NAME,
         category: "NativeGeofenceBackgroundApiImpl"
     )
+    private let fileLog = IosNativeGeofenceFileLogger(
+        category: "NativeGeofenceBackgroundApiImpl"
+    )
     private let binaryMessenger: FlutterBinaryMessenger
     private let stateLock = NSLock()
     private var cleanup: (() -> Void)?
@@ -47,6 +50,7 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
     ) -> Bool {
         guard let eventId = params.eventId else {
             log.error("Background callback had no delivery-attempt ID; rejecting event.")
+            fileLog.error("Background callback had no delivery-attempt ID; rejecting event.")
             return false
         }
         let canEnqueue = withStateLock {
@@ -58,9 +62,13 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
         guard canEnqueue, session.enqueue(params) else {
             _ = takeDeliveryCompletion(eventId: eventId)
             log.error("Background callback session is closed; rejecting event.")
+            fileLog.error("Background callback session is closed; rejecting event.")
             return false
         }
         log.debug(
+            "Accepted geofence callback for IDs=[\(Self.geofenceIds(params))]."
+        )
+        fileLog.diagnostic(
             "Accepted geofence callback for IDs=[\(Self.geofenceIds(params))]."
         )
         return true
@@ -69,6 +77,7 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
     func triggerApiInitialized() throws {
         guard withStateLock({ !closed }) else {
             log.debug("Ignoring trigger API initialization for a closed session.")
+            fileLog.debug("Ignoring trigger API initialization for a closed session.")
             return
         }
         let triggerApi = NativeGeofenceTriggerApi(binaryMessenger: binaryMessenger)
@@ -80,9 +89,15 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
             self.log.debug(
                 "Calling Dart callback for geofence IDs=[\(Self.geofenceIds(params))] event=\(String(describing: params.event))."
             )
+            self.fileLog.diagnostic(
+                "Calling Dart callback for geofence IDs=[\(Self.geofenceIds(params))] event=\(String(describing: params.event))."
+            )
             triggerApi.geofenceTriggered(params: params) { result in
                 guard completion() else {
                     self.log.debug(
+                        "Ignoring late Dart callback completion for geofence IDs=[\(Self.geofenceIds(params))]."
+                    )
+                    self.fileLog.debug(
                         "Ignoring late Dart callback completion for geofence IDs=[\(Self.geofenceIds(params))]."
                     )
                     return
@@ -98,6 +113,9 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
                     self.log.debug(
                         "Dart callback for geofence IDs=[\(Self.geofenceIds(params))] completed."
                     )
+                    self.fileLog.diagnostic(
+                        "Dart callback for geofence IDs=[\(Self.geofenceIds(params))] completed."
+                    )
                 } else {
                     NativeGeofenceDiagnostics.record(
                         .worker,
@@ -106,6 +124,9 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
                         geofenceCount: params.geofences.count
                     )
                     self.log.error(
+                        "Dart callback for geofence IDs=[\(Self.geofenceIds(params))] failed."
+                    )
+                    self.fileLog.error(
                         "Dart callback for geofence IDs=[\(Self.geofenceIds(params))] failed."
                     )
                 }
@@ -118,6 +139,7 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
 
     func promoteToForeground(completion: @escaping (Result<Void, Error>) -> Void) {
         log.info("promoteToForeground called. iOS does not distinguish between foreground and background, nothing to do here.")
+        fileLog.info("promoteToForeground called. iOS does not distinguish between foreground and background, nothing to do here.")
         NativeGeofenceDiagnostics.record(
             .foreground,
             succeeded: true,
@@ -128,6 +150,7 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
 
     func demoteToBackground() throws {
         log.info("demoteToBackground called. iOS does not distinguish between foreground and background, nothing to do here.")
+        fileLog.info("demoteToBackground called. iOS does not distinguish between foreground and background, nothing to do here.")
         NativeGeofenceDiagnostics.record(
             .foreground,
             succeeded: true,
@@ -159,6 +182,7 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
         switch reason {
         case .idle:
             log.debug("Background callback session is idle; cleaning up.")
+            fileLog.debug("Background callback session is idle; cleaning up.")
         case .startupTimeout(let ids):
             NativeGeofenceDiagnostics.record(
                 .worker,
@@ -166,6 +190,9 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
                 outcome: "startup_timeout"
             )
             log.error(
+                "Timed out waiting for Dart geofence API initialization; IDs=[\(ids)]."
+            )
+            fileLog.error(
                 "Timed out waiting for Dart geofence API initialization; IDs=[\(ids)]."
             )
         case .callbackTimeout(let ids):
@@ -177,6 +204,9 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
             log.error(
                 "Timed out waiting for Dart geofence callback; IDs=[\(ids)]."
             )
+            fileLog.error(
+                "Timed out waiting for Dart geofence callback; IDs=[\(ids)]."
+            )
         case .forced(let message):
             NativeGeofenceDiagnostics.record(
                 .worker,
@@ -184,6 +214,7 @@ class NativeGeofenceBackgroundApiImpl: NativeGeofenceBackgroundApi {
                 outcome: "forced_cleanup"
             )
             log.error("\(message)")
+            fileLog.error(message)
         }
         if let cleanupToRun = actions.cleanup {
             runCleanupOnMain(cleanupToRun)

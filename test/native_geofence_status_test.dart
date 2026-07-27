@@ -51,7 +51,7 @@ void main() {
         ),
       ],
       deliveryTraceDroppedCount: 2,
-      packageVersion: '1.3.1',
+      packageVersion: '1.4.0',
       buildRevision: 'abc123',
     );
 
@@ -69,7 +69,7 @@ void main() {
     expect(status.deliveryTrace.single.traceId, 'trace-1');
     expect(status.deliveryTrace.single.outcome, 'native_accepted');
     expect(status.deliveryTraceDroppedCount, 2);
-    expect(status.packageVersion, '1.3.1');
+    expect(status.packageVersion, '1.4.0');
     expect(status.buildRevision, 'abc123');
     expect(status.toJson()['locationPermissionGranted'], isTrue);
     expect(status.toJson()['preciseLocationPermissionGranted'], isNull);

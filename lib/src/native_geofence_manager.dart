@@ -641,16 +641,17 @@ class NativeGeofenceManager {
       .catchError(
           NativeGeofenceExceptionMapper.catchError<List<ActiveGeofence>>);
 
-  /// Configure the app-private Android log file.
+  /// Configure the app-private Android or iOS log file.
   ///
   /// File logging is disabled by default. When enabled, native_geofence writes
   /// a bounded text log that can be fetched with [readLogFile]. Debug trace is
-  /// controlled by [NativeGeofenceLogFileConfig.verbose]. This is a no-op on
-  /// iOS and web.
+  /// controlled by [NativeGeofenceLogFileConfig.verbose]. Reliability-critical
+  /// diagnostics remain in the file when verbose logging is disabled. This is
+  /// a no-op on web and other unsupported platforms.
   Future<void> configureLogFile({
     NativeGeofenceLogFileConfig config = const NativeGeofenceLogFileConfig(),
   }) async {
-    if (!isAndroid) return;
+    if (!isAndroid && !isIos) return;
     try {
       await _logFileChannel.invokeMethod<void>(
         'configureLogFile',
@@ -661,11 +662,11 @@ class NativeGeofenceManager {
     }
   }
 
-  /// Read the current app-private Android log file.
+  /// Read the current app-private Android or iOS log file.
   ///
-  /// Returns an empty string when no file exists or outside Android.
+  /// Returns an empty string when no file exists or on unsupported platforms.
   Future<String> readLogFile() async {
-    if (!isAndroid) return '';
+    if (!isAndroid && !isIos) return '';
     try {
       return await _logFileChannel.invokeMethod<String>('readLogFile') ?? '';
     } catch (e, stackTrace) {
@@ -673,9 +674,9 @@ class NativeGeofenceManager {
     }
   }
 
-  /// Clear the app-private Android log file. No-op outside Android.
+  /// Clear the app-private Android or iOS log file.
   Future<void> clearLogFile() async {
-    if (!isAndroid) return;
+    if (!isAndroid && !isIos) return;
     try {
       await _logFileChannel.invokeMethod<void>('clearLogFile');
     } catch (e, stackTrace) {

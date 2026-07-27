@@ -18,6 +18,9 @@ final class IosGeofenceRuntimeHost {
         subsystem: Constants.PACKAGE_NAME,
         category: "IosGeofenceRuntimeHost"
     )
+    private let fileLog = IosNativeGeofenceFileLogger(
+        category: "IosGeofenceRuntimeHost"
+    )
     private let callbackBackgroundTaskName = "native_geofence.geofence_callback"
     private let mainMessenger: FlutterBinaryMessenger
     private let registerPlugins: FlutterPluginRegistrantCallback
@@ -107,6 +110,7 @@ final class IosGeofenceRuntimeHost {
             binaryMessenger: mainMessenger,
             api: mainBackgroundApi
         )
+        fileLog.diagnostic("Installed main-engine native geofence handlers.")
     }
 
     func detachMainHandlers() {
@@ -129,6 +133,7 @@ final class IosGeofenceRuntimeHost {
             mainTriggerReady = ready
         }
         log.debug("Main-engine trigger API ready=\(ready).")
+        fileLog.diagnostic("Main-engine trigger API ready=\(ready).")
     }
 
     func resumePendingCallbackDelivery() {
@@ -174,6 +179,10 @@ final class IosGeofenceRuntimeHost {
                 outcome: "main_background_task_unavailable",
                 geofenceCount: params.geofences.count
             )
+            log.error("Unable to acquire a background task for main-engine callback delivery.")
+            fileLog.error(
+                "Unable to acquire a background task for main-engine callback delivery."
+            )
             return false
         }
         let watchdog = DispatchWorkItem { [weak self] in
@@ -217,6 +226,9 @@ final class IosGeofenceRuntimeHost {
             outcome: "main_engine_enqueued",
             geofenceCount: params.geofences.count
         )
+        fileLog.diagnostic(
+            "Enqueued main-engine callback delivery for \(params.geofences.count) geofence(s)."
+        )
         return true
     }
 
@@ -233,6 +245,7 @@ final class IosGeofenceRuntimeHost {
         }
         guard let delivery else {
             log.debug("Ignoring completion from an inactive main-engine delivery.")
+            fileLog.debug("Ignoring completion from an inactive main-engine delivery.")
             return
         }
         delivery.watchdog.cancel()
@@ -251,6 +264,28 @@ final class IosGeofenceRuntimeHost {
                         )
                 )
         )
+        let diagnosticOutcome = backgroundTaskExpired
+            ? "background_task_expired"
+            : (
+                timedOut
+                    ? "callback_timeout"
+                    : Self.diagnosticOutcome(
+                        prefix: "callback",
+                        outcome: outcome
+                    )
+            )
+        if outcome.didSucceed && !timedOut && !backgroundTaskExpired {
+            fileLog.diagnostic(
+                "Main-engine callback delivery completed: \(diagnosticOutcome)."
+            )
+        } else {
+            log.error(
+                "Main-engine callback delivery did not complete successfully: \(diagnosticOutcome)."
+            )
+            fileLog.error(
+                "Main-engine callback delivery did not complete successfully: \(diagnosticOutcome)."
+            )
+        }
         delivery.completion(outcome)
     }
 
@@ -289,6 +324,10 @@ final class IosGeofenceRuntimeHost {
                 outcome: "headless_background_task_unavailable",
                 geofenceCount: params.geofences.count
             )
+            log.error("Unable to acquire a background task for headless callback delivery.")
+            fileLog.error(
+                "Unable to acquire a background task for headless callback delivery."
+            )
             return false
         }
         guard let backgroundApi = headlessBackgroundApi ?? createHeadlessFlutterEngine() else {
@@ -299,6 +338,7 @@ final class IosGeofenceRuntimeHost {
                 outcome: "runtime_unavailable",
                 geofenceCount: params.geofences.count
             )
+            fileLog.error("Headless callback runtime was unavailable.")
             return false
         }
         let accepted = backgroundApi.geofenceTriggered(
@@ -317,6 +357,14 @@ final class IosGeofenceRuntimeHost {
             outcome: accepted ? "headless_enqueued" : "headless_rejected",
             geofenceCount: params.geofences.count
         )
+        if accepted {
+            fileLog.diagnostic(
+                "Enqueued headless callback delivery for \(params.geofences.count) geofence(s)."
+            )
+        } else {
+            log.error("Headless callback session rejected callback delivery.")
+            fileLog.error("Headless callback session rejected callback delivery.")
+        }
         return accepted
     }
 
@@ -324,12 +372,14 @@ final class IosGeofenceRuntimeHost {
         guard withStateLock({ !detached }) else { return nil }
         guard let callbackDispatcherHandle = NativeGeofencePersistence.getCallbackDispatcherHandle() else {
             log.error("Callback dispatcher was not registered.")
+            fileLog.error("Callback dispatcher was not registered.")
             return nil
         }
         guard let callbackDispatcherInfo = FlutterCallbackCache.lookupCallbackInformation(
             callbackDispatcherHandle
         ) else {
             log.error("Callback dispatcher information was unavailable.")
+            fileLog.error("Callback dispatcher information was unavailable.")
             return nil
         }
 
@@ -376,10 +426,12 @@ final class IosGeofenceRuntimeHost {
         )
         guard started else {
             log.error("Failed to start the headless Flutter engine.")
+            fileLog.error("Failed to start the headless Flutter engine.")
             backgroundApi.forceCleanup(reason: "Failed to start the headless Flutter engine.")
             return nil
         }
         log.debug("Headless Flutter callback session started.")
+        fileLog.diagnostic("Headless Flutter callback session started.")
         return backgroundApi
     }
 
@@ -402,6 +454,8 @@ final class IosGeofenceRuntimeHost {
             succeeded: false,
             outcome: "headless_background_task_expired"
         )
+        log.error("iOS expired the headless callback background task.")
+        fileLog.error("iOS expired the headless callback background task.")
         headlessBackgroundApi?.forceCleanup(
             reason: "iOS expired the geofence callback background task."
         )
@@ -425,6 +479,7 @@ final class IosGeofenceRuntimeHost {
         }
         guard let engine else {
             log.debug("Ignoring cleanup from an inactive headless session.")
+            fileLog.debug("Ignoring cleanup from an inactive headless session.")
             return
         }
         NativeGeofenceBackgroundApiSetup.setUp(
@@ -434,6 +489,7 @@ final class IosGeofenceRuntimeHost {
         NativeGeofenceApiSetup.setUp(binaryMessenger: engine.binaryMessenger, api: nil)
         engine.destroyContext()
         log.debug("Headless Flutter callback session cleaned up.")
+        fileLog.diagnostic("Headless Flutter callback session cleaned up.")
     }
 
     private static func diagnosticOutcome(

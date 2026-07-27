@@ -34,6 +34,9 @@ private struct IosSynchronizationEvaluation {
 
 public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
     private let log = Logger(subsystem: Constants.PACKAGE_NAME, category: "NativeGeofenceApiImpl")
+    private let fileLog = IosNativeGeofenceFileLogger(
+        category: "NativeGeofenceApiImpl"
+    )
     private let locationServicesQueue = DispatchQueue(
         label: "\(Constants.PACKAGE_NAME).location-services",
         qos: .utility
@@ -89,11 +92,20 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
         geofence: GeofenceWire,
         completion: @escaping (Result<Void, any Error>) -> Void
     ) {
-        let diagnosticCompletion: (Result<Void, any Error>) -> Void = { result in
+        let diagnosticCompletion: (Result<Void, any Error>) -> Void = {
+            [fileLog = self.fileLog] result in
             let succeeded: Bool
             switch result {
-            case .success: succeeded = true
-            case .failure: succeeded = false
+            case .success:
+                succeeded = true
+                fileLog.diagnostic(
+                    "Geofence registration completed for ID=\(geofence.id)."
+                )
+            case .failure(let error):
+                succeeded = false
+                fileLog.error(
+                    "Geofence registration failed for ID=\(geofence.id): \(error)"
+                )
             }
             NativeGeofenceDiagnostics.record(
                 .registration,
@@ -172,6 +184,7 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
     
     func reCreateAfterReboot(completion: @escaping (Result<Void, Error>) -> Void) {
         log.info("Re-create after reboot called. iOS handles this automatically, nothing for us to do here.")
+        fileLog.info("Re-create after reboot called. iOS handles this automatically, nothing for us to do here.")
         NativeGeofenceDiagnostics.record(
             .recovery,
             succeeded: true,
@@ -496,6 +509,7 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
             .map(\.identifier)
             .sorted()
         log.debug("getGeofenceIds() found \(geofenceIds.count) geofence(s).")
+        fileLog.debug("getGeofenceIds() found \(geofenceIds.count) geofence(s).")
         return geofenceIds
     }
     
@@ -506,9 +520,11 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
                 geofences.append(activeGeofence)
             } else {
                 log.error("Unable to convert owned region: \(region)")
+                fileLog.error("Unable to convert owned region: \(region)")
             }
         }
         log.debug("getGeofences() found \(geofences.count) geofence(s).")
+        fileLog.debug("getGeofences() found \(geofences.count) geofence(s).")
         return geofences
     }
 
@@ -1087,6 +1103,9 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
             log.info(
                 "Clamped geofence ID=\(geofence.id) radius from \(geofence.radiusMeters) to \(radius)."
             )
+            fileLog.info(
+                "Clamped geofence ID=\(geofence.id) radius from \(geofence.radiusMeters) to \(radius)."
+            )
         }
         return region
     }
@@ -1139,6 +1158,9 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
             log.error(
                 "Aborted removal for geofence ID=\(id) because deferred callback cancellation could not be persisted."
             )
+            fileLog.error(
+                "Aborted removal for geofence ID=\(id) because deferred callback cancellation could not be persisted."
+            )
             return false
         }
         for region in regions {
@@ -1156,6 +1178,7 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
             )
         }
         log.debug("Removed \(regions.count) geofence(s) with ID=\(id).")
+        fileLog.diagnostic("Removed \(regions.count) geofence(s) with ID=\(id).")
         return true
     }
     
@@ -1198,6 +1221,9 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
             log.error(
                 "Aborted remove-all because deferred callback cancellation could not be persisted."
             )
+            fileLog.error(
+                "Aborted remove-all because deferred callback cancellation could not be persisted."
+            )
             return false
         }
         for region in regions {
@@ -1213,6 +1239,7 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
             geofenceCount: regions.count
         )
         log.debug("Removed \(regions.count) geofence(s).")
+        fileLog.diagnostic("Removed \(regions.count) geofence(s).")
         return true
     }
 

@@ -1,9 +1,9 @@
-/// Configuration for native_geofence's app-private Android log file.
+/// Configuration for native_geofence's app-private native log file.
 ///
 /// File logging is disabled by default. When enabled, native_geofence writes a
-/// bounded text log under the app's private no-backup files directory. Apps can
-/// fetch it with `NativeGeofenceManager.readLogFile()` and decide how to display,
-/// export, upload, redact, or clear it.
+/// bounded text log in an app-private location excluded from device backups.
+/// Apps can fetch it with `NativeGeofenceManager.readLogFile()` and decide how
+/// to display, export, upload, redact, or clear it.
 class NativeGeofenceLogFileConfig {
   /// Whether native_geofence should write native diagnostics to disk.
   final bool enabled;
@@ -14,7 +14,8 @@ class NativeGeofenceLogFileConfig {
   /// true.
   final bool verbose;
 
-  /// Maximum size of the log file in bytes. Android clamps this to a safe range.
+  /// Maximum size of the log file in bytes. Native platforms clamp this to a
+  /// safe range.
   final int maxBytes;
 
   const NativeGeofenceLogFileConfig({

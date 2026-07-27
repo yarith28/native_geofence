@@ -9,6 +9,9 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
     private static var sharedLocationManager: CLLocationManager?
     
     private let log = Logger(subsystem: Constants.PACKAGE_NAME, category: "LocationManagerDelegate")
+    private let fileLog = IosNativeGeofenceFileLogger(
+        category: "LocationManagerDelegate"
+    )
     private let deliverEvent: (
         GeofenceCallbackParamsWire,
         @escaping (IosGeofenceCallbackDeliveryOutcome) -> Void
@@ -46,6 +49,9 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
             }
             self.resetBoundaryDeduplication(id: region.identifier)
             return true
+        },
+        recordDiagnostic: { [weak self] message in
+            _ = self?.fileLog.diagnostic(message)
         }
     )
     private let initialStateRequestGate = InitialStateRequestGate()
@@ -101,6 +107,7 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         }
         
         log.debug("LocationManagerDelegate created with instance ID=\(Int.random(in: 1 ... 1000000)).")
+        fileLog.debug("LocationManagerDelegate created.")
     }
 
     func startMonitoring(
@@ -146,6 +153,9 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
 
         applyInitialStateContract(committedRegistration, using: locationManager)
         log.debug("Handled monitoring request for geofence ID=\(region.identifier).")
+        fileLog.diagnostic(
+            "Handled monitoring request for geofence ID=\(region.identifier)."
+        )
     }
 
     func startMonitoringForSynchronization(
@@ -183,6 +193,9 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
             applyInitialStateContract(committedRegistration, using: locationManager)
         }
         log.debug(
+            "Handled synchronization monitoring request for geofence ID=\(region.identifier)."
+        )
+        fileLog.diagnostic(
             "Handled synchronization monitoring request for geofence ID=\(region.identifier)."
         )
     }
@@ -296,6 +309,9 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
             owner: "ios_delegate"
         )
         log.debug("didDetermineState: \(String(describing: state)) for geofence ID: \(region.identifier)")
+        fileLog.diagnostic(
+            "didDetermineState: \(String(describing: state)) for geofence ID: \(region.identifier)"
+        )
         
         guard let publicRegion = initialStateRequestGate.consumeInitialStateResponse(
             for: region
@@ -309,6 +325,9 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
                 reasonCode: "unrequested_state"
             )
             log.debug("Ignoring unrequested state for geofence ID: \(region.identifier)")
+            fileLog.diagnostic(
+                "Ignoring unrequested state for geofence ID: \(region.identifier)"
+            )
             return
         }
 
@@ -326,6 +345,7 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
                 reasonCode: "unknown_state"
             )
             log.error("Unknown CLRegionState: \(String(describing: state))")
+            fileLog.error("Unknown CLRegionState: \(String(describing: state))")
             return
         }
         deliveryDiagnostics.record(
@@ -350,6 +370,7 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
             owner: "ios_delegate"
         )
         log.debug("didEnterRegion for geofence ID: \(region.identifier)")
+        fileLog.diagnostic("didEnterRegion for geofence ID: \(region.identifier)")
         guard let admitted = admittedBoundaryRegion(
             for: region,
             event: .enter
@@ -373,6 +394,7 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
             owner: "ios_delegate"
         )
         log.debug("didExitRegion for geofence ID: \(region.identifier)")
+        fileLog.diagnostic("didExitRegion for geofence ID: \(region.identifier)")
         guard let admitted = admittedBoundaryRegion(
             for: region,
             event: .exit
@@ -422,8 +444,14 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
                 log.debug(
                     "Deferred \(eventName) for geofence ID=\(region.identifier) until its pending mutation resolves."
                 )
+                fileLog.diagnostic(
+                    "Deferred \(eventName) for geofence ID=\(region.identifier) until its pending mutation resolves."
+                )
             } else {
                 log.error(
+                    "Deferred \(eventName) for geofence ID=\(region.identifier) only in memory because durable storage failed."
+                )
+                fileLog.error(
                     "Deferred \(eventName) for geofence ID=\(region.identifier) only in memory because durable storage failed."
                 )
                 if !boundaryEventAdmissionCoordinator.retryPersistence() {
@@ -451,6 +479,9 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
                 reasonCode: reason.rawValue
             )
             log.debug(
+                "Ignoring \(eventName) for geofence ID=\(region.identifier), reason=\(reason.rawValue)"
+            )
+            fileLog.diagnostic(
                 "Ignoring \(eventName) for geofence ID=\(region.identifier), reason=\(reason.rawValue)"
             )
             return nil
@@ -553,6 +584,12 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         case .unsettled:
             return false
         case .storageFailure:
+            log.error(
+                "Failed to prepare deferred boundary events for geofence ID=\(identifier); retrying."
+            )
+            fileLog.error(
+                "Failed to prepare deferred boundary events for geofence ID=\(identifier); retrying."
+            )
             schedulePendingBoundaryResolution(identifier: identifier)
             return false
         case .ready(let cleanupRetryEventIds):
@@ -598,6 +635,12 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
                     if !boundaryEventResolutionCoordinator.remove(
                         eventId: pending.eventId
                     ) {
+                        log.error(
+                            "Failed to remove handed-off deferred \(eventName) event ID=\(pending.eventId); retrying cleanup."
+                        )
+                        fileLog.error(
+                            "Failed to remove handed-off deferred \(eventName) event ID=\(pending.eventId); retrying cleanup."
+                        )
                         schedulePendingBoundaryResolution(identifier: identifier)
                         return true
                     }
@@ -623,25 +666,47 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
                 log.debug(
                     "Discarded deferred \(eventName) for geofence ID=\(identifier), reason=\(reason.rawValue)"
                 )
+                fileLog.diagnostic(
+                    "Discarded deferred \(eventName) for geofence ID=\(identifier), reason=\(reason.rawValue)"
+                )
                 if !boundaryEventResolutionCoordinator.remove(
                     eventId: pending.eventId
                 ) {
+                    log.error(
+                        "Failed to remove discarded deferred \(eventName) event ID=\(pending.eventId); retrying cleanup."
+                    )
+                    fileLog.error(
+                        "Failed to remove discarded deferred \(eventName) event ID=\(pending.eventId); retrying cleanup."
+                    )
                     schedulePendingBoundaryResolution(identifier: identifier)
                     return false
                 }
             case .incoherent(let pending):
                 let event = pending.transition.geofenceEvent
+                let eventName = event == .enter ? "enter" : "exit"
                 deliveryDiagnostics.record(
                     stage: "boundary_gate",
                     outcome: "rejected",
-                    event: event == .enter ? "enter" : "exit",
+                    event: eventName,
                     geofenceCount: 1,
                     owner: "ios_delegate",
                     reasonCode: "no_coherent_registration_winner"
                 )
+                log.error(
+                    "Discarded deferred \(eventName) for geofence ID=\(identifier) because no coherent registration won."
+                )
+                fileLog.error(
+                    "Discarded deferred \(eventName) for geofence ID=\(identifier) because no coherent registration won."
+                )
                 if !boundaryEventResolutionCoordinator.remove(
                     eventId: pending.eventId
                 ) {
+                    log.error(
+                        "Failed to remove incoherent deferred \(eventName) event ID=\(pending.eventId); retrying cleanup."
+                    )
+                    fileLog.error(
+                        "Failed to remove incoherent deferred \(eventName) event ID=\(pending.eventId); retrying cleanup."
+                    )
                     schedulePendingBoundaryResolution(identifier: identifier)
                     return false
                 }
@@ -790,6 +855,9 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
             log.error(
                 "Failed to reset callback journal deduplication for geofence ID=\(id)."
             )
+            fileLog.error(
+                "Failed to reset callback journal deduplication for geofence ID=\(id)."
+            )
         }
     }
 
@@ -797,6 +865,7 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         eventDeduplicator.removeAll()
         if !callbackJournal.resetAllDeduplication() {
             log.error("Failed to reset callback journal deduplication.")
+            fileLog.error("Failed to reset callback journal deduplication.")
         }
     }
 
@@ -818,17 +887,27 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
                 reasonCode: "unsupported_region_type"
             )
             log.error("Unknown CLRegion type: \(String(describing: type(of: region)))")
+            fileLog.error(
+                "Unknown CLRegion type: \(String(describing: type(of: region)))"
+            )
             return true
         }
 
         if !activeGeofence.triggers.contains(event) {
+            let eventName = event == .enter ? "enter" : "exit"
             deliveryDiagnostics.record(
                 stage: "event_resolution",
                 outcome: "rejected",
-                event: event == .enter ? "enter" : "exit",
+                event: eventName,
                 geofenceCount: 1,
                 owner: "ios_delegate",
                 reasonCode: "transition_not_configured"
+            )
+            log.info(
+                "Ignoring \(eventName) for geofence ID=\(activeGeofence.id) because that transition is not configured."
+            )
+            fileLog.info(
+                "Ignoring \(eventName) for geofence ID=\(activeGeofence.id) because that transition is not configured."
             )
             return true
         }
@@ -859,6 +938,9 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
                 geofenceCount: 1
             )
             log.error("Callback handle for region \(activeGeofence.id) not found.")
+            fileLog.error(
+                "Callback handle for region \(activeGeofence.id) not found."
+            )
             return true
         }
         
@@ -905,6 +987,9 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
                 drainPendingEvents()
             }
             log.debug("Geofence trigger event persisted in the callback journal.")
+            fileLog.diagnostic(
+                "Geofence trigger event persisted in the callback journal."
+            )
             return true
         case .duplicate:
             deliveryDiagnostics.record(
@@ -916,6 +1001,7 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
                 reasonCode: "journal_duplicate"
             )
             log.info("Suppressed duplicate callback journal event.")
+            fileLog.info("Suppressed duplicate callback journal event.")
             return true
         case .storageFailure:
             deliveryDiagnostics.record(
@@ -933,6 +1019,7 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
                 geofenceCount: 1
             )
             log.error("Failed to persist the geofence callback journal event.")
+            fileLog.error("Failed to persist the geofence callback journal event.")
             return false
         }
     }
@@ -947,13 +1034,21 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
                 succeeded: false,
                 outcome: "ios_journal_read_failed"
             )
+            log.error("Failed to read the iOS callback journal.")
+            fileLog.error("Failed to read the iOS callback journal.")
             return
         }
-        for _ in batch.terminallyDiscardedEventIds {
+        for eventId in batch.terminallyDiscardedEventIds {
             NativeGeofenceDiagnostics.record(
                 .worker,
                 succeeded: false,
                 outcome: "ios_journal_terminal_expiry"
+            )
+            log.error(
+                "Discarded expired iOS callback journal event ID=\(eventId)."
+            )
+            fileLog.error(
+                "Discarded expired iOS callback journal event ID=\(eventId)."
             )
         }
         if let nextDueAtMillis = batch.nextDueAtMillis {
@@ -968,6 +1063,12 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
                 nowMillis: nowMillis
             ) else {
                 releaseJournalDelivery(eventId: pending.eventId)
+                log.error(
+                    "Could not begin iOS callback journal event ID=\(pending.eventId); retaining it for a later wake."
+                )
+                fileLog.error(
+                    "Could not begin iOS callback journal event ID=\(pending.eventId); retaining it for a later wake."
+                )
                 continue
             }
             deliverEvent(attempted.callbackParamsWire) { [weak self] outcome in
@@ -1006,6 +1107,7 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         ) {
         case .acknowledged:
             log.debug("Acknowledged completed iOS callback journal event.")
+            fileLog.diagnostic("Acknowledged completed iOS callback journal event.")
         case .retryScheduled(let nextAttemptAtMillis):
             NativeGeofenceDiagnostics.record(
                 .worker,
@@ -1016,6 +1118,7 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
                 afterMillis: max(0, nextAttemptAtMillis - nowMillis)
             )
             log.error("Retained failed iOS callback journal event for retry.")
+            fileLog.error("Retained failed iOS callback journal event for retry.")
         case .retryExhausted:
             NativeGeofenceDiagnostics.record(
                 .worker,
@@ -1023,6 +1126,9 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
                 outcome: "ios_journal_delivery_retry_exhausted"
             )
             log.error("Discarded iOS callback journal event after retry exhaustion.")
+            fileLog.error(
+                "Discarded iOS callback journal event after retry exhaustion."
+            )
         case .terminallyDiscarded(let reason):
             NativeGeofenceDiagnostics.record(
                 .worker,
@@ -1032,15 +1138,21 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
             log.error(
                 "Discarded terminal iOS callback journal event: \(reason.rawValue)."
             )
+            fileLog.error(
+                "Discarded terminal iOS callback journal event: \(reason.rawValue)."
+            )
         case .storageFailure:
             NativeGeofenceDiagnostics.record(
                 .worker,
                 succeeded: false,
                 outcome: "ios_journal_update_failed"
             )
+            log.error("Failed to update the iOS callback journal; retrying.")
+            fileLog.error("Failed to update the iOS callback journal; retrying.")
             scheduleJournalDrain(afterMillis: 5_000)
         case .missing:
             log.debug("Ignoring completion for a missing callback journal event.")
+            fileLog.debug("Ignoring completion for a missing callback journal event.")
         }
     }
 
@@ -1068,6 +1180,9 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didStartMonitoringFor region: CLRegion) {
         resumePendingCallbackDeliveryAfterExternalWake()
         log.debug("didStartMonitoringFor geofence ID: \(region.identifier)")
+        fileLog.diagnostic(
+            "didStartMonitoringFor geofence ID: \(region.identifier)"
+        )
         let committedRegistration = regionRegistrationCoordinator.didStartMonitoring(
             for: region
         )
@@ -1078,6 +1193,9 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: any Error) {
         resumePendingCallbackDeliveryAfterExternalWake()
         log.error("monitoringDidFailFor: \(region?.identifier ?? "nil") withError: \(error)")
+        fileLog.error(
+            "monitoringDidFailFor: \(region?.identifier ?? "nil") withError: \(error)"
+        )
         let outcome = regionRegistrationCoordinator.didFailMonitoring(
             for: region,
             error: error

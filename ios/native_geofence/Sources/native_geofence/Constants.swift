@@ -29,6 +29,15 @@ class Constants {
         "\(STORAGE_KEY_PREFIX)diagnostic_delivery_trace_sequence_v1"
     static let DIAGNOSTIC_DELIVERY_TRACE_DROPPED_KEY =
         "\(STORAGE_KEY_PREFIX)diagnostic_delivery_trace_dropped_v1"
+    static let LOG_FILE_CHANNEL_NAME = "native_geofence/log_file"
+    static let LOG_FILE_NAME = "native_geofence.log"
+    static let LOG_FILE_ENABLED_KEY = "\(STORAGE_KEY_PREFIX)log_file_enabled"
+    static let LOG_FILE_VERBOSE_KEY = "\(STORAGE_KEY_PREFIX)log_file_verbose"
+    static let LOG_FILE_MAX_BYTES_KEY = "\(STORAGE_KEY_PREFIX)log_file_max_bytes"
+    static let DEFAULT_LOG_FILE_VERBOSE = true
+    static let DEFAULT_LOG_FILE_MAX_BYTES = 256 * 1024
+    static let MIN_LOG_FILE_MAX_BYTES = 16 * 1024
+    static let MAX_LOG_FILE_MAX_BYTES = 50 * 1024 * 1024
     static let USER_DEFAULTS_MIGRATION_KEY =
         "\(STORAGE_KEY_PREFIX)user_defaults_keys_migrated_v1"
 
