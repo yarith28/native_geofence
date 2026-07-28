@@ -103,6 +103,7 @@ class AndroidGeofenceSettings {
 
   /// The delay between [GeofenceEvent.enter] and [GeofenceEvent.dwell].
   /// Only has impact if [GeofenceEvent.dwell] is one of the triggers.
+  /// Defaults to zero for immediate dwell eligibility.
   ///
   /// Android Play services accepts a non-negative 32-bit millisecond value, so
   /// keep this at or below `Duration(milliseconds: 2147483647)`.
@@ -122,7 +123,7 @@ class AndroidGeofenceSettings {
   const AndroidGeofenceSettings({
     required this.initialTriggers,
     this.expiration,
-    this.loiteringDelay = const Duration(minutes: 5),
+    this.loiteringDelay = Duration.zero,
     this.notificationResponsiveness,
   });
 

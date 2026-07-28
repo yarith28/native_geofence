@@ -335,10 +335,12 @@ repair, and explicit recreation use only the remaining lifetime; they never
 grant the geofence a fresh full duration. Lifecycle-critical registration state
 is written synchronously, and a failed durable write is reported as an error.
 
-Android `notificationResponsiveness` defaults to fastest delivery (`0ms`) when
-unset. Larger values, such as two or five minutes, may reduce power use at the
-cost of latency. `Duration.zero` is useful when overriding a previously slower
-value. The OS may still adjust actual timing for battery and system health.
+Android `loiteringDelay` defaults to `0ms`; it only affects registrations that
+request `GeofenceEvent.dwell`. Android `notificationResponsiveness` defaults to
+fastest delivery (`0ms`) when unset. Larger responsiveness values, such as two
+or five minutes, may reduce power use at the cost of latency. `Duration.zero`
+is useful when overriding a previously slower value. The OS may still adjust
+actual timing for battery and system health.
 When set, Android `expiration` must be at least one millisecond.
 `loiteringDelay` and `notificationResponsiveness` must be between `0` and
 `2147483647` milliseconds.

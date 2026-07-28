@@ -5,6 +5,13 @@ import 'package:native_geofence/native_geofence.dart';
 Future<void> publicApiCallback(GeofenceCallbackParams params) async {}
 
 void main() {
+  test('Android settings default to zero loitering delay', () {
+    const settings = AndroidGeofenceSettings(initialTriggers: {});
+
+    expect(settings.loiteringDelay, Duration.zero);
+    expect(settings.toJson()['loiteringDelayMillis'], 0);
+  });
+
   test('barrel exports callback typedef and deterministic geofence JSON', () {
     final GeofenceCallback callback = publicApiCallback;
     const location = Location(

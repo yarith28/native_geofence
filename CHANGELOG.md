@@ -1,3 +1,7 @@
+## Unreleased
+
+* Change Android's default `loiteringDelay` from five minutes to zero.
+
 ## 1.4.0
 
 * Routes iOS enter and exit callbacks by the committed Core Location region
