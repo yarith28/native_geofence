@@ -19,7 +19,11 @@ public class NativeGeofencePlugin: NSObject, FlutterPlugin {
             mainMessenger: registrar.messenger(),
             registerPlugins: registerPlugins
         )
-        runtimeHost = host
+        self.runtimeHost = host
+        self.logFileChannel = nil
+
+        super.init()
+
         host.installMainHandlers()
         installLogFileChannel(binaryMessenger: registrar.messenger())
         NativeGeofencePlugin.log.debug("NativeGeofenceApi initialized.")
