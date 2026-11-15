@@ -10,21 +10,18 @@ public class NativeGeofencePlugin: NSObject, FlutterPlugin {
     
     private static var registerPlugins: FlutterPluginRegistrantCallback? = nil
     private static var instance: NativeGeofencePlugin? = nil
+    private static var launchRuntimeHost: IosGeofenceRuntimeHost?
     
     private var runtimeHost: IosGeofenceRuntimeHost?
     private var logFileChannel: FlutterMethodChannel?
     
-    init(registrar: FlutterPluginRegistrar, registerPlugins: FlutterPluginRegistrantCallback) {
-        let host = IosGeofenceRuntimeHost(
-            mainMessenger: registrar.messenger(),
-            registerPlugins: registerPlugins
-        )
+    init(registrar: FlutterPluginRegistrar, host: IosGeofenceRuntimeHost) {
         self.runtimeHost = host
         self.logFileChannel = nil
 
         super.init()
 
-        host.installMainHandlers()
+        host.installMainHandlers(binaryMessenger: registrar.messenger())
         installLogFileChannel(binaryMessenger: registrar.messenger())
         NativeGeofencePlugin.log.debug("NativeGeofenceApi initialized.")
         NativeGeofencePlugin.fileLog.diagnostic("NativeGeofenceApi initialized.")
@@ -32,7 +29,10 @@ public class NativeGeofencePlugin: NSObject, FlutterPlugin {
     
     /// Called from the Flutter plugins AppDelegate.swift.
     public static func setPluginRegistrantCallback(_ callback: FlutterPluginRegistrantCallback) {
+        objc_sync_enter(self)
+        defer { objc_sync_exit(self) }
         registerPlugins = callback
+        _ = prepareRuntimeHost(registerPlugins: callback)
         log.debug("registerPlugins updated.")
         fileLog.diagnostic("registerPlugins updated.")
     }
@@ -49,17 +49,39 @@ public class NativeGeofencePlugin: NSObject, FlutterPlugin {
             fatalError("Please ensure you have updated your ios/Runner/AppDelegate to call setPluginRegistrantCallback. See the plugin documentation for more information.")
         }
         
-        let plugin = NativeGeofencePlugin(registrar: registrar, registerPlugins: registerPlugins)
+        let host = prepareRuntimeHost(registerPlugins: registerPlugins)
+        // Headless startup also invokes GeneratedPluginRegistrant. Its host
+        // APIs are installed by the runtime; it must not claim the UI slot.
+        if host.ownsHeadlessMessenger(registrar.messenger()) { return }
+        let plugin = NativeGeofencePlugin(registrar: registrar, host: host)
         registrar.addApplicationDelegate(plugin)
         instance = plugin
         
         log.debug("NativeGeofencePlugin registered.")
         fileLog.diagnostic("NativeGeofencePlugin registered.")
     }
+
+    private static func prepareRuntimeHost(
+        registerPlugins: @escaping FlutterPluginRegistrantCallback
+    ) -> IosGeofenceRuntimeHost {
+        if let launchRuntimeHost {
+            // Before UI registration, retain the latest launch callback just
+            // as the previous engine-created runtime did.
+            if instance == nil {
+                launchRuntimeHost.updateLaunchRegistrant(registerPlugins)
+            }
+            return launchRuntimeHost
+        }
+        let host = IosGeofenceRuntimeHost(registerPlugins: registerPlugins)
+        launchRuntimeHost = host
+        host.startEventDelivery()
+        return host
+    }
     
     public func detachFromEngine(for registrar: any FlutterPluginRegistrar) {
         runtimeHost?.detachMainHandlers()
         runtimeHost?.cleanupHeadlessRuntime()
+        NativeGeofencePlugin.launchRuntimeHost = nil
         runtimeHost = nil
         logFileChannel?.setMethodCallHandler(nil)
         logFileChannel = nil

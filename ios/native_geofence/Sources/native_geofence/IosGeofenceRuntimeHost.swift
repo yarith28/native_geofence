@@ -22,8 +22,8 @@ final class IosGeofenceRuntimeHost {
         category: "IosGeofenceRuntimeHost"
     )
     private let callbackBackgroundTaskName = "native_geofence.geofence_callback"
-    private let mainMessenger: FlutterBinaryMessenger
-    private let registerPlugins: FlutterPluginRegistrantCallback
+    private var mainMessenger: FlutterBinaryMessenger?
+    private var registerPlugins: FlutterPluginRegistrantCallback
     private let mutationAuthority = IosGeofenceMutationAuthority.shared
     private let stateLock = NSRecursiveLock()
 
@@ -57,9 +57,7 @@ final class IosGeofenceRuntimeHost {
             }
         )
 
-    private lazy var mainTriggerApi = NativeGeofenceTriggerApi(
-        binaryMessenger: mainMessenger
-    )
+    private var mainTriggerApi: NativeGeofenceTriggerApi?
     private lazy var deliveryRouter = IosCallbackDeliveryRouter<GeofenceCallbackParamsWire>(
         selectRoute: { [weak self] in
             self?.shouldUseMainEngine == true ? .main : .headless
@@ -82,10 +80,8 @@ final class IosGeofenceRuntimeHost {
     )
 
     init(
-        mainMessenger: FlutterBinaryMessenger,
         registerPlugins: @escaping FlutterPluginRegistrantCallback
     ) {
-        self.mainMessenger = mainMessenger
         self.registerPlugins = registerPlugins
     }
 
@@ -93,7 +89,14 @@ final class IosGeofenceRuntimeHost {
         callbackBackgroundLeases.finishAll()
     }
 
-    func installMainHandlers() {
+    func updateLaunchRegistrant(_ callback: FlutterPluginRegistrantCallback) {
+        registerPlugins = callback
+    }
+
+    /// Starts listening during application launch, even when UIScene has not
+    /// created a Flutter engine. Delivery uses the existing headless route.
+    func startEventDelivery() {
+        guard deliveryAttachment == nil else { return }
         deliveryAttachment = mutationAuthority.attachEventDelivery {
             [weak self] params, completion in
             guard let self else {
@@ -105,6 +108,21 @@ final class IosGeofenceRuntimeHost {
                 completion: completion
             )
         }
+        // Install the Core Location delegate before returning from app launch.
+        // The authority retains native registration and recovery state.
+        _ = nativeApi
+    }
+
+    func ownsHeadlessMessenger(_ messenger: FlutterBinaryMessenger) -> Bool {
+        withStateLock {
+            guard let engine = headlessFlutterEngine else { return false }
+            return (messenger as AnyObject) === (engine.binaryMessenger as AnyObject)
+        }
+    }
+
+    func installMainHandlers(binaryMessenger mainMessenger: FlutterBinaryMessenger) {
+        self.mainMessenger = mainMessenger
+        mainTriggerApi = NativeGeofenceTriggerApi(binaryMessenger: mainMessenger)
         NativeGeofenceApiSetup.setUp(binaryMessenger: mainMessenger, api: nativeApi)
         NativeGeofenceBackgroundApiSetup.setUp(
             binaryMessenger: mainMessenger,
@@ -124,8 +142,12 @@ final class IosGeofenceRuntimeHost {
         }
         deliveryRouter.close()
         cancelActiveMainDelivery()
-        NativeGeofenceBackgroundApiSetup.setUp(binaryMessenger: mainMessenger, api: nil)
-        NativeGeofenceApiSetup.setUp(binaryMessenger: mainMessenger, api: nil)
+        if let mainMessenger {
+            NativeGeofenceBackgroundApiSetup.setUp(binaryMessenger: mainMessenger, api: nil)
+            NativeGeofenceApiSetup.setUp(binaryMessenger: mainMessenger, api: nil)
+        }
+        mainMessenger = nil
+        mainTriggerApi = nil
     }
 
     func setMainTriggerReady(_ ready: Bool) {
@@ -161,7 +183,7 @@ final class IosGeofenceRuntimeHost {
         _ params: GeofenceCallbackParamsWire,
         completion: @escaping (IosGeofenceCallbackDeliveryOutcome) -> Void
     ) -> Bool {
-        guard shouldUseMainEngine else { return false }
+        guard shouldUseMainEngine, let mainTriggerApi else { return false }
         let token = UUID()
         guard let backgroundLeaseToken = beginCallbackBackgroundLease(
             onExpired: { [weak self] in
