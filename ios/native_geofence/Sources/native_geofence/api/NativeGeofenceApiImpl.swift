@@ -173,6 +173,13 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
             return
         }
 
+        // Direct replacement is a new registration intent. Recovery is
+        // explicitly installed again by ensureSynchronized, never inherited.
+        guard locationManagerDelegate.revokeCallbackRecovery(identifier: geofence.id) else {
+            completion(.failure(nativeGeofenceError(.pluginInternal,
+                message: "Failed to revoke previous iOS callback recovery registration.")))
+            return
+        }
         locationManagerDelegate.startMonitoring(
             region: region,
             callbackHandle: geofence.callbackHandle,
@@ -412,6 +419,16 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
             ) {
                 guard !didResolve else { return }
                 didResolve = true
+                if case .success(let report) = result, !report.didSynchronize,
+                   !locationManagerDelegate.commitCallbackRecovery(
+                       registrations: desiredRegistrations,
+                       authoritative: removeUnlisted
+                   ) {
+                    completion(.failure(nativeGeofenceError(.pluginInternal,
+                        message: "Failed to persist iOS callback recovery registration.")))
+                    finish()
+                    return
+                }
                 completion(result)
                 finish()
             }
@@ -774,7 +791,9 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
             locationManagerDelegate
                 .beginSynchronizationBoundaryEventDeferral(
                     identifier: value.wire.id,
-                    candidates: candidates
+                    candidates: candidates,
+                    wasRegistered: callbackIds.contains(value.wire.id),
+                    requestedRecoveryScope: value.wire.iosSettings.callbackRecoveryScope
                 )
         }
         var platformTouchedIds = Set<String>()
@@ -789,7 +808,8 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
             for id in removalIds {
                 guard performRemoveGeofenceById(
                     id: id,
-                    recordDiagnostics: false
+                    recordDiagnostics: false,
+                    revokeCallbackRecovery: false
                 ) else {
                     rollbackSynchronization(
                         snapshot: snapshot,
@@ -843,6 +863,14 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
                             message: "Failed to durably commit iOS synchronization evidence."
                         )
                     )
+                    return
+                }
+                guard locationManagerDelegate.commitCallbackRecovery(
+                    registrations: desired.map(\.wire),
+                    authoritative: evaluation.removeUnlisted
+                ) else {
+                    fail(nativeGeofenceError(.pluginInternal,
+                        message: "Failed to persist iOS callback recovery registration."))
                     return
                 }
                 locationManagerDelegate
@@ -1149,12 +1177,15 @@ public class NativeGeofenceApiImpl: NSObject, NativeGeofenceApi {
 
     private func performRemoveGeofenceById(
         id: String,
-        recordDiagnostics: Bool
+        recordDiagnostics: Bool,
+        revokeCallbackRecovery: Bool = true
     ) -> Bool {
         createPreflightRegistry.cancel(id: id)
         // Snapshot ownership before cancellation removes callback metadata.
         let regions = ownedMonitoredRegions().filter { $0.identifier == id }
-        guard locationManagerDelegate.cancelMonitoringStart(id: id) else {
+        guard locationManagerDelegate.cancelMonitoringStart(
+            id: id, revokeCallbackRecovery: revokeCallbackRecovery
+        ) else {
             log.error(
                 "Aborted removal for geofence ID=\(id) because deferred callback cancellation could not be persisted."
             )

@@ -56,8 +56,12 @@ class LocationWire {
 
 class IosGeofenceSettingsWire {
   final bool initialTrigger;
+  final String? callbackRecoveryScope;
 
-  const IosGeofenceSettingsWire({required this.initialTrigger});
+  const IosGeofenceSettingsWire({
+    required this.initialTrigger,
+    this.callbackRecoveryScope,
+  });
 }
 
 class AndroidGeofenceSettingsWire {
@@ -150,6 +154,7 @@ class GeofenceCallbackParamsWire {
   /// processor may create a new delivery [eventId] while preserving this root
   /// identity across confirmation, retry, and application queueing.
   final String? traceId;
+  final Map<String, String>? iosRecoveryScopesByGeofenceId;
 
   const GeofenceCallbackParamsWire({
     required this.geofences,
@@ -160,6 +165,7 @@ class GeofenceCallbackParamsWire {
     this.eventId,
     this.callbackContextsByGeofenceId,
     this.traceId,
+    this.iosRecoveryScopesByGeofenceId,
   });
 }
 

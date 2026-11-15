@@ -1,5 +1,12 @@
 import Foundation
 
+/// Captured at native admission, before a pending registration can change owner.
+/// A present origin with a nil scope is known to be unscoped; it must not be
+/// adopted by a later opted-in registration with the same ID and callbacks.
+struct IosGeofenceRecoveryOrigin: Codable, Equatable {
+    let scope: String?
+}
+
 /// Stable persisted names, independent of generated enum ordinals.
 enum IosGeofenceTransition: String, Codable {
     case enter
@@ -55,6 +62,12 @@ struct IosGeofenceCallbackJournalEnvelope: Codable, Equatable {
         let longitude: Double
         let radiusMeters: Double
         let triggers: [IosGeofenceTransition]
+
+        func matchesRecoveryRegistration(_ other: Self) -> Bool {
+            id == other.id && latitude == other.latitude &&
+                longitude == other.longitude && radiusMeters == other.radiusMeters &&
+                triggers.map(\.rawValue).sorted() == other.triggers.map(\.rawValue).sorted()
+        }
     }
 
     let eventId: String
@@ -62,8 +75,11 @@ struct IosGeofenceCallbackJournalEnvelope: Codable, Equatable {
     let geofence: GeofenceSnapshot
     let transition: IosGeofenceTransition
     let eventAtMillis: Int64
-    let callbackHandle: Int64
-    let callbackContext: Int64?
+    var callbackHandle: Int64
+    var callbackContext: Int64?
+    var recoveryScope: String? = nil
+    var recoveryRefreshRevision: String? = nil
+    var waitingForRefresh: Bool? = nil
     var attemptCount: Int
     var nextAttemptAtMillis: Int64
     let expiresAtMillis: Int64
@@ -71,9 +87,16 @@ struct IosGeofenceCallbackJournalEnvelope: Codable, Equatable {
 
 /// Durable iOS callback journal with bounded retry and terminal expiry.
 final class IosGeofenceCallbackJournal {
+    struct RecoveryRegistration: Codable, Equatable {
+        let geofence: IosGeofenceCallbackJournalEnvelope.GeofenceSnapshot
+        let scope: String
+        let callbackHandle: Int64
+        let callbackContext: Int64?
+    }
     enum EnqueueResult: Equatable {
         case stored
         case duplicate
+        case staleRecoveryOrigin
         case storageFailure
     }
 
@@ -81,6 +104,7 @@ final class IosGeofenceCallbackJournal {
         case acknowledged
         case retryScheduled(nextAttemptAtMillis: Int64)
         case retryExhausted
+        case awaitingCallbackRefresh
         case terminallyDiscarded(IosGeofenceCallbackDeliveryOutcome.TerminalFailure)
         case missing
         case storageFailure
@@ -99,6 +123,7 @@ final class IosGeofenceCallbackJournal {
         let eventAtMillis: Int64
         let callbackHandle: Int64
         let callbackContext: Int64?
+        let recoveryScope: String?
 
         init(_ envelope: IosGeofenceCallbackJournalEnvelope) {
             geofence = envelope.geofence
@@ -106,6 +131,7 @@ final class IosGeofenceCallbackJournal {
             eventAtMillis = envelope.eventAtMillis
             callbackHandle = envelope.callbackHandle
             callbackContext = envelope.callbackContext
+            recoveryScope = envelope.recoveryScope
         }
 
         func belongsToSameRegistration(
@@ -114,12 +140,24 @@ final class IosGeofenceCallbackJournal {
             geofence == envelope.geofence
                 && callbackHandle == envelope.callbackHandle
                 && callbackContext == envelope.callbackContext
+                && recoveryScope == envelope.recoveryScope
         }
     }
 
     private struct PersistedState: Codable, Equatable {
         var envelopes: [IosGeofenceCallbackJournalEnvelope]
         var deduplicationCursorsByIdentifier: [String: DeduplicationCursor]
+        var recoveryRegistrations: [String: RecoveryRegistration]? = nil
+    }
+
+    /// Separate from the journal so unreadable event data cannot block a stop
+    /// or later revive an opted-in callback after that stop.
+    private struct RecoveryCancellation: Codable {
+        var all = false
+        var identifiers: [String] = []
+
+        var isEmpty: Bool { !all && identifiers.isEmpty }
+        func contains(_ id: String) -> Bool { all || identifiers.contains(id) }
     }
 
     private let lock = NSLock()
@@ -131,6 +169,13 @@ final class IosGeofenceCallbackJournal {
     private let retryDelaysMillis: [Int64]
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private var pendingRecoveryCancellation = RecoveryCancellation()
+    private var recoveryCancellationStorageKey: String {
+        storageKey + ".recovery-cancellation"
+    }
+    private var recoveryIdentifiersStorageKey: String {
+        storageKey + ".recovery-identifiers"
+    }
 
     init(
         userDefaults: UserDefaults = NativeGeofenceUserDefaults.standard(),
@@ -184,9 +229,29 @@ final class IosGeofenceCallbackJournal {
         )
     }
 
-    func enqueue(_ envelope: IosGeofenceCallbackJournalEnvelope) -> EnqueueResult {
+    func recoveryOrigin(identifier: String) -> IosGeofenceRecoveryOrigin {
+        withLock { .init(scope: loadLocked()?.recoveryRegistrations?[identifier]?.scope) }
+    }
+
+    func enqueue(
+        _ envelope: IosGeofenceCallbackJournalEnvelope,
+        recoveryOrigin: IosGeofenceRecoveryOrigin? = nil
+    ) -> EnqueueResult {
         withLock {
             guard var state = loadLocked() else { return .storageFailure }
+            var envelope = envelope
+            let registration = state.recoveryRegistrations?[envelope.geofence.id]
+            if let recoveryOrigin {
+                if let registration, registration.scope != recoveryOrigin.scope {
+                    return .staleRecoveryOrigin
+                }
+                envelope.recoveryScope = recoveryOrigin.scope
+            } else if let registration,
+               registration.geofence.matchesRecoveryRegistration(envelope.geofence),
+               registration.callbackHandle == envelope.callbackHandle,
+               registration.callbackContext == envelope.callbackContext {
+                envelope.recoveryScope = registration.scope
+            }
             if state.envelopes.contains(where: {
                 $0.eventId == envelope.eventId
             }) {
@@ -212,7 +277,7 @@ final class IosGeofenceCallbackJournal {
         }
     }
 
-    func drainBatch(nowMillis: Int64) -> DrainBatch {
+    func drainBatch(nowMillis: Int64, inFlightEventIds: Set<String> = []) -> DrainBatch {
         withLock {
             guard var state = loadLocked() else {
                 return DrainBatch(
@@ -222,11 +287,22 @@ final class IosGeofenceCallbackJournal {
                     storageReadable: false
                 )
             }
+            func isActiveScopedAttempt(_ event: IosGeofenceCallbackJournalEnvelope) -> Bool {
+                event.recoveryScope != nil && inFlightEventIds.contains(event.eventId)
+            }
+            // A non-nil waiting flag means lookup actually failed: true waits
+            // for refresh, false is its replay. Ordinary retries retain the
+            // original expiry policy, including on opted-in registrations.
+            func isActiveRecoveryAttempt(_ event: IosGeofenceCallbackJournalEnvelope) -> Bool {
+                event.waitingForRefresh != nil && isActiveScopedAttempt(event)
+            }
             let terminal = state.envelopes.filter {
-                $0.expiresAtMillis <= nowMillis || $0.attemptCount >= maximumAttempts
+                !isActiveRecoveryAttempt($0) &&
+                    ($0.expiresAtMillis <= nowMillis || $0.attemptCount >= maximumAttempts)
             }
             let retained = state.envelopes.filter {
-                $0.expiresAtMillis > nowMillis && $0.attemptCount < maximumAttempts
+                isActiveRecoveryAttempt($0) ||
+                    ($0.expiresAtMillis > nowMillis && $0.attemptCount < maximumAttempts)
             }
             state.envelopes = retained
             let previousCursorCount =
@@ -247,12 +323,32 @@ final class IosGeofenceCallbackJournal {
                     storageReadable: false
                 )
             }
+            // Admit one scoped callback at a time so its lookup result is known
+            // before a following event is delivered. An ordinary backoff does
+            // not block later events; only lookup recovery establishes a barrier.
+            var seen: [String: Set<String>] = [:]
+            for event in retained where isActiveScopedAttempt(event) {
+                if let scope = event.recoveryScope {
+                    seen[scope, default: []].insert(event.geofence.id)
+                }
+            }
+            let eligible = retained.filter { event in
+                guard let scope = event.recoveryScope else { return true }
+                guard !seen[scope, default: []].contains(event.geofence.id) else { return false }
+                if event.waitingForRefresh != nil || event.nextAttemptAtMillis <= nowMillis {
+                    seen[scope, default: []].insert(event.geofence.id)
+                }
+                return true
+            }
             return DrainBatch(
-                due: retained.filter {
-                    $0.nextAttemptAtMillis <= nowMillis
+                due: eligible.filter {
+                    !isActiveScopedAttempt($0) &&
+                        $0.waitingForRefresh != true && $0.nextAttemptAtMillis <= nowMillis
                 },
                 terminallyDiscardedEventIds: terminal.map(\.eventId).sorted(),
-                nextDueAtMillis: retained
+                nextDueAtMillis: eligible.filter {
+                    !isActiveScopedAttempt($0) && $0.waitingForRefresh != true
+                }
                     .map(\.nextAttemptAtMillis)
                     .filter { $0 > nowMillis }
                     .min(),
@@ -271,6 +367,7 @@ final class IosGeofenceCallbackJournal {
                       $0.eventId == eventId
                   }),
                   state.envelopes[index].expiresAtMillis > nowMillis,
+                  state.envelopes[index].waitingForRefresh != true,
                   state.envelopes[index].attemptCount < maximumAttempts
             else { return nil }
             state.envelopes[index].attemptCount += 1
@@ -288,7 +385,10 @@ final class IosGeofenceCallbackJournal {
     func complete(
         eventId: String,
         outcome: IosGeofenceCallbackDeliveryOutcome,
-        nowMillis: Int64
+        nowMillis: Int64,
+        deliveredHandle: Int64? = nil,
+        deliveredContext: Int64? = nil,
+        deliveredRecoveryRefreshRevision: String? = nil
     ) -> CompletionResult {
         withLock {
             guard var state = loadLocked() else { return .storageFailure }
@@ -306,6 +406,19 @@ final class IosGeofenceCallbackJournal {
                 )
                 return storeLocked(state) ? .acknowledged : .storageFailure
             case .terminalFailure(let reason):
+                if state.envelopes[index].recoveryScope != nil {
+                    if let deliveredHandle,
+                       (state.envelopes[index].callbackHandle != deliveredHandle ||
+                        state.envelopes[index].callbackContext != deliveredContext ||
+                        state.envelopes[index].recoveryRefreshRevision != deliveredRecoveryRefreshRevision) {
+                        // A successful refresh overtook this failed attempt.
+                        state.envelopes[index].waitingForRefresh = false
+                        state.envelopes[index].nextAttemptAtMillis = nowMillis
+                        return storeLocked(state) ? .retryScheduled(nextAttemptAtMillis: nowMillis) : .storageFailure
+                    }
+                    state.envelopes[index].waitingForRefresh = true
+                    return storeLocked(state) ? .awaitingCallbackRefresh : .storageFailure
+                }
                 state.envelopes.remove(at: index)
                 pruneDeduplicationCursorsLocked(
                     in: &state,
@@ -315,6 +428,9 @@ final class IosGeofenceCallbackJournal {
                     ? .terminallyDiscarded(reason)
                     : .storageFailure
             case .retryableFailure:
+                // Callback lookup is no longer the failure being recovered.
+                // Restore ordinary retry scheduling for this event and its tail.
+                state.envelopes[index].waitingForRefresh = nil
                 guard state.envelopes[index].expiresAtMillis > nowMillis,
                       state.envelopes[index].attemptCount < maximumAttempts
                 else {
@@ -344,6 +460,107 @@ final class IosGeofenceCallbackJournal {
 
     func pendingCount() -> Int? {
         withLock { loadLocked()?.envelopes.count }
+    }
+
+    /// Called only after native synchronization has committed. Callback lookup
+    /// failures cannot repair themselves by retrying their old handles.
+    @discardableResult
+    func reconcileRecovery(
+        registrations: [RecoveryRegistration],
+        managedIds: Set<String>,
+        authoritative: Bool,
+        nowMillis: Int64
+    ) -> Bool {
+        withLock {
+            if registrations.isEmpty && !hasRecoveryLocked(managedIds: managedIds, authoritative: authoritative) {
+                return true
+            }
+            guard var state = loadLocked() else { return false }
+            let desired = Dictionary(uniqueKeysWithValues: registrations.map { ($0.geofence.id, $0) })
+            var current = state.recoveryRegistrations ?? [:]
+            for id in current.keys where authoritative || managedIds.contains(id) {
+                current.removeValue(forKey: id)
+            }
+            current.merge(desired) { _, value in value }
+            state.recoveryRegistrations = current
+            // Raw callback handles can remain unchanged across a successful
+            // refresh. Distinguish its result from an older in-flight failure.
+            let refreshRevision = UUID().uuidString
+            state.envelopes = state.envelopes.compactMap { original in
+                guard let scope = original.recoveryScope,
+                      authoritative || managedIds.contains(original.geofence.id)
+                else { return original }
+                guard let registration = desired[original.geofence.id],
+                      registration.scope == scope,
+                      registration.geofence.matchesRecoveryRegistration(original.geofence) else { return nil }
+                var event = original
+                event.callbackHandle = registration.callbackHandle
+                event.callbackContext = registration.callbackContext
+                event.recoveryRefreshRevision = refreshRevision
+                if event.waitingForRefresh == true {
+                    event.waitingForRefresh = false
+                    event.nextAttemptAtMillis = nowMillis
+                }
+                return event
+            }
+            return storeLocked(state)
+        }
+    }
+
+    @discardableResult
+    func cancelRecovery(identifier: String?, deferCleanupOnFailure: Bool = false) -> Bool {
+        withLock {
+            guard hasRecoveryLocked(
+                managedIds: identifier.map { Set([$0]) } ?? [],
+                authoritative: identifier == nil
+            ) else { return true }
+            var cancellation = recoveryCancellationLocked()
+            if let identifier {
+                cancellation.identifiers = Array(Set(cancellation.identifiers + [identifier])).sorted()
+            } else {
+                cancellation.all = true
+            }
+            if var state = loadLocked() {
+                removeRecoveryLocked(from: &state, cancellation: cancellation)
+                if storeLocked(state) { return true }
+            }
+            // A failed direct replacement still leaves its old registration
+            // running. Only explicit removal may defer cancellation like this.
+            guard deferCleanupOnFailure else { return false }
+            // Keep cancellation independent of journal decoding/writing. The
+            // in-memory copy also blocks replay if this fallback write fails.
+            pendingRecoveryCancellation = cancellation
+            if let data = try? encoder.encode(cancellation) {
+                userDefaults.set(data, forKey: recoveryCancellationStorageKey)
+                if userDefaults.data(forKey: recoveryCancellationStorageKey) == data {
+                    pendingRecoveryCancellation = RecoveryCancellation()
+                }
+            }
+            return false
+        }
+    }
+
+    private func recoveryCancellationLocked() -> RecoveryCancellation {
+        var cancellation = pendingRecoveryCancellation
+        if let data = userDefaults.data(forKey: recoveryCancellationStorageKey) {
+            let saved = (try? decoder.decode(RecoveryCancellation.self, from: data))
+                ?? RecoveryCancellation(all: true)
+            cancellation.all = cancellation.all || saved.all
+            cancellation.identifiers = Array(Set(cancellation.identifiers + saved.identifiers)).sorted()
+        }
+        return cancellation
+    }
+
+    private func removeRecoveryLocked(
+        from state: inout PersistedState,
+        cancellation: RecoveryCancellation
+    ) {
+        state.envelopes.removeAll {
+            $0.recoveryScope != nil && cancellation.contains($0.geofence.id)
+        }
+        state.recoveryRegistrations = state.recoveryRegistrations?.filter {
+            !cancellation.contains($0.key)
+        }
     }
 
     @discardableResult
@@ -376,6 +593,27 @@ final class IosGeofenceCallbackJournal {
     }
 
     private func loadLocked() -> PersistedState? {
+        guard var state = readStateLocked() else { return nil }
+        let cancellation = recoveryCancellationLocked()
+        guard !cancellation.isEmpty else { return state }
+        removeRecoveryLocked(from: &state, cancellation: cancellation)
+        // The stop's normal deduplication reset may have failed with the same
+        // storage error. Do not suppress the next generation's first event.
+        state.deduplicationCursorsByIdentifier = state.deduplicationCursorsByIdentifier.filter {
+            $0.value.recoveryScope == nil || !cancellation.contains($0.key)
+        }
+        // Do not expose any journal state until cancellation has been applied
+        // durably. Leave legacy/unscoped entries untouched during that cleanup.
+        guard storeLocked(state) else { return nil }
+        userDefaults.removeObject(forKey: recoveryCancellationStorageKey)
+        guard userDefaults.data(forKey: recoveryCancellationStorageKey) == nil else {
+            return nil
+        }
+        pendingRecoveryCancellation = RecoveryCancellation()
+        return state
+    }
+
+    private func readStateLocked() -> PersistedState? {
         guard let data = userDefaults.data(forKey: storageKey) else {
             return PersistedState(
                 envelopes: [],
@@ -399,15 +637,54 @@ final class IosGeofenceCallbackJournal {
     }
 
     private func storeLocked(_ state: PersistedState) -> Bool {
+        let recoveryIds = Set((state.recoveryRegistrations ?? [:]).keys).union(
+            state.envelopes.compactMap { $0.recoveryScope == nil ? nil : $0.geofence.id }
+        )
+        // Record opt-in before publishing scoped state. Legacy callers can then
+        // bypass an unreadable journal without bypassing active recovery guards.
+        let previousIds = recoveryIdentifiersLocked()
+        if !recoveryIds.isEmpty && previousIds.map({ recoveryIds.isSubset(of: $0) }) != true {
+            guard storeRecoveryIdentifiersLocked((previousIds ?? []).union(recoveryIds)) else { return false }
+        }
+        let stored: Bool
         if state.envelopes.isEmpty
             && state.deduplicationCursorsByIdentifier.isEmpty
+            && (state.recoveryRegistrations ?? [:]).isEmpty
         {
             userDefaults.removeObject(forKey: storageKey)
-            return userDefaults.data(forKey: storageKey) == nil
+            stored = userDefaults.data(forKey: storageKey) == nil
+        } else {
+            guard let data = try? encoder.encode(state) else { return false }
+            userDefaults.set(data, forKey: storageKey)
+            stored = userDefaults.data(forKey: storageKey) == data
         }
-        guard let data = try? encoder.encode(state) else { return false }
-        userDefaults.set(data, forKey: storageKey)
-        return userDefaults.data(forKey: storageKey) == data
+        guard stored else { return false }
+        // Shrink only after journal cleanup commits. A failed index cleanup
+        // leaves a conservative superset and can be retried by a later write.
+        if recoveryIdentifiersLocked() != recoveryIds {
+            _ = storeRecoveryIdentifiersLocked(recoveryIds)
+        }
+        return true
+    }
+
+    private func recoveryIdentifiersLocked() -> Set<String>? {
+        guard let value = userDefaults.object(forKey: recoveryIdentifiersStorageKey) else { return [] }
+        guard let identifiers = value as? [String] else { return nil }
+        return Set(identifiers)
+    }
+
+    private func storeRecoveryIdentifiersLocked(_ identifiers: Set<String>) -> Bool {
+        if identifiers.isEmpty {
+            userDefaults.removeObject(forKey: recoveryIdentifiersStorageKey)
+        } else {
+            userDefaults.set(identifiers.sorted(), forKey: recoveryIdentifiersStorageKey)
+        }
+        return recoveryIdentifiersLocked() == identifiers
+    }
+
+    private func hasRecoveryLocked(managedIds: Set<String>, authoritative: Bool) -> Bool {
+        guard let identifiers = recoveryIdentifiersLocked() else { return true }
+        return authoritative ? !identifiers.isEmpty : !identifiers.isDisjoint(with: managedIds)
     }
 
     private func deduplicationCursors(

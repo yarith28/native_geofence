@@ -3,6 +3,31 @@ import XCTest
 @testable import RegionRegistrationCore
 
 final class InitialStateRequestGateTests: XCTestCase {
+    func testDeferredRecoveryOriginSurvivesCommitAndProcessRestart() {
+        let suite = "pending-origin.\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let buffer = PendingBoundaryEventBuffer(userDefaults: defaults, storageKey: "events")
+        let gate = InitialStateRequestGate()
+        let office = region(id: "office")
+        _ = gate.commit(region: office, initialTrigger: false)
+        let admission = PendingBoundaryEventAdmissionCoordinator(
+            gate: gate, buffer: buffer, hasPendingMutation: { _ in false },
+            pendingCandidates: { _ in [] },
+            captureRecoveryOrigin: { _ in .init(scope: "new-owner") })
+        admission.beginSynchronization(identifier: "office", candidates: [],
+            recoveryOrigin: .init(scope: "old-owner"))
+        guard case .deferred(let persisted) = admission.admit(
+            responseRegion: office, transition: .enter, receivedAtMillis: 123) else {
+            return XCTFail("Expected a deferred boundary event")
+        }
+        XCTAssertTrue(persisted)
+        admission.finishSynchronization(identifier: "office")
+        let restored = PendingBoundaryEventBuffer(userDefaults: defaults, storageKey: "events")
+        XCTAssertEqual(restored.pending(identifier: "office").first?.recoveryOrigin?.scope, "old-owner")
+        XCTAssertEqual(restored.pending(identifier: "office").first?.receivedAtMillis, 123)
+    }
+
     func testUnsolicitedPublicStateResponseIsIgnored() {
         let gate = InitialStateRequestGate()
         let publicRegion = region(id: "office")

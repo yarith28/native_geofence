@@ -298,12 +298,17 @@ class LocationWire {
 }
 
 class IosGeofenceSettingsWire {
-  IosGeofenceSettingsWire({required this.initialTrigger});
+  IosGeofenceSettingsWire({
+    required this.initialTrigger,
+    this.callbackRecoveryScope,
+  });
 
   bool initialTrigger;
 
+  String? callbackRecoveryScope;
+
   List<Object?> _toList() {
-    return <Object?>[initialTrigger];
+    return <Object?>[initialTrigger, callbackRecoveryScope];
   }
 
   Object encode() {
@@ -312,7 +317,10 @@ class IosGeofenceSettingsWire {
 
   static IosGeofenceSettingsWire decode(Object result) {
     result as List<Object?>;
-    return IosGeofenceSettingsWire(initialTrigger: result[0]! as bool);
+    return IosGeofenceSettingsWire(
+      initialTrigger: result[0]! as bool,
+      callbackRecoveryScope: result[1] as String?,
+    );
   }
 
   @override
@@ -324,7 +332,8 @@ class IosGeofenceSettingsWire {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(initialTrigger, other.initialTrigger);
+    return _deepEquals(initialTrigger, other.initialTrigger) &&
+        _deepEquals(callbackRecoveryScope, other.callbackRecoveryScope);
   }
 
   @override
@@ -566,6 +575,7 @@ class GeofenceCallbackParamsWire {
     this.eventId,
     this.callbackContextsByGeofenceId,
     this.traceId,
+    this.iosRecoveryScopesByGeofenceId,
   });
 
   List<ActiveGeofenceWire> geofences;
@@ -598,6 +608,8 @@ class GeofenceCallbackParamsWire {
   /// identity across confirmation, retry, and application queueing.
   String? traceId;
 
+  Map<String, String>? iosRecoveryScopesByGeofenceId;
+
   List<Object?> _toList() {
     return <Object?>[
       geofences,
@@ -608,6 +620,7 @@ class GeofenceCallbackParamsWire {
       eventId,
       callbackContextsByGeofenceId,
       traceId,
+      iosRecoveryScopesByGeofenceId,
     ];
   }
 
@@ -627,6 +640,8 @@ class GeofenceCallbackParamsWire {
       callbackContextsByGeofenceId: (result[6] as Map<Object?, Object?>?)
           ?.cast<String, int>(),
       traceId: result[7] as String?,
+      iosRecoveryScopesByGeofenceId: (result[8] as Map<Object?, Object?>?)
+          ?.cast<String, String>(),
     );
   }
 
@@ -650,7 +665,11 @@ class GeofenceCallbackParamsWire {
           callbackContextsByGeofenceId,
           other.callbackContextsByGeofenceId,
         ) &&
-        _deepEquals(traceId, other.traceId);
+        _deepEquals(traceId, other.traceId) &&
+        _deepEquals(
+          iosRecoveryScopesByGeofenceId,
+          other.iosRecoveryScopesByGeofenceId,
+        );
   }
 
   @override

@@ -339,31 +339,36 @@ struct LocationWire: Hashable {
 /// Generated class from Pigeon that represents data sent in messages.
 struct IosGeofenceSettingsWire: Hashable {
   var initialTrigger: Bool
+  var callbackRecoveryScope: String? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> IosGeofenceSettingsWire? {
     let initialTrigger = pigeonVar_list[0] as! Bool
+    let callbackRecoveryScope: String? = nilOrValue(pigeonVar_list[1])
 
     return IosGeofenceSettingsWire(
-      initialTrigger: initialTrigger
+      initialTrigger: initialTrigger,
+      callbackRecoveryScope: callbackRecoveryScope
     )
   }
   func toList() -> [Any?] {
     return [
-      initialTrigger
+      initialTrigger,
+      callbackRecoveryScope,
     ]
   }
   static func == (lhs: IosGeofenceSettingsWire, rhs: IosGeofenceSettingsWire) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsFlutterBindings(lhs.initialTrigger, rhs.initialTrigger)
+    return deepEqualsFlutterBindings(lhs.initialTrigger, rhs.initialTrigger) && deepEqualsFlutterBindings(lhs.callbackRecoveryScope, rhs.callbackRecoveryScope)
   }
 
   func hash(into hasher: inout Hasher) {
     hasher.combine("IosGeofenceSettingsWire")
     deepHashFlutterBindings(value: initialTrigger, hasher: &hasher)
+    deepHashFlutterBindings(value: callbackRecoveryScope, hasher: &hasher)
   }
 }
 
@@ -566,6 +571,7 @@ struct GeofenceCallbackParamsWire: Hashable {
   /// processor may create a new delivery [eventId] while preserving this root
   /// identity across confirmation, retry, and application queueing.
   var traceId: String? = nil
+  var iosRecoveryScopesByGeofenceId: [String: String]? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -578,6 +584,7 @@ struct GeofenceCallbackParamsWire: Hashable {
     let eventId: String? = nilOrValue(pigeonVar_list[5])
     let callbackContextsByGeofenceId: [String: Int64]? = nilOrValue(pigeonVar_list[6])
     let traceId: String? = nilOrValue(pigeonVar_list[7])
+    let iosRecoveryScopesByGeofenceId: [String: String]? = nilOrValue(pigeonVar_list[8])
 
     return GeofenceCallbackParamsWire(
       geofences: geofences,
@@ -587,7 +594,8 @@ struct GeofenceCallbackParamsWire: Hashable {
       callbackHandle: callbackHandle,
       eventId: eventId,
       callbackContextsByGeofenceId: callbackContextsByGeofenceId,
-      traceId: traceId
+      traceId: traceId,
+      iosRecoveryScopesByGeofenceId: iosRecoveryScopesByGeofenceId
     )
   }
   func toList() -> [Any?] {
@@ -600,13 +608,14 @@ struct GeofenceCallbackParamsWire: Hashable {
       eventId,
       callbackContextsByGeofenceId,
       traceId,
+      iosRecoveryScopesByGeofenceId,
     ]
   }
   static func == (lhs: GeofenceCallbackParamsWire, rhs: GeofenceCallbackParamsWire) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsFlutterBindings(lhs.geofences, rhs.geofences) && deepEqualsFlutterBindings(lhs.event, rhs.event) && deepEqualsFlutterBindings(lhs.location, rhs.location) && deepEqualsFlutterBindings(lhs.eventAtMillis, rhs.eventAtMillis) && deepEqualsFlutterBindings(lhs.callbackHandle, rhs.callbackHandle) && deepEqualsFlutterBindings(lhs.eventId, rhs.eventId) && deepEqualsFlutterBindings(lhs.callbackContextsByGeofenceId, rhs.callbackContextsByGeofenceId) && deepEqualsFlutterBindings(lhs.traceId, rhs.traceId)
+    return deepEqualsFlutterBindings(lhs.geofences, rhs.geofences) && deepEqualsFlutterBindings(lhs.event, rhs.event) && deepEqualsFlutterBindings(lhs.location, rhs.location) && deepEqualsFlutterBindings(lhs.eventAtMillis, rhs.eventAtMillis) && deepEqualsFlutterBindings(lhs.callbackHandle, rhs.callbackHandle) && deepEqualsFlutterBindings(lhs.eventId, rhs.eventId) && deepEqualsFlutterBindings(lhs.callbackContextsByGeofenceId, rhs.callbackContextsByGeofenceId) && deepEqualsFlutterBindings(lhs.traceId, rhs.traceId) && deepEqualsFlutterBindings(lhs.iosRecoveryScopesByGeofenceId, rhs.iosRecoveryScopesByGeofenceId)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -619,6 +628,7 @@ struct GeofenceCallbackParamsWire: Hashable {
     deepHashFlutterBindings(value: eventId, hasher: &hasher)
     deepHashFlutterBindings(value: callbackContextsByGeofenceId, hasher: &hasher)
     deepHashFlutterBindings(value: traceId, hasher: &hasher)
+    deepHashFlutterBindings(value: iosRecoveryScopesByGeofenceId, hasher: &hasher)
   }
 }
 

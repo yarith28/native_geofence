@@ -66,6 +66,9 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
             pendingCandidates: { [weak self] id in
                 self?.regionRegistrationCoordinator
                     .pendingBoundaryResolutionCandidates(id: id) ?? []
+            },
+            captureRecoveryOrigin: { [weak self] id in
+                self?.callbackJournal.recoveryOrigin(identifier: id)
             }
         )
     private lazy var boundaryEventResolutionCoordinator =
@@ -201,7 +204,13 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
     }
 
     @discardableResult
-    func cancelMonitoringStart(id: String) -> Bool {
+    func cancelMonitoringStart(id: String, revokeCallbackRecovery: Bool = true) -> Bool {
+        // Transactional removal may roll back. Its journal cancellation belongs
+        // to commitCallbackRecovery, after the complete synchronization succeeds.
+        if revokeCallbackRecovery && !callbackJournal.cancelRecovery(identifier: id, deferCleanupOnFailure: true) {
+            log.error("iOS callback recovery cleanup is pending for geofence ID=\(id); continuing monitoring removal.")
+            fileLog.error("iOS callback recovery cleanup is pending for geofence ID=\(id); continuing monitoring removal.")
+        }
         guard establishPendingBoundaryCancellation(
             boundaryEventAdmissionCoordinator.cancel(identifier: id)
         ) else {
@@ -215,6 +224,10 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
 
     @discardableResult
     func cancelAllMonitoringStarts() -> Bool {
+        if !callbackJournal.cancelRecovery(identifier: nil, deferCleanupOnFailure: true) {
+            log.error("iOS callback recovery cleanup is pending; continuing monitoring removal.")
+            fileLog.error("iOS callback recovery cleanup is pending; continuing monitoring removal.")
+        }
         guard establishPendingBoundaryCancellation(
             boundaryEventAdmissionCoordinator.cancelAll()
         ) else {
@@ -244,11 +257,16 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
 
     func beginSynchronizationBoundaryEventDeferral(
         identifier: String,
-        candidates: [PendingBoundaryRegistrationCandidate]
+        candidates: [PendingBoundaryRegistrationCandidate],
+        wasRegistered: Bool,
+        requestedRecoveryScope: String?
     ) {
         boundaryEventAdmissionCoordinator.beginSynchronization(
             identifier: identifier,
-            candidates: candidates
+            candidates: candidates,
+            recoveryOrigin: wasRegistered
+                ? callbackJournal.recoveryOrigin(identifier: identifier)
+                : .init(scope: requestedRecoveryScope)
         )
     }
 
@@ -629,7 +647,8 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
                     region: publicRegion,
                     eventAtMillis: pending.receivedAtMillis,
                     eventId: pending.eventId,
-                    callbackCandidate: callbackCandidate
+                    callbackCandidate: callbackCandidate,
+                    recoveryOrigin: pending.recoveryOrigin ?? .init(scope: nil)
                 )
                 if consumed {
                     if !boundaryEventResolutionCoordinator.remove(
@@ -875,7 +894,8 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         region: CLRegion,
         eventAtMillis receivedAtMillis: Int64? = nil,
         eventId suppliedEventId: String? = nil,
-        callbackCandidate: PendingBoundaryRegistrationCandidate? = nil
+        callbackCandidate: PendingBoundaryRegistrationCandidate? = nil,
+        recoveryOrigin: IosGeofenceRecoveryOrigin? = nil
     ) -> Bool {
         guard let activeGeofence = ActiveGeofenceWires.fromRegion(region) else {
             deliveryDiagnostics.record(
@@ -968,7 +988,7 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
             callbackContext: callbackContext,
             nowMillis: eventAtMillis
         )
-        switch callbackJournal.enqueue(envelope) {
+        switch callbackJournal.enqueue(envelope, recoveryOrigin: recoveryOrigin) {
         case .stored:
             deliveryDiagnostics.record(
                 stage: "callback_journal",
@@ -1003,6 +1023,14 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
             log.info("Suppressed duplicate callback journal event.")
             fileLog.info("Suppressed duplicate callback journal event.")
             return true
+        case .staleRecoveryOrigin:
+            deliveryDiagnostics.record(
+                stage: "callback_journal", outcome: "rejected",
+                event: event == .enter ? "enter" : "exit", geofenceCount: 1,
+                owner: "ios_delegate", reasonCode: "recovery_owner_changed"
+            )
+            fileLog.info("Discarded deferred callback whose recovery owner changed.")
+            return true
         case .storageFailure:
             deliveryDiagnostics.record(
                 stage: "callback_journal",
@@ -1024,10 +1052,58 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         }
     }
 
+    /// Publish recovery authority only after native registration has committed.
+    func commitCallbackRecovery(
+        registrations: [GeofenceWire],
+        authoritative: Bool
+    ) -> Bool {
+        var recovery: [IosGeofenceCallbackJournal.RecoveryRegistration] = []
+        for wire in registrations {
+            guard let scope = wire.iosSettings.callbackRecoveryScope,
+                  !scope.isEmpty else { continue }
+            // Use platform-normalized geometry, including an iOS radius cap.
+            guard let region = locationManager.monitoredRegions.first(where: {
+                $0.identifier == wire.id
+            }), let active = ActiveGeofenceWires.fromRegion(region) else {
+                return false
+            }
+            recovery.append(.init(
+                geofence: .init(
+                    id: active.id,
+                    latitude: active.location.latitude,
+                    longitude: active.location.longitude,
+                    radiusMeters: active.radiusMeters,
+                    triggers: active.triggers.map(IosGeofenceTransition.init)
+                ),
+                scope: scope,
+                callbackHandle: wire.callbackHandle,
+                callbackContext: wire.callbackContext
+            ))
+        }
+        guard callbackJournal.reconcileRecovery(
+            registrations: recovery,
+            managedIds: Set(registrations.map(\.id)),
+            authoritative: authoritative,
+            nowMillis: Int64(Date().timeIntervalSince1970 * 1000)
+        ) else { return false }
+        // Allow the synchronization response to return before application work.
+        DispatchQueue.main.async { [weak self] in self?.drainPendingEvents() }
+        return true
+    }
+
+    func revokeCallbackRecovery(identifier: String) -> Bool {
+        callbackJournal.cancelRecovery(identifier: identifier)
+    }
+
     /// Drains persisted events on plugin attachment and after bounded backoff.
     func drainPendingEvents() {
         let nowMillis = Int64(Date().timeIntervalSince1970 * 1000)
-        let batch = callbackJournal.drainBatch(nowMillis: nowMillis)
+        callbackDeliveryLock.lock()
+        let batch = callbackJournal.drainBatch(
+            nowMillis: nowMillis,
+            inFlightEventIds: inFlightJournalEventIds
+        )
+        callbackDeliveryLock.unlock()
         guard batch.storageReadable else {
             NativeGeofenceDiagnostics.record(
                 .enqueue,
@@ -1091,7 +1167,6 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
         _ envelope: IosGeofenceCallbackJournalEnvelope,
         outcome: IosGeofenceCallbackDeliveryOutcome
     ) {
-        releaseJournalDelivery(eventId: envelope.eventId)
         let nowMillis = Int64(Date().timeIntervalSince1970 * 1000)
         if outcome.didSucceed {
             eventDeduplicator.recordAccepted(
@@ -1100,14 +1175,22 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
                 eventAtMillis: envelope.eventAtMillis
             )
         }
-        switch callbackJournal.complete(
+        let completion = callbackJournal.complete(
             eventId: envelope.eventId,
             outcome: outcome,
-            nowMillis: nowMillis
-        ) {
+            nowMillis: nowMillis,
+            deliveredHandle: envelope.callbackHandle,
+            deliveredContext: envelope.callbackContext,
+            deliveredRecoveryRefreshRevision: envelope.recoveryRefreshRevision
+        )
+        releaseJournalDelivery(eventId: envelope.eventId)
+        switch completion {
         case .acknowledged:
             log.debug("Acknowledged completed iOS callback journal event.")
             fileLog.diagnostic("Acknowledged completed iOS callback journal event.")
+            if envelope.recoveryScope != nil { scheduleJournalDrain(afterMillis: 0) }
+        case .awaitingCallbackRefresh:
+            fileLog.error("Retained iOS callback journal event pending registration refresh.")
         case .retryScheduled(let nextAttemptAtMillis):
             NativeGeofenceDiagnostics.record(
                 .worker,
@@ -1117,9 +1200,15 @@ class LocationManagerDelegate: NSObject, CLLocationManagerDelegate {
             scheduleJournalDrain(
                 afterMillis: max(0, nextAttemptAtMillis - nowMillis)
             )
+            if envelope.recoveryScope != nil && outcome == .retryableFailure {
+                // Ordinary backoff applies only to this event. Release any
+                // later due transition instead of waiting for its retry timer.
+                scheduleJournalDrain(afterMillis: 0)
+            }
             log.error("Retained failed iOS callback journal event for retry.")
             fileLog.error("Retained failed iOS callback journal event for retry.")
         case .retryExhausted:
+            if envelope.recoveryScope != nil { scheduleJournalDrain(afterMillis: 0) }
             NativeGeofenceDiagnostics.record(
                 .worker,
                 succeeded: false,
@@ -1290,7 +1379,8 @@ private extension IosGeofenceCallbackJournalEnvelope {
             callbackHandle: callbackHandle,
             eventId: eventId,
             callbackContextsByGeofenceId: callbackContext.map { [geofence.id: $0] },
-            traceId: traceId
+            traceId: traceId,
+            iosRecoveryScopesByGeofenceId: recoveryScope.map { [geofence.id: $0] }
         )
     }
 }

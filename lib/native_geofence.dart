@@ -6,6 +6,7 @@ export 'package:native_geofence/src/generated/platform_bindings.g.dart'
         NativeGeofenceErrorCode,
         NativeGeofencePlatform,
         NativeGeofenceRegistrationHealth;
+export 'package:native_geofence/src/model/callback_registration_unavailable.dart';
 export 'package:native_geofence/src/model/geofence_registration.dart';
 export 'package:native_geofence/src/model/log_file_config.dart';
 export 'package:native_geofence/src/model/model.dart';

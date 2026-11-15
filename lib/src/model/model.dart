@@ -75,8 +75,16 @@ class IosGeofenceSettings {
   /// in the app or backend.
   final bool initialTrigger;
 
+  /// Opt-in iOS callback recovery owner/generation, installed by
+  /// ensureSynchronized. Keep stable across updates and token refresh; rotate
+  /// on owner changes or disable. Recovery waits only on callback lookup
+  /// failures before application work; ordinary delivery retries are unchanged.
+  /// Null preserves legacy delivery behavior.
+  final String? callbackRecoveryScope;
+
   const IosGeofenceSettings({
     this.initialTrigger = false,
+    this.callbackRecoveryScope,
   });
 
   Map<String, Object?> toJson() => {'initialTrigger': initialTrigger};
@@ -327,6 +335,9 @@ class GeofenceCallbackParams {
   /// these values; they are useful when one callback dispatches app-owned work.
   final Map<String, int> callbackContextsByGeofenceId;
 
+  /// Opaque iOS recovery ownership captured when the event was journaled.
+  final Map<String, String> iosRecoveryScopesByGeofenceId;
+
   const GeofenceCallbackParams({
     required this.geofences,
     required this.event,
@@ -335,6 +346,7 @@ class GeofenceCallbackParams {
     this.eventId,
     this.traceId,
     this.callbackContextsByGeofenceId = const {},
+    this.iosRecoveryScopesByGeofenceId = const {},
   });
 
   /// Returns a bounded summary that intentionally omits registration IDs,

@@ -411,18 +411,21 @@ data class LocationWire (
 
 /** Generated class from Pigeon that represents data sent in messages. */
 data class IosGeofenceSettingsWire (
-  val initialTrigger: Boolean
+  val initialTrigger: Boolean,
+  val callbackRecoveryScope: String? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): IosGeofenceSettingsWire {
       val initialTrigger = pigeonVar_list[0] as Boolean
-      return IosGeofenceSettingsWire(initialTrigger)
+      val callbackRecoveryScope = pigeonVar_list[1] as String?
+      return IosGeofenceSettingsWire(initialTrigger, callbackRecoveryScope)
     }
   }
   fun toList(): List<Any?> {
     return listOf(
       initialTrigger,
+      callbackRecoveryScope,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -433,12 +436,13 @@ data class IosGeofenceSettingsWire (
       return true
     }
     val other = other as IosGeofenceSettingsWire
-    return FlutterBindingsPigeonUtils.deepEquals(this.initialTrigger, other.initialTrigger)
+    return FlutterBindingsPigeonUtils.deepEquals(this.initialTrigger, other.initialTrigger) && FlutterBindingsPigeonUtils.deepEquals(this.callbackRecoveryScope, other.callbackRecoveryScope)
   }
 
   override fun hashCode(): Int {
     var result = javaClass.hashCode()
     result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.initialTrigger)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.callbackRecoveryScope)
     return result
   }
 }
@@ -645,7 +649,8 @@ data class GeofenceCallbackParamsWire (
    * processor may create a new delivery [eventId] while preserving this root
    * identity across confirmation, retry, and application queueing.
    */
-  val traceId: String? = null
+  val traceId: String? = null,
+  val iosRecoveryScopesByGeofenceId: Map<String, String>? = null
 )
  {
   companion object {
@@ -658,7 +663,8 @@ data class GeofenceCallbackParamsWire (
       val eventId = pigeonVar_list[5] as String?
       val callbackContextsByGeofenceId = pigeonVar_list[6] as Map<String, Long>?
       val traceId = pigeonVar_list[7] as String?
-      return GeofenceCallbackParamsWire(geofences, event, location, eventAtMillis, callbackHandle, eventId, callbackContextsByGeofenceId, traceId)
+      val iosRecoveryScopesByGeofenceId = pigeonVar_list[8] as Map<String, String>?
+      return GeofenceCallbackParamsWire(geofences, event, location, eventAtMillis, callbackHandle, eventId, callbackContextsByGeofenceId, traceId, iosRecoveryScopesByGeofenceId)
     }
   }
   fun toList(): List<Any?> {
@@ -671,6 +677,7 @@ data class GeofenceCallbackParamsWire (
       eventId,
       callbackContextsByGeofenceId,
       traceId,
+      iosRecoveryScopesByGeofenceId,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -681,7 +688,7 @@ data class GeofenceCallbackParamsWire (
       return true
     }
     val other = other as GeofenceCallbackParamsWire
-    return FlutterBindingsPigeonUtils.deepEquals(this.geofences, other.geofences) && FlutterBindingsPigeonUtils.deepEquals(this.event, other.event) && FlutterBindingsPigeonUtils.deepEquals(this.location, other.location) && FlutterBindingsPigeonUtils.deepEquals(this.eventAtMillis, other.eventAtMillis) && FlutterBindingsPigeonUtils.deepEquals(this.callbackHandle, other.callbackHandle) && FlutterBindingsPigeonUtils.deepEquals(this.eventId, other.eventId) && FlutterBindingsPigeonUtils.deepEquals(this.callbackContextsByGeofenceId, other.callbackContextsByGeofenceId) && FlutterBindingsPigeonUtils.deepEquals(this.traceId, other.traceId)
+    return FlutterBindingsPigeonUtils.deepEquals(this.geofences, other.geofences) && FlutterBindingsPigeonUtils.deepEquals(this.event, other.event) && FlutterBindingsPigeonUtils.deepEquals(this.location, other.location) && FlutterBindingsPigeonUtils.deepEquals(this.eventAtMillis, other.eventAtMillis) && FlutterBindingsPigeonUtils.deepEquals(this.callbackHandle, other.callbackHandle) && FlutterBindingsPigeonUtils.deepEquals(this.eventId, other.eventId) && FlutterBindingsPigeonUtils.deepEquals(this.callbackContextsByGeofenceId, other.callbackContextsByGeofenceId) && FlutterBindingsPigeonUtils.deepEquals(this.traceId, other.traceId) && FlutterBindingsPigeonUtils.deepEquals(this.iosRecoveryScopesByGeofenceId, other.iosRecoveryScopesByGeofenceId)
   }
 
   override fun hashCode(): Int {
@@ -694,6 +701,7 @@ data class GeofenceCallbackParamsWire (
     result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.eventId)
     result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.callbackContextsByGeofenceId)
     result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.traceId)
+    result = 31 * result + FlutterBindingsPigeonUtils.deepHash(this.iosRecoveryScopesByGeofenceId)
     return result
   }
 }

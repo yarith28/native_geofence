@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:native_geofence/src/generated/platform_bindings.g.dart';
+import 'package:native_geofence/src/model/callback_registration_unavailable.dart';
 import 'package:native_geofence/src/model/model_mapper.dart';
 import 'package:native_geofence/src/typedefs.dart';
 
@@ -57,7 +58,14 @@ class NativeGeofenceTriggerImpl implements NativeGeofenceTriggerApi {
             'app-owned registration list to refresh callback registrations.',
       );
     }
-    await callback(params.fromWire());
+    try {
+      await callback(params.fromWire());
+    } on CallbackRegistrationUnavailable {
+      throw callbackLookupFailure(
+        code: NativeGeofenceErrorCode.callbackNotFound,
+        message: 'A downstream callback requires registration refresh.',
+      );
+    }
     debugPrint('Geofence trigger callback completed.');
   }
 }

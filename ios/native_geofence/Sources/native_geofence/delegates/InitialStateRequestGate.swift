@@ -196,6 +196,7 @@ struct PendingBoundaryEvent: Codable, Equatable {
     let resolutionCandidates: [PendingBoundaryRegistrationCandidate]
     var resolvedRegistrationCandidate:
         PendingBoundaryRegistrationCandidate? = nil
+    var recoveryOrigin: IosGeofenceRecoveryOrigin? = nil
 
     var responseRegion: CLCircularRegion {
         responseRegionSnapshot.region
@@ -344,7 +345,8 @@ final class PendingBoundaryEventBuffer {
         _ transition: PendingBoundaryTransition,
         responseRegion: CLCircularRegion,
         receivedAtMillis: Int64,
-        resolutionCandidates: [PendingBoundaryRegistrationCandidate]
+        resolutionCandidates: [PendingBoundaryRegistrationCandidate],
+        recoveryOrigin: IosGeofenceRecoveryOrigin? = nil
     ) -> AppendResult {
         withLock {
             let nextSequence = events.map(\.sequence).max().map {
@@ -358,7 +360,8 @@ final class PendingBoundaryEventBuffer {
                     region: responseRegion
                 ),
                 receivedAtMillis: receivedAtMillis,
-                resolutionCandidates: resolutionCandidates
+                resolutionCandidates: resolutionCandidates,
+                recoveryOrigin: recoveryOrigin
             )
             events.append(event)
             return AppendResult(event: event, persisted: storeLocked())
@@ -617,6 +620,8 @@ final class PendingBoundaryEventAdmissionCoordinator {
     private let buffer: PendingBoundaryEventBuffer
     private let hasPendingMutation: PendingMutationLookup
     private let pendingCandidates: CandidateLookup
+    private let captureRecoveryOrigin: (String) -> IosGeofenceRecoveryOrigin?
+    private var synchronizationOrigins: [String: IosGeofenceRecoveryOrigin] = [:]
     private var synchronizationCandidatesByIdentifier:
         [String: [PendingBoundaryRegistrationCandidate]] = [:]
 
@@ -624,25 +629,30 @@ final class PendingBoundaryEventAdmissionCoordinator {
         gate: InitialStateRequestGate,
         buffer: PendingBoundaryEventBuffer,
         hasPendingMutation: @escaping PendingMutationLookup,
-        pendingCandidates: @escaping CandidateLookup
+        pendingCandidates: @escaping CandidateLookup,
+        captureRecoveryOrigin: @escaping (String) -> IosGeofenceRecoveryOrigin? = { _ in nil }
     ) {
         self.gate = gate
         self.buffer = buffer
         self.hasPendingMutation = hasPendingMutation
         self.pendingCandidates = pendingCandidates
+        self.captureRecoveryOrigin = captureRecoveryOrigin
     }
 
     func beginSynchronization(
         identifier: String,
-        candidates: [PendingBoundaryRegistrationCandidate]
+        candidates: [PendingBoundaryRegistrationCandidate],
+        recoveryOrigin: IosGeofenceRecoveryOrigin? = nil
     ) {
         withLock {
             synchronizationCandidatesByIdentifier[identifier] = candidates
+            synchronizationOrigins[identifier] = recoveryOrigin
         }
     }
 
     func finishSynchronization(identifier: String) {
-        _ = withLock {
+        withLock {
+            synchronizationOrigins.removeValue(forKey: identifier)
             synchronizationCandidatesByIdentifier.removeValue(
                 forKey: identifier
             )
@@ -669,6 +679,7 @@ final class PendingBoundaryEventAdmissionCoordinator {
         )
         withLock {
             synchronizationCandidatesByIdentifier.removeAll()
+            synchronizationOrigins.removeAll()
         }
         return buffer.cancel(eventIds: eventIds)
     }
@@ -755,7 +766,9 @@ final class PendingBoundaryEventAdmissionCoordinator {
                         mutationPending
                             ? pendingCandidates(identifier)
                             : []
-                    )
+                    ),
+                recoveryOrigin: withLock { synchronizationOrigins[identifier] }
+                    ?? captureRecoveryOrigin(identifier)
             )
             return .deferred(persisted: result.persisted)
         }

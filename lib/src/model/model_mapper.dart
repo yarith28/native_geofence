@@ -35,13 +35,15 @@ extension LocationWireMapper on LocationWire {
 
 extension IosGeofenceSettingsMapper on IosGeofenceSettings {
   IosGeofenceSettingsWire toWire() {
-    return IosGeofenceSettingsWire(initialTrigger: initialTrigger);
+    return IosGeofenceSettingsWire(initialTrigger: initialTrigger,
+        callbackRecoveryScope: callbackRecoveryScope);
   }
 }
 
 extension IosGeofenceSettingsWireMapper on IosGeofenceSettingsWire {
   IosGeofenceSettings fromWire() {
-    return IosGeofenceSettings(initialTrigger: initialTrigger);
+    return IosGeofenceSettings(initialTrigger: initialTrigger,
+        callbackRecoveryScope: callbackRecoveryScope);
   }
 }
 
@@ -139,6 +141,9 @@ extension GeofenceCallbackParamsWireMapper on GeofenceCallbackParamsWire {
           : DateTime.fromMillisecondsSinceEpoch(eventAtMillis!),
       eventId: eventId,
       traceId: traceId,
+      iosRecoveryScopesByGeofenceId: Map.unmodifiable(
+        iosRecoveryScopesByGeofenceId ?? const <String, String>{},
+      ),
       callbackContextsByGeofenceId: Map.unmodifiable(
         callbackContextsByGeofenceId ?? const <String, int>{},
       ),
